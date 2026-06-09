@@ -1,0 +1,93 @@
+.cards-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.card {
+  background: linear-gradient(135deg, rgba(77, 107, 254, 0.04), rgba(123, 146, 255, 0.02));
+  border-radius: var(--radius-card);
+  padding: 12px;
+  border: 1px solid var(--border);
+  transition: all 200ms ease-out;
+  cursor: default;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card);
+  background: linear-gradient(135deg, rgba(77, 107, 254, 0.08), rgba(123, 146, 255, 0.04));
+}
+
+.card-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.card-value {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  transition: color 300ms ease-out;
+}
+
+.card-value.primary { color: var(--primary); }
+.card-value.warning { color: var(--warning); }
+.card-value.error { color: var(--error); }
+
+.card-sub {
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.model-bar-item {
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
+  gap: 8px;
+}
+
+.model-bar-label {
+  font-size: 11px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  min-width: 70px;
+  font-weight: 500;
+}
+
+.model-bar-track {
+  flex: 1;
+  height: 16px;
+  background: rgba(77, 107, 254, 0.08);
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+
+.model-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--primary-light));
+  border-radius: 8px;
+  transition: width 300ms ease-out;
+  min-width: 2px;
+}
+
+.model-bar-value {
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 60px;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.component-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  cursor: grab;
+}
