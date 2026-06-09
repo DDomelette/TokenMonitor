@@ -1,0 +1,52 @@
+function getBalanceClass(totalBalance) {
+  const val = parseFloat(totalBalance);
+  if (isNaN(val)) return 'primary';
+  if (val < 5) return 'error';
+  if (val < 20) return 'warning';
+  return 'primary';
+}
+
+function formatTokens(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+  return n.toString();
+}
+
+function updateFeeCards(balanceData, statsData) {
+  const container = document.getElementById('fee-cards');
+  if (!container) return;
+
+  let balanceHTML = '<div class="card-label">余额</div>';
+  let costHTML = '<div class="card-label">今日消耗</div>';
+  let cacheHTML = '<div class="card-label">缓存命中率</div>';
+
+  if (balanceData) {
+    const cls = getBalanceClass(balanceData.total);
+    balanceHTML += `<div class="card-value ${cls}">&yen;${balanceData.total || '--'}</div>`;
+    balanceHTML += `<div class="card-sub">充值 ${balanceData.toppedUp || '--'} | 赠金 ${balanceData.granted || '--'}</div>`;
+  } else {
+    balanceHTML += '<div class="card-value primary">--</div>';
+  }
+
+  if (statsData) {
+    costHTML += `<div class="card-value primary">&yen;${statsData.totalCost.toFixed(4)}</div>`;
+    costHTML += `<div class="card-sub">${formatTokens(statsData.totalTokens)} tokens</div>`;
+
+    const rate = statsData.cacheRate.toFixed(1);
+    cacheHTML += `<div class="card-value primary">${rate}%</div>`;
+    cacheHTML += `<div class="card-sub">命中 ${formatTokens(statsData.cacheHit)} | 未命中 ${formatTokens(statsData.cacheMiss)}</div>`;
+  } else {
+    costHTML += '<div class="card-value primary">--</div>';
+    cacheHTML += '<div class="card-value primary">--</div>';
+  }
+
+  container.innerHTML = `
+    <div class="cards-row">
+      <div class="card">${balanceHTML}</div>
+      <div class="card">${costHTML}</div>
+      <div class="card">${cacheHTML}</div>
+    </div>
+  `;
+}
+
+module.exports = { updateFeeCards };
