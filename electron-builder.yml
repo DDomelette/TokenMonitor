@@ -1,0 +1,17 @@
+appId: com.deepseek.monitor
+productName: DeepSeek Monitor
+directories:
+  output: build
+files:
+  - src/**/*
+  - node_modules/**/*
+  - package.json
+win:
+  icon: assets/icon.ico
+  target: nsis
+mac:
+  icon: assets/icon.icns
+  target: dmg
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
