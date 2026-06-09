@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepSeek Monitor</title>
+<link rel="stylesheet" href="css/main.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/settings.css">
+</head>
+<body>
+<div id="app">
+  <div class="titlebar">
+    <div class="titlebar-left">
+      <span class="titlebar-logo"> </span>
+      <span class="titlebar-text">DeepSeek Monitor</span>
+    </div>
+    <div class="titlebar-actions">
+      <button class="titlebar-btn" id="settingsBtn" title="设置"> </button>
+      <button class="titlebar-btn" id="minimizeBtn" title="最小化">&mdash;</button>
+      <button class="titlebar-btn" id="closeBtn" title="关闭">&times;</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="component-wrapper" id="fee-cards"></div>
+    <div class="component-wrapper" id="model-bar">
+      <div class="component-title">模型消耗</div>
+    </div>
+    <div class="component-wrapper" id="token-line">
+      <div class="component-header">
+        <div class="component-title">Token 增长趋势</div>
+        <select class="time-select" id="tokenTimeRange">
+          <option value="30s">30 秒</option>
+          <option value="1m" selected>分钟</option>
+          <option value="1h">小时</option>
+          <option value="1d">天</option>
+        </select>
+      </div>
+      <div class="chart-container" id="token-chart"></div>
+    </div>
+    <div class="component-wrapper" id="cost-line">
+      <div class="component-header">
+        <div class="component-title">费用增长趋势</div>
+        <select class="time-select" id="costTimeRange">
+          <option value="30s">30 秒</option>
+          <option value="1m" selected>分钟</option>
+          <option value="1h">小时</option>
+          <option value="1d">天</option>
+        </select>
+      </div>
+      <div class="chart-container" id="cost-chart"></div>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <div style="display:flex;align-items:center;">
+      <span class="status-dot online" id="statusDot"></span>
+      <span id="statusText">代理未启动</span>
+    </div>
+    <span id="proxyPort">localhost:7890</span>
+    <span id="apiKeyDisplay">--</span>
+  </div>
+</div>
+<script src="js/app.js"></script>
+</body>
+</html>
