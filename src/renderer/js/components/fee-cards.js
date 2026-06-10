@@ -31,13 +31,13 @@ window.App = window.App || {};
       balanceHTML += '<div class="card-value primary">--</div>';
     }
 
-    if (statsData) {
-      costHTML += '<div class="card-value primary">&yen;' + statsData.totalCost.toFixed(4) + '</div>';
-      costHTML += '<div class="card-sub">' + formatTokens(statsData.totalTokens) + ' tokens</div>';
+    if (statsData && statsData.token) {
+      costHTML += '<div class="card-value primary">' + formatTokens(statsData.token.totalTokens) + ' tk</div>';
+      costHTML += '<div class="card-sub">&yen;' + (statsData.cost ? statsData.cost.totalCost.toFixed(2) : '0') + '</div>';
 
-      var rate = statsData.cacheRate.toFixed(1);
+      var rate = statsData.token.cacheRate.toFixed(1);
       cacheHTML += '<div class="card-value primary">' + rate + '%</div>';
-      cacheHTML += '<div class="card-sub">命中 ' + formatTokens(statsData.cacheHit) + ' | 未命中 ' + formatTokens(statsData.cacheMiss) + '</div>';
+      cacheHTML += '<div class="card-sub">命中 ' + formatTokens(statsData.token.cacheHit) + ' | 未命中 ' + formatTokens(statsData.token.cacheMiss) + '</div>';
     } else {
       costHTML += '<div class="card-value primary">--</div>';
       cacheHTML += '<div class="card-value primary">--</div>';

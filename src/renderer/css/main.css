@@ -238,7 +238,7 @@ body.dark {
 }
 
 #model-bar {
-  min-height: 60px;
+  min-height: 180px;
 }
 
 #token-line, #cost-line {

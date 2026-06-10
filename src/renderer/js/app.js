@@ -40,8 +40,8 @@ window.App = window.App || {};
     window.api.invoke('get:dashboard').then(function (dashboard) {
       if (dashboard.stats) {
         window.App.updateFeeCards(dashboard.balance, dashboard.stats);
-        if (dashboard.stats.models) {
-          window.App.updateModelBar(dashboard.stats.models);
+        if (dashboard.stats.tokenDaily) {
+          window.App.updateDailyChart(dashboard.stats.tokenDaily);
         }
       } else if (dashboard.balance) {
         window.App.updateFeeCards(dashboard.balance, null);
@@ -85,6 +85,7 @@ window.App = window.App || {};
 
       window.App.initTokenChart('token-chart');
       window.App.initCostChart('cost-chart');
+      window.App.initDailyChart('daily-chart');
 
       setTimeout(pollDashboard, 500);
     });
@@ -108,8 +109,10 @@ window.App = window.App || {};
       }
       window.App.disposeTokenChart();
       window.App.disposeCostChart();
+      window.App.disposeDailyChart();
       window.App.initTokenChart('token-chart');
       window.App.initCostChart('cost-chart');
+      window.App.initDailyChart('daily-chart');
     });
 
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
@@ -121,8 +124,10 @@ window.App = window.App || {};
         }
         window.App.disposeTokenChart();
         window.App.disposeCostChart();
+        window.App.disposeDailyChart();
         window.App.initTokenChart('token-chart');
         window.App.initCostChart('cost-chart');
+        window.App.initDailyChart('daily-chart');
       }
     });
 

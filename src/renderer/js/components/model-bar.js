@@ -1,41 +1,90 @@
 window.App = window.App || {};
 
 (function () {
-  function updateModelBar(models) {
-    var container = document.getElementById('model-bar');
-    if (!container) return;
+  var echarts = window.echarts;
+  var dailyChart = null;
+  var dailyDom = null;
 
-    if (!models || models.length === 0) {
-      container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:8px;">暂无数据</div>';
-      return;
-    }
+  function initDailyChart(containerId) {
+    var dom = document.getElementById(containerId);
+    if (!dom) return;
+    dailyDom = dom;
+    var isDark = document.body.classList.contains('dark');
+    dailyChart = echarts.init(dom, null, { width: dom.clientWidth, height: dom.clientHeight });
 
-    var maxTokens = models[0] ? models[0].totalTokens : 1;
-
-    var html = '';
-    models.forEach(function (m) {
-      var pct = Math.max((m.totalTokens / maxTokens) * 100, 2);
-      var modelName = m.model.replace('deepseek-', '');
-      var tokenDisplay;
-      if (m.totalTokens >= 1000000) {
-        tokenDisplay = (m.totalTokens / 1000000).toFixed(1) + 'M';
-      } else if (m.totalTokens >= 1000) {
-        tokenDisplay = (m.totalTokens / 1000).toFixed(1) + 'K';
-      } else {
-        tokenDisplay = m.totalTokens.toString();
-      }
-      html +=
-        '<div class="model-bar-item">' +
-          '<span class="model-bar-label">' + modelName + '</span>' +
-          '<div class="model-bar-track">' +
-            '<div class="model-bar-fill" style="width:' + pct + '%"></div>' +
-          '</div>' +
-          '<span class="model-bar-value">' + tokenDisplay + ' tk</span>' +
-        '</div>';
+    dailyChart.setOption({
+      color: ['#4D6BFE', '#7B92FF', '#A5B4FC', '#C7D2FE', '#E0E7FF', '#F97316', '#22C55E'],
+      backgroundColor: 'transparent',
+      textStyle: { color: isDark ? '#9CA3AF' : '#6B7280', fontSize: 10 },
+      grid: { left: 48, right: 12, top: 16, bottom: 24 },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        textStyle: { fontSize: 11 }
+      },
+      xAxis: {
+        type: 'category',
+        data: [],
+        axisLabel: { color: isDark ? '#9CA3AF' : '#6B7280', fontSize: 9, rotate: 0, interval: 'auto' },
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: isDark ? '#3A3C45' : '#E5E7EB' } }
+      },
+      yAxis: {
+        type: 'value',
+        name: 'tokens',
+        nameTextStyle: { fontSize: 9, color: isDark ? '#9CA3AF' : '#6B7280' },
+        axisLabel: { color: isDark ? '#9CA3AF' : '#6B7280', fontSize: 9, formatter: function (v) { return v >= 1000000 ? (v / 1000000).toFixed(1) + 'M' : v >= 1000 ? (v / 1000).toFixed(0) + 'K' : v.toString(); } },
+        splitLine: { lineStyle: { color: isDark ? '#2A2C35' : '#F3F4F6' } }
+      },
+      animation: true,
+      series: [
+        {
+          name: 'Token 消耗',
+          type: 'bar',
+          barMaxWidth: 20,
+          itemStyle: { borderRadius: [3, 3, 0, 0] },
+          data: []
+        }
+      ]
     });
 
-    container.innerHTML = html;
+    window.addEventListener('resize', function () {
+      if (dailyChart && dailyDom) {
+        dailyChart.resize({ width: dailyDom.clientWidth, height: dailyDom.clientHeight });
+      }
+    });
   }
 
-  window.App.updateModelBar = updateModelBar;
+  function updateDailyChart(dailyData) {
+    if (!dailyChart || !dailyData || !dailyData.length) return;
+
+    var dates = [];
+    var values = [];
+
+    dailyData.forEach(function (d) {
+      var day = d.date.slice(5);
+      dates.push(day);
+      values.push(d.total || 0);
+    });
+
+    dailyChart.setOption({
+      xAxis: { data: dates },
+      series: [{ data: values }]
+    });
+  }
+
+  function resizeDailyChart() {
+    if (dailyChart && dailyDom) {
+      dailyChart.resize({ width: dailyDom.clientWidth, height: dailyDom.clientHeight });
+    }
+  }
+
+  function disposeDailyChart() {
+    if (dailyChart) { dailyChart.dispose(); dailyChart = null; dailyDom = null; }
+  }
+
+  window.App.initDailyChart = initDailyChart;
+  window.App.updateDailyChart = updateDailyChart;
+  window.App.resizeDailyChart = resizeDailyChart;
+  window.App.disposeDailyChart = disposeDailyChart;
 })();

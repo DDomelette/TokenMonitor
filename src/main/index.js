@@ -239,8 +239,14 @@ async function fetchAndStoreUsage() {
   const year = now.getFullYear();
 
   try {
-    const stats = await fetchUsageCost(sessionToken, month, year);
-    lastUsageStats = stats;
+    var costData = await fetchUsageCost(sessionToken, month, year);
+    var amountData = await fetchUsageAmount(sessionToken, month, year);
+    lastUsageStats = {
+      cost: costData.aggregate,
+      token: amountData.aggregate,
+      costDaily: costData.dailyData,
+      tokenDaily: amountData.dailyData
+    };
   } catch (e) {
     if (e.message && e.message.includes('Authorization')) {
       sessionToken = null;
@@ -253,18 +259,25 @@ async function fetchAndStoreUsage() {
 }
 
 function buildCurvePoints(stats) {
-  if (!stats) return { token: [], cost: [] };
-  const now = Date.now();
-  const tokenPoints = [
-    { time: now - 120000, totalTokens: 0, totalCost: 0, deltaTokens: 0, deltaCost: 0 },
-    { time: now - 60000, totalTokens: Math.round(stats.totalTokens * 0.3), totalCost: 0, deltaTokens: 0, deltaCost: 0 },
-    { time: now, totalTokens: stats.totalTokens, totalCost: stats.totalCost || 0, deltaTokens: 0, deltaCost: 0 }
-  ];
-  const costPoints = [
-    { time: now - 120000, totalTokens: 0, totalCost: 0, deltaTokens: 0, deltaCost: 0 },
-    { time: now - 60000, totalTokens: 0, totalCost: (stats.totalCost || 0) * 0.3, deltaTokens: 0, deltaCost: 0 },
-    { time: now, totalTokens: 0, totalCost: stats.totalCost || 0, deltaTokens: 0, deltaCost: 0 }
-  ];
+  var tokenPoints = [];
+  var costPoints = [];
+
+  if (stats && stats.tokenDaily) {
+    var cumToken = 0;
+    stats.tokenDaily.forEach(function (d) {
+      cumToken += d.total;
+      tokenPoints.push({ time: new Date(d.date).getTime(), totalTokens: cumToken, cumTokens: cumToken, deltaTokens: d.total, totalCost: 0, deltaCost: 0 });
+    });
+  }
+
+  if (stats && stats.costDaily) {
+    var cumCost = 0;
+    stats.costDaily.forEach(function (d) {
+      cumCost += d.total;
+      costPoints.push({ time: new Date(d.date).getTime(), totalCost: cumCost, cumCost: cumCost, deltaCost: d.total, totalTokens: 0, deltaTokens: 0 });
+    });
+  }
+
   return { token: tokenPoints, cost: costPoints };
 }
 
