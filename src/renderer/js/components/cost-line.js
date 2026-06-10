@@ -57,9 +57,16 @@ window.App = window.App || {};
 
   function updateCostChart(points) {
     if (!costChart) return;
-    var totalData = points.map(function (p) { return [p.time, p.totalCost || 0]; });
-    var deltaData = points.map(function (p) { return [p.time, p.deltaCost || 0]; });
-    costChart.setOption({ series: [{ data: totalData }, { data: deltaData }] });
+    var dates = points.map(function (p) {
+      var d = new Date(p.time);
+      return (d.getMonth() + 1) + '/' + d.getDate();
+    });
+    var totalData = points.map(function (p) { return p.totalCost || 0; });
+    var deltaData = points.map(function (p) { return p.deltaCost || 0; });
+    costChart.setOption({
+      xAxis: { data: dates },
+      series: [{ data: totalData }, { data: deltaData }]
+    });
   }
 
   function resizeCostChart() {

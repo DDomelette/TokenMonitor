@@ -57,9 +57,16 @@ window.App = window.App || {};
 
   function updateTokenChart(points) {
     if (!tokenChart) return;
-    var totalData = points.map(function (p) { return [p.time, p.totalTokens || 0]; });
-    var deltaData = points.map(function (p) { return [p.time, p.deltaTokens || 0]; });
-    tokenChart.setOption({ series: [{ data: totalData }, { data: deltaData }] });
+    var dates = points.map(function (p) {
+      var d = new Date(p.time);
+      return (d.getMonth() + 1) + '/' + d.getDate();
+    });
+    var totalData = points.map(function (p) { return p.totalTokens || 0; });
+    var deltaData = points.map(function (p) { return p.deltaTokens || 0; });
+    tokenChart.setOption({
+      xAxis: { data: dates },
+      series: [{ data: totalData }, { data: deltaData }]
+    });
   }
 
   function resizeTokenChart() {

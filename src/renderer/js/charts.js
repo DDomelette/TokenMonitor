@@ -16,21 +16,19 @@ window.Charts = window.Charts || {};
       grid: {
         top: 12,
         right: 12,
-        bottom: 8,
-        left: 40,
+        bottom: 28,
+        left: 52,
         containLabel: false
       },
       xAxis: {
-        type: 'time',
+        type: 'category',
+        data: [],
         axisLine: { show: false },
         axisTick: { show: false },
         axisLabel: {
           fontSize: 9,
           color: isDark ? '#9CA3AF' : '#6B7280',
-          formatter: function (value) {
-            var d = new Date(value);
-            return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
-          }
+          interval: 'auto'
         },
         splitLine: { show: false }
       },
@@ -40,7 +38,12 @@ window.Charts = window.Charts || {};
         axisTick: { show: false },
         axisLabel: {
           fontSize: 9,
-          color: isDark ? '#9CA3AF' : '#6B7280'
+          color: isDark ? '#9CA3AF' : '#6B7280',
+          formatter: function (v) {
+            if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M';
+            if (v >= 1000) return (v / 1000).toFixed(0) + 'K';
+            return v.toString();
+          }
         },
         splitLine: {
           lineStyle: {

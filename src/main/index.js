@@ -229,7 +229,7 @@ function startBalanceTimer() {
   if (!apiKey) return;
 
   fetchAndStoreBalance();
-  balanceTimer = setInterval(fetchAndStoreBalance, 5 * 60 * 1000);
+  balanceTimer = setInterval(fetchAndStoreBalance, 60 * 1000);
 }
 
 async function fetchAndStoreBalance() {

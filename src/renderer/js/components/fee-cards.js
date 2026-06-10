@@ -32,12 +32,12 @@ window.App = window.App || {};
     }
 
     if (statsData && statsData.token && statsData.cost) {
-      costHTML += '<div class="card-value primary">&yen;' + statsData.cost.totalCost.toFixed(2) + '</div>';
-      costHTML += '<div class="card-sub">' + formatTokens(statsData.token.totalTokens) + ' tokens</div>';
+      costHTML += '<div class="card-value primary">&yen;' + statsData.cost.todayCost.toFixed(2) + '</div>';
+      costHTML += '<div class="card-sub">' + formatTokens(statsData.token.todayTokens) + ' tokens</div>';
 
-      var rate = statsData.token.cacheRate.toFixed(1);
+      var rate = statsData.token.todayCacheRate.toFixed(1);
       cacheHTML += '<div class="card-value primary">' + rate + '%</div>';
-      cacheHTML += '<div class="card-sub">命中 ' + formatTokens(statsData.token.cacheHit) + ' | 未命中 ' + formatTokens(statsData.token.cacheMiss) + '</div>';
+      cacheHTML += '<div class="card-sub">命中 ' + formatTokens(statsData.token.todayCacheHit) + ' | 未命中 ' + formatTokens(statsData.token.todayCacheMiss) + '</div>';
     } else {
       costHTML += '<div class="card-value primary">--</div>';
       cacheHTML += '<div class="card-value primary">--</div>';
