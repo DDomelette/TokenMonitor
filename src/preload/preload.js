@@ -33,7 +33,7 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   invoke: (channel, ...args) => {
-    const validChannels = ['get:settings'];
+    const validChannels = ['get:settings', 'get:dashboard'];
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args);
     }
