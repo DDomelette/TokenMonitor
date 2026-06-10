@@ -47,14 +47,11 @@ function fetchUsageCost(sessionToken, month, year) {
 function fetchUsageAmount(sessionToken, month, year) {
   return httpGet(sessionToken, `/api/v0/usage/amount?month=${month}&year=${year}`)
     .then(function (data) {
-      console.log('[amount-raw] top keys:', Object.keys(data).join(','));
-      if (data.data) console.log('[amount-raw] data keys:', Object.keys(data.data).join(','));
-      if (data.data && data.data.biz_data && data.data.biz_data[0]) {
-        console.log('[amount-raw] biz_data[0] keys:', Object.keys(data.data.biz_data[0]).join(','));
-        console.log('[amount-raw] first day sample:', JSON.stringify(data.data.biz_data[0].days ? data.data.biz_data[0].days[0] : 'no days').slice(0, 600));
-      }
-      return parseTokenData(data);
-    });
+       console.log('[amount-raw] biz_data type:', Array.isArray(data.data.biz_data) ? 'array(' + data.data.biz_data.length + ')' : typeof data.data.biz_data);
+       var raw = JSON.stringify(data.data.biz_data).slice(0, 2000);
+       console.log('[amount-raw] biz_data sample:', raw);
+       return parseTokenData(data);
+     });
 }
 
 function sumUsage(usageList) {
@@ -122,13 +119,15 @@ function parseCostData(data) {
     });
   });
 
-  return {
+  var result = {
     dailyData: dailyData,
     aggregate: {
       totalCost: totalCost,
       models: Object.values(modelMap).sort(function (a, b) { return b.cost - a.cost; })
     }
   };
+  console.log('[parseCost] totalCost:', totalCost, 'dailyData length:', dailyData.length);
+  return result;
 }
 
 function parseTokenData(data) {
@@ -163,7 +162,7 @@ function parseTokenData(data) {
   var inputTokens = totalCacheHit + totalCacheMiss;
   var cacheRate = (inputTokens > 0) ? (totalCacheHit / inputTokens * 100) : 0;
 
-  return {
+  var result = {
     dailyData: dailyData,
     aggregate: {
       totalTokens: totalTokens,
@@ -173,6 +172,8 @@ function parseTokenData(data) {
       models: Object.values(modelMap).sort(function (a, b) { return b.tokens - a.tokens; })
     }
   };
+  console.log('[parseToken] totalTokens:', totalTokens, 'cacheHit:', totalCacheHit, 'cacheMiss:', totalCacheMiss, 'dailyData length:', dailyData.length, 'models:', JSON.stringify(result.aggregate.models).slice(0, 300));
+  return result;
 }
 
 module.exports = { fetchUsageCost, fetchUsageAmount };
