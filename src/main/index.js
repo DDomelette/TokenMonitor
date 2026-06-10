@@ -155,7 +155,11 @@ function createTray() {
   });
 }
 
+let toggleLock = false;
+
 async function toggleProxy() {
+  if (toggleLock) return;
+  toggleLock = true;
   try {
     if (proxyServer && proxyServer.running) {
       await proxyServer.stop();
@@ -172,6 +176,7 @@ async function toggleProxy() {
       });
     }
   }
+  toggleLock = false;
   updateTrayMenu();
 }
 
