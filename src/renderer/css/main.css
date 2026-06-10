@@ -36,6 +36,7 @@ body {
   overflow: hidden;
   user-select: none;
   height: 100vh;
+  border-radius: 18px;
 }
 
 #app {
@@ -43,7 +44,7 @@ body {
   display: flex;
   flex-direction: column;
   background: var(--bg-window);
-  border-radius: var(--radius-window);
+  border-radius: 18px;
   box-shadow: var(--shadow-window);
   border: 1px solid var(--border);
   overflow: hidden;
@@ -59,7 +60,13 @@ body.dark {
   --text-primary: #E5E7EB;
   --text-secondary: #9CA3AF;
   --border: #3A3C45;
-  --bg-card: #252730;
+  --bg-card: var(--bg-card-dark);
+}
+
+body:not(.dark) {
+  --primary: #4B90E0;
+  --primary-light: #74ABF0;
+  --primary-dark: #3A78C0;
 }
 
 .titlebar {

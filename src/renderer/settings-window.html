@@ -14,7 +14,9 @@
     margin: 0;
     padding: 0;
     user-select: none;
+    width: 100vw;
     height: 100vh;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -44,10 +46,16 @@
     border-color: #4B4D58;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
   }
+  body:not(.dark) {
+    --primary: #4B90E0;
+    --primary-light: #74ABF0;
+    --primary-dark: #3A78C0;
+  }
   .settings-panel {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    flex: 1;
+    min-height: 0;
     overflow: hidden;
   }
   .settings-header {

@@ -78,6 +78,14 @@ function createMainWindow() {
       const [w, h] = mainWindow.getSize();
       store.set('window.width', w);
       store.set('window.height', h);
+
+      var zoom = mainWindow.webContents.getZoomFactor();
+      var maxZoom = 0.9 + (w - 380) / 600;
+      if (maxZoom < 0.9) maxZoom = 0.9;
+      if (zoom > maxZoom) {
+        mainWindow.webContents.setZoomFactor(maxZoom);
+        store.set('window.zoom', maxZoom);
+      }
     }, 300);
   });
 
@@ -436,6 +444,27 @@ function applySetting(key, value) {
     case 'window.autoLaunch':
       app.setLoginItemSettings({ openAtLogin: value });
       break;
+    case 'window.followSystemTheme':
+    case 'window.darkMode':
+      applyTheme();
+      break;
+  }
+}
+
+function resolveDarkMode() {
+  var mode = store.get('window.darkMode') || 'system';
+  if (mode === 'dark') return true;
+  if (mode === 'light') return false;
+  return nativeTheme.shouldUseDarkColors;
+}
+
+function applyTheme() {
+  var isDark = resolveDarkMode();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('theme:changed', isDark ? 'dark' : 'light');
+  }
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('theme:changed', isDark ? 'dark' : 'light');
   }
 }
 

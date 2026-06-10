@@ -6,6 +6,9 @@
     { group: '窗口', key: 'window.alwaysOnTop', type: 'toggle', label: '始终置顶', default: true },
     { group: '窗口', key: 'window.autoLaunch', type: 'toggle', label: '开机自启', default: false },
     { group: '窗口', key: 'window.followSystemTheme', type: 'toggle', label: '跟随系统主题', default: true },
+    { group: '窗口', key: 'window.darkMode', type: 'select', label: '主题模式', options: [
+      { value: 'system', label: '跟随系统' }, { value: 'dark', label: '夜间模式' }, { value: 'light', label: '日间模式' }
+    ], default: 'system' },
     { group: '窗口', key: 'window.layoutLocked', type: 'toggle', label: '锁定布局', default: true },
     { group: '组件', key: 'components.feeCards', type: 'toggle', label: '费用概览卡片', default: true },
     { group: '组件', key: 'components.modelBar', type: 'toggle', label: '模型消耗柱状图', default: true },
@@ -88,20 +91,29 @@
   window.api.on('settings:loaded', function (settings) {
     document.getElementById('settingsBody').innerHTML = buildPanel(settings);
     bindEvents();
-
-    var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (isDark && settings.window && settings.window.followSystemTheme !== false) {
-      document.body.classList.add('dark');
-    }
+    applyInitialTheme(settings);
   });
 
   window.api.invoke('get:settings').then(function (settings) {
     document.getElementById('settingsBody').innerHTML = buildPanel(settings);
     bindEvents();
+    applyInitialTheme(settings);
+  });
 
-    var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (isDark && settings.window && settings.window.followSystemTheme !== false) {
-      document.body.classList.add('dark');
+  function applyInitialTheme(settings) {
+    var isDark = false;
+    var dm = settings.window && settings.window.darkMode;
+    if (dm === 'dark') {
+      isDark = true;
+    } else if (dm === 'light') {
+      isDark = false;
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      isDark = true;
     }
+    if (isDark) document.body.classList.add('dark');
+  }
+
+  window.api.on('theme:changed', function (mode) {
+    document.body.classList.toggle('dark', mode === 'dark');
   });
 })();

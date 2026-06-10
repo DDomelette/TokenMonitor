@@ -109,10 +109,20 @@ window.App = window.App || {};
       window._settingsData = settings;
       applyComponentVisibility(settings);
 
-      var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      if (isDark && settings.window && settings.window.followSystemTheme !== false) {
-        document.body.classList.add('dark');
+      var isDark = false;
+      var dm = settings.window && settings.window.darkMode;
+      if (dm === 'dark') {
+        isDark = true;
+      } else if (dm === 'light') {
+        isDark = false;
+      } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        isDark = true;
       }
+      if (isDark) document.body.classList.add('dark');
+
+      window.api.on('theme:changed', function (mode) {
+        document.body.classList.toggle('dark', mode === 'dark');
+      });
 
       window.App.initTokenChart('token-chart');
       window.App.initCostChart('cost-chart');
