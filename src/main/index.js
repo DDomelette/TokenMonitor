@@ -304,14 +304,9 @@ function setupIPC() {
       else mainWindow.show();
       mainWindow.webContents.on('did-finish-load', () => {
         mainWindow.webContents.send('settings:loaded', store.store);
-        mainWindow.webContents.send('proxy:status', {
-          running: false,
-          port: 0,
-          error: '请登录平台获取用量'
-        });
+        startBalanceTimer();
+        createSessionWindow();
       });
-      startBalanceTimer();
-      createSessionWindow();
     } catch (e) {
       if (loginWindow && !loginWindow.isDestroyed()) {
         event.sender.send('login:error', 'API Key 验证失败: ' + e.message);
@@ -369,28 +364,27 @@ app.whenReady().then(() => {
   const apiKey = store.get('apiKey');
   if (apiKey) {
     createMainWindow();
-    startBalanceTimer();
     mainWindow.webContents.on('did-finish-load', () => {
       mainWindow.webContents.send('settings:loaded', store.store);
-      mainWindow.webContents.send('proxy:status', {
-        running: false,
-        port: 0,
-        error: '请登录平台获取用量'
-      });
-    });
-    sessionToken = store.get('sessionToken');
-    if (sessionToken) {
-      setTimeout(() => {
+      startBalanceTimer();
+
+      sessionToken = store.get('sessionToken');
+      if (sessionToken) {
         startUsageTimer();
         mainWindow.webContents.send('proxy:status', {
           running: true,
           port: 0,
           activeSince: Date.now()
         });
-      }, 2000);
-    } else {
-      setTimeout(() => createSessionWindow(), 2000);
-    }
+      } else {
+        mainWindow.webContents.send('proxy:status', {
+          running: false,
+          port: 0,
+          error: '请登录平台获取用量'
+        });
+        createSessionWindow();
+      }
+    });
   } else {
     createLoginWindow();
   }
