@@ -127,6 +127,7 @@ function createSessionWindow() {
         sessionToken = auth.replace('Bearer ', '');
         store.set('sessionToken', sessionToken);
         proxyStatus = { running: true, port: 0, activeSince: Date.now() };
+        console.log('[session] token captured, length:', sessionToken.length);
 
         if (sessionWindow) {
           try { sessionWindow.close(); } catch (e) {}
@@ -232,16 +233,22 @@ function startUsageTimer() {
 }
 
 async function fetchAndStoreUsage() {
-  if (!sessionToken) return;
+  if (!sessionToken) {
+    console.log('[usage] no sessionToken, skipping fetch');
+    return;
+  }
 
   const now = new Date();
   const month = now.getMonth() + 1;
   const year = now.getFullYear();
+  console.log('[usage] fetching for', year, month);
 
   try {
     const stats = await fetchUsageCost(sessionToken, month, year);
+    console.log('[usage] got stats:', JSON.stringify(stats).slice(0, 300));
     lastUsageStats = stats;
   } catch (e) {
+    console.error('[usage] fetch failed:', e.message);
     if (e.message && e.message.includes('Authorization')) {
       sessionToken = null;
       store.delete('sessionToken');
@@ -354,6 +361,7 @@ app.whenReady().then(() => {
       startBalanceTimer();
 
       sessionToken = store.get('sessionToken');
+      console.log('[startup] sessionToken from store:', !!sessionToken, sessionToken ? '(' + sessionToken.length + ' chars)' : '');
       if (sessionToken) {
         startUsageTimer();
         proxyStatus = { running: true, port: 0, activeSince: Date.now() };
