@@ -26,6 +26,7 @@ html {
   height: 100%;
   background: transparent;
   overflow: hidden;
+  border-radius: 18px;
 }
 
 * {
@@ -52,6 +53,7 @@ body {
   flex-direction: column;
   background: var(--bg-window);
   border-radius: 18px;
+  clip-path: inset(0 round 18px);
   box-shadow: var(--shadow-window), 0 0 0 1px var(--border);
   overflow: hidden;
 }

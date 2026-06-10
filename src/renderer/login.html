@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DeepSeek Monitor - 登录</title>
 <style>
+  html {
+    background: transparent;
+    overflow: hidden;
+    border-radius: 16px;
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
@@ -13,12 +18,14 @@
     overflow: hidden;
     height: 100vh;
     display: flex;
+    border-radius: 16px;
   }
   .container {
     width: 100%;
     height: 100%;
     background: rgba(255, 255, 255, 0.95);
     border-radius: 16px;
+    clip-path: inset(0 round 16px);
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
     display: flex;
     flex-direction: column;
