@@ -1,4 +1,5 @@
 window.App = window.App || {};
+window._isLayoutLocked = true;
 
 (function () {
   var lastRefreshTime = Date.now();
@@ -20,6 +21,14 @@ window.App = window.App || {};
     if (settings && settings.components && settings.components.costLine === false) {
       var el = document.getElementById('cost-line');
       if (el) el.classList.add('hidden');
+    }
+    if (settings && settings.window) {
+      var locked = settings.window.layoutLocked;
+      window._isLayoutLocked = locked;
+      document.querySelectorAll('.component-title').forEach(function (el) {
+        el.draggable = !locked;
+        el.style.cursor = locked ? 'default' : 'grab';
+      });
     }
   }
 
@@ -139,7 +148,7 @@ window.App = window.App || {};
     });
 
     window.api.on('open:settings', function () {
-      window.App.openSettings();
+      window.api.send('open:settings');
     });
 
     window.api.on('theme:changed', function (theme) {

@@ -3,11 +3,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   on: (channel, callback) => {
     const validChannels = [
-      'data:update',
-      'balance:update',
-      'curve:token',
-      'curve:cost',
-      'proxy:status',
       'settings:loaded',
       'login:error',
       'open:settings',
