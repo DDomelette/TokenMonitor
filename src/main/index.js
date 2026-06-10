@@ -73,19 +73,21 @@ function createMainWindow() {
   });
 
   mainWindow.on('resize', () => {
+    var [w, h] = mainWindow.getSize();
+
+    var zoom = mainWindow.webContents.getZoomFactor();
+    var maxZoom = 0.9 + (w - 380) / 600;
+    if (maxZoom < 0.9) maxZoom = 0.9;
+    if (zoom > maxZoom) {
+      mainWindow.webContents.setZoomFactor(maxZoom);
+    }
+
     clearTimeout(resizeDebounce);
-    resizeDebounce = setTimeout(() => {
-      const [w, h] = mainWindow.getSize();
+    resizeDebounce = setTimeout(function () {
       store.set('window.width', w);
       store.set('window.height', h);
-
-      var zoom = mainWindow.webContents.getZoomFactor();
-      var maxZoom = 0.9 + (w - 380) / 600;
-      if (maxZoom < 0.9) maxZoom = 0.9;
-      if (zoom > maxZoom) {
-        mainWindow.webContents.setZoomFactor(maxZoom);
-        store.set('window.zoom', maxZoom);
-      }
+      var z = mainWindow.webContents.getZoomFactor();
+      store.set('window.zoom', z);
     }, 300);
   });
 
