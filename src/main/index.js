@@ -256,12 +256,7 @@ function startPersistTimer() {
 }
 
 function pushInitialStatus() {
-  if (!mainWindow || !proxyServer) return;
-  mainWindow.webContents.send('proxy:status', {
-    running: proxyServer.running,
-    port: store.get('data.proxyPort') || 7890,
-    activeSince: proxyServer.activeSince
-  });
+  if (!mainWindow) return;
   const stats = aggregator ? aggregator.getTodayStats() : null;
   if (stats) mainWindow.webContents.send('data:update', stats);
   const apiKey = store.get('apiKey');
