@@ -75,14 +75,12 @@ window.App = window.App || {};
 
       if (status.running) {
         dot.className = 'status-dot online';
-        text.textContent = '代理运行中';
+        text.textContent = '数据连接正常';
+        portSpan.textContent = '平台用量';
       } else {
         dot.className = 'status-dot offline';
-        text.textContent = status.error ? '错误: ' + status.error : '代理已停止';
-      }
-
-      if (portSpan && status.port) {
-        portSpan.textContent = 'localhost:' + status.port;
+        text.textContent = status.error || '未获取数据';
+        portSpan.textContent = '平台用量';
       }
     });
 

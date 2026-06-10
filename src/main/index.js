@@ -1,20 +1,19 @@
-const { app, BrowserWindow, Tray, Menu, nativeTheme, ipcMain } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeTheme, ipcMain, session } = require('electron');
 const path = require('path');
 const store = require('./store');
-const ProxyServer = require('./proxy');
-const Aggregator = require('./aggregator');
 const { fetchBalance } = require('./balance');
+const { fetchUsageCost } = require('./fetcher');
 
 let mainWindow = null;
 let loginWindow = null;
+let sessionWindow = null;
 let tray = null;
-let proxyServer = null;
-let aggregator = null;
 let balanceTimer = null;
-let ringBufferTimer = null;
-let persistTimer = null;
+let usageTimer = null;
 let resizeDebounce = null;
 let moveDebounce = null;
+let sessionToken = null;
+let lastUsageStats = null;
 const dataDir = app.getPath('userData');
 
 function getWinBounds() {
@@ -81,7 +80,7 @@ function createMainWindow() {
 function createLoginWindow() {
   loginWindow = new BrowserWindow({
     width: 400,
-    height: 320,
+    height: 340,
     frame: false,
     transparent: true,
     resizable: false,
@@ -99,6 +98,68 @@ function createLoginWindow() {
   });
 }
 
+function createSessionWindow() {
+  if (sessionWindow) {
+    try { sessionWindow.close(); } catch (e) {}
+    sessionWindow = null;
+  }
+
+  sessionWindow = new BrowserWindow({
+    width: 800,
+    height: 600,
+    show: true,
+    center: true,
+    title: '登录 DeepSeek 平台',
+    webPreferences: {
+      partition: 'persist:deepseek-platform',
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+  const ses = sessionWindow.webContents.session;
+
+  ses.webRequest.onBeforeSendHeaders((details, callback) => {
+    if (details.url.includes('/api/v0/usage/') && details.requestHeaders['authorization']) {
+      const auth = details.requestHeaders['authorization'];
+      if (auth.startsWith('Bearer ') && !auth.includes('sk-')) {
+        sessionToken = auth.replace('Bearer ', '');
+        store.set('sessionToken', sessionToken);
+
+        if (sessionWindow) {
+          try { sessionWindow.close(); } catch (e) {}
+          sessionWindow = null;
+        }
+
+        if (mainWindow) {
+          mainWindow.webContents.send('proxy:status', {
+            running: true,
+            port: 0,
+            activeSince: Date.now()
+          });
+        }
+
+        startUsageTimer();
+        fetchAndSendUsage();
+      }
+    }
+    callback({ requestHeaders: details.requestHeaders });
+  });
+
+  sessionWindow.loadURL('https://platform.deepseek.com/usage');
+
+  sessionWindow.on('closed', () => {
+    sessionWindow = null;
+    if (!sessionToken && mainWindow) {
+      mainWindow.webContents.send('proxy:status', {
+        running: false,
+        port: 0,
+        error: '未登录 DeepSeek 平台'
+      });
+    }
+  });
+}
+
 function createTray() {
   const trayIconPath = path.join(__dirname, '..', 'renderer', 'assets', 'tray-icon.png');
   try {
@@ -109,42 +170,7 @@ function createTray() {
     return;
   }
 
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: '显示/隐藏悬浮窗',
-      click: () => {
-        if (mainWindow && mainWindow.isVisible()) {
-          mainWindow.hide();
-        } else if (mainWindow) {
-          mainWindow.show();
-        }
-      }
-    },
-    {
-      label: proxyServer && proxyServer.running ? '暂停代理' : '启用代理',
-      click: () => toggleProxy()
-    },
-    { type: 'separator' },
-    {
-      label: '设置',
-      click: () => {
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow.webContents.send('open:settings');
-        }
-      }
-    },
-    { type: 'separator' },
-    {
-      label: '退出',
-      click: () => {
-        app.isQuitting = true;
-        app.quit();
-      }
-    }
-  ]);
-
-  tray.setContextMenu(contextMenu);
+  updateTrayMenu();
 
   tray.on('double-click', () => {
     if (mainWindow && mainWindow.isVisible()) {
@@ -155,34 +181,9 @@ function createTray() {
   });
 }
 
-let toggleLock = false;
-
-async function toggleProxy() {
-  if (toggleLock) return;
-  toggleLock = true;
-  try {
-    if (proxyServer && proxyServer.running) {
-      await proxyServer.stop();
-    } else if (proxyServer) {
-      await proxyServer.start();
-    }
-  } catch (e) {
-    console.error('toggleProxy error:', e.message);
-    if (mainWindow) {
-      mainWindow.webContents.send('proxy:status', {
-        running: false,
-        port: store.get('data.proxyPort') || 7890,
-        error: e.message
-      });
-    }
-  }
-  toggleLock = false;
-  updateTrayMenu();
-}
-
 function updateTrayMenu() {
   if (!tray) return;
-  const label = proxyServer && proxyServer.running ? '暂停代理' : '启用代理';
+  const loggedIn = !!sessionToken;
   const contextMenu = Menu.buildFromTemplate([
     {
       label: '显示/隐藏悬浮窗',
@@ -191,7 +192,10 @@ function updateTrayMenu() {
         else if (mainWindow) mainWindow.show();
       }
     },
-    { label, click: () => toggleProxy() },
+    {
+      label: loggedIn ? '重新登录平台' : '登录平台获取用量',
+      click: () => createSessionWindow()
+    },
     { type: 'separator' },
     {
       label: '设置',
@@ -234,33 +238,60 @@ async function fetchAndSendBalance() {
   } catch (e) {}
 }
 
-function startRingBufferTimer() {
-  if (ringBufferTimer) clearInterval(ringBufferTimer);
-  const interval = (store.get('data.sampleInterval') || 30) * 1000;
-  ringBufferTimer = setInterval(() => {
-    if (!aggregator || !mainWindow) return;
-    aggregator.sampleRingBuffer();
-    const defaultRange = store.get('data.defaultTimeRange') || '1m';
-    const tokenPoints = aggregator.getPointsForRange(defaultRange);
-    const costPoints = aggregator.getPointsForRange(defaultRange);
-    mainWindow.webContents.send('curve:token', { points: tokenPoints });
-    mainWindow.webContents.send('curve:cost', { points: costPoints });
-  }, interval);
+function startUsageTimer() {
+  if (usageTimer) clearInterval(usageTimer);
+  fetchAndSendUsage();
+  usageTimer = setInterval(fetchAndSendUsage, 5 * 60 * 1000);
 }
 
-function startPersistTimer() {
-  if (persistTimer) clearInterval(persistTimer);
-  persistTimer = setInterval(() => {
-    if (aggregator) aggregator.saveHistory();
-  }, 5 * 60 * 1000);
+async function fetchAndSendUsage() {
+  if (!sessionToken || !mainWindow) return;
+
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+
+  try {
+    const stats = await fetchUsageCost(sessionToken, month, year);
+    lastUsageStats = stats;
+    if (mainWindow) {
+      mainWindow.webContents.send('data:update', stats);
+      sendCurveData();
+    }
+  } catch (e) {
+    if (mainWindow && e.message.includes('Authorization')) {
+      sessionToken = null;
+      store.delete('sessionToken');
+      mainWindow.webContents.send('proxy:status', {
+        running: false,
+        port: 0,
+        error: '会话已过期，请重新登录'
+      });
+      updateTrayMenu();
+    }
+  }
 }
 
-function pushInitialStatus() {
-  if (!mainWindow) return;
-  const stats = aggregator ? aggregator.getTodayStats() : null;
-  if (stats) mainWindow.webContents.send('data:update', stats);
-  const apiKey = store.get('apiKey');
-  if (apiKey) fetchAndSendBalance();
+function sendCurveData() {
+  if (!lastUsageStats || !mainWindow) return;
+  const now = Date.now();
+  const tokenPoints = [{
+    time: now - 120000, totalTokens: 0, totalCost: 0, deltaTokens: 0, deltaCost: 0
+  }, {
+    time: now - 60000, totalTokens: Math.round(lastUsageStats.totalTokens * 0.3), totalCost: 0, deltaTokens: 0, deltaCost: 0
+  }, {
+    time: now, totalTokens: lastUsageStats.totalTokens, totalCost: lastUsageStats.totalCost, deltaTokens: 0, deltaCost: 0
+  }];
+  const costPoints = [{
+    time: now - 120000, totalTokens: 0, totalCost: 0, deltaTokens: 0, deltaCost: 0
+  }, {
+    time: now - 60000, totalTokens: 0, totalCost: lastUsageStats.totalCost * 0.3, deltaTokens: 0, deltaCost: 0
+  }, {
+    time: now, totalTokens: 0, totalCost: lastUsageStats.totalCost, deltaTokens: 0, deltaCost: 0
+  }];
+
+  mainWindow.webContents.send('curve:token', { points: tokenPoints });
+  mainWindow.webContents.send('curve:cost', { points: costPoints });
 }
 
 function setupIPC() {
@@ -271,11 +302,16 @@ function setupIPC() {
       if (loginWindow) loginWindow.close();
       if (!mainWindow) createMainWindow();
       else mainWindow.show();
-      startServices();
       mainWindow.webContents.on('did-finish-load', () => {
         mainWindow.webContents.send('settings:loaded', store.store);
-        pushInitialStatus();
+        mainWindow.webContents.send('proxy:status', {
+          running: false,
+          port: 0,
+          error: '请登录平台获取用量'
+        });
       });
+      startBalanceTimer();
+      createSessionWindow();
     } catch (e) {
       if (loginWindow && !loginWindow.isDestroyed()) {
         event.sender.send('login:error', 'API Key 验证失败: ' + e.message);
@@ -294,18 +330,11 @@ function setupIPC() {
 
   ipcMain.on('settings:reset', () => {
     store.clear();
-    applyAllSettings();
     if (mainWindow) {
+      mainWindow.setOpacity(0.92);
+      mainWindow.setAlwaysOnTop(true);
       mainWindow.webContents.send('settings:loaded', store.store);
     }
-  });
-
-  ipcMain.on('proxy:restart', async () => {
-    await restartProxy();
-  });
-
-  ipcMain.on('proxy:toggle', async () => {
-    await toggleProxy();
   });
 
   ipcMain.on('window:minimize', () => {
@@ -329,92 +358,7 @@ function applySetting(key, value) {
     case 'window.autoLaunch':
       app.setLoginItemSettings({ openAtLogin: value });
       break;
-    case 'data.proxyPort':
-      restartProxy();
-      break;
-    case 'data.sampleInterval':
-      startRingBufferTimer();
-      break;
-    case 'data.defaultTimeRange':
-      if (aggregator && mainWindow) {
-        const points = aggregator.getPointsForRange(value);
-        mainWindow.webContents.send('curve:token', { points });
-        mainWindow.webContents.send('curve:cost', { points });
-      }
-      break;
   }
-}
-
-function applyAllSettings() {
-  if (!mainWindow) return;
-  mainWindow.setOpacity(store.get('window.opacity') / 100);
-  mainWindow.setAlwaysOnTop(store.get('window.alwaysOnTop'));
-  app.setLoginItemSettings({ openAtLogin: store.get('window.autoLaunch') });
-}
-
-async function restartProxy() {
-  if (proxyServer) await proxyServer.stop();
-  const port = store.get('data.proxyPort') || 7890;
-  const apiKey = store.get('apiKey');
-  if (apiKey) {
-    proxyServer.updateApiKey(apiKey);
-    await proxyServer.start();
-    updateTrayMenu();
-    if (mainWindow) {
-      mainWindow.webContents.send('proxy:status', {
-        running: true,
-        port: port,
-        activeSince: proxyServer.activeSince
-      });
-    }
-  }
-}
-
-function startServices() {
-  const apiKey = store.get('apiKey');
-  if (!apiKey) return;
-
-  aggregator = new Aggregator(dataDir);
-
-  proxyServer = new ProxyServer(
-    store.get('data.proxyPort') || 7890,
-    apiKey,
-    aggregator,
-    (status) => {
-      if (mainWindow) mainWindow.webContents.send('proxy:status', status);
-    }
-  );
-
-  proxyServer.start().then(() => {
-    updateTrayMenu();
-  }).catch((err) => {
-    if (mainWindow) {
-      mainWindow.webContents.send('proxy:status', {
-        running: false,
-        port: store.get('data.proxyPort') || 7890,
-        error: err.message
-      });
-    }
-  });
-
-  const origHandle = proxyServer.handleRequest.bind(proxyServer);
-  proxyServer.handleRequest = (clientReq, clientRes) => {
-    origHandle(clientReq, clientRes);
-    const origEnd = clientRes.end.bind(clientRes);
-    clientRes.end = function (...args) {
-      setTimeout(() => {
-        if (mainWindow && aggregator) {
-          const stats = aggregator.getTodayStats();
-          mainWindow.webContents.send('data:update', stats);
-        }
-      }, 0);
-      return origEnd(...args);
-    };
-  };
-
-  startBalanceTimer();
-  startRingBufferTimer();
-  startPersistTimer();
 }
 
 app.whenReady().then(() => {
@@ -425,11 +369,28 @@ app.whenReady().then(() => {
   const apiKey = store.get('apiKey');
   if (apiKey) {
     createMainWindow();
-    startServices();
+    startBalanceTimer();
     mainWindow.webContents.on('did-finish-load', () => {
       mainWindow.webContents.send('settings:loaded', store.store);
-      pushInitialStatus();
+      mainWindow.webContents.send('proxy:status', {
+        running: false,
+        port: 0,
+        error: '请登录平台获取用量'
+      });
     });
+    sessionToken = store.get('sessionToken');
+    if (sessionToken) {
+      setTimeout(() => {
+        startUsageTimer();
+        mainWindow.webContents.send('proxy:status', {
+          running: true,
+          port: 0,
+          activeSince: Date.now()
+        });
+      }, 2000);
+    } else {
+      setTimeout(() => createSessionWindow(), 2000);
+    }
   } else {
     createLoginWindow();
   }
@@ -440,10 +401,7 @@ app.on('window-all-closed', () => {});
 app.on('before-quit', () => {
   app.isQuitting = true;
   if (balanceTimer) clearInterval(balanceTimer);
-  if (ringBufferTimer) clearInterval(ringBufferTimer);
-  if (persistTimer) clearInterval(persistTimer);
-  if (proxyServer) proxyServer.stop();
-  if (aggregator) aggregator.saveHistory();
+  if (usageTimer) clearInterval(usageTimer);
 });
 
 app.on('activate', () => {

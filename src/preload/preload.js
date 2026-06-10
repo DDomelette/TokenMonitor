@@ -23,8 +23,6 @@ contextBridge.exposeInMainWorld('api', {
     const validChannels = [
       'settings:update',
       'settings:reset',
-      'proxy:restart',
-      'proxy:toggle',
       'login:submit',
       'window:minimize',
       'window:close'

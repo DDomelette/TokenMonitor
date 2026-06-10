@@ -14,16 +14,9 @@ window._isLayoutLocked = true;
     { group: '组件', key: 'components.modelBar', type: 'toggle', label: '模型消耗柱状图', default: true },
     { group: '组件', key: 'components.tokenLine', type: 'toggle', label: 'Token 增长趋势', default: true },
     { group: '组件', key: 'components.costLine', type: 'toggle', label: '费用增长趋势', default: true },
-    { group: '数据', key: 'data.sampleInterval', type: 'select', label: '曲线采样频率', options: [
-      { value: 30, label: '30 秒' }, { value: 60, label: '1 分钟' }
-    ], default: 30 },
-    { group: '数据', key: 'data.defaultTimeRange', type: 'select', label: '默认时间维度', options: [
-      { value: '30s', label: '30 秒' }, { value: '1m', label: '分钟' }, { value: '1h', label: '小时' }, { value: '1d', label: '天' }
-    ], default: '1m' },
-    { group: '数据', key: 'data.proxyPort', type: 'text', label: '代理端口', default: 7890 },
     { group: '数据', key: 'data.historyDays', type: 'select', label: '历史数据保留', options: [
-      { value: 3, label: '3 天' }, { value: 7, label: '7 天' }, { value: 30, label: '30 天' }
-    ], default: 7 },
+    { value: 3, label: '3 天' }, { value: 7, label: '7 天' }, { value: 30, label: '30 天' }
+  ], default: 7 },
     { group: '关于', key: 'apiKey', type: 'password', label: 'API Key', default: '' }
   ];
 
