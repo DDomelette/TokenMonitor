@@ -241,7 +241,7 @@ async function fetchAndSendBalance() {
 function startUsageTimer() {
   if (usageTimer) clearInterval(usageTimer);
   fetchAndSendUsage();
-  usageTimer = setInterval(fetchAndSendUsage, 5 * 60 * 1000);
+  usageTimer = setInterval(fetchAndSendUsage, 60 * 1000);
 }
 
 async function fetchAndSendUsage() {
