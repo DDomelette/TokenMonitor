@@ -28,10 +28,8 @@ function fetchUsageCost(sessionToken, month, year) {
             return;
           }
           const bizData = data && data.data && data.data.biz_data;
-          if (bizData) {
-            var entryCount = bizData.length;
-            var sample = bizData[0] ? JSON.stringify(bizData[0]).slice(0, 600) : 'empty';
-            console.log('[fetcher] biz_data entries:', entryCount, 'first entry keys:', Object.keys(bizData[0] || {}).join(','), 'sample:', sample);
+          if (bizData && bizData[0]) {
+            console.log('[fetcher] days sample:', JSON.stringify(bizData[0].days).slice(0, 800));
           }
           resolve(parseUsageData(data));
         } catch (e) {
@@ -72,10 +70,8 @@ function fetchUsageAmount(sessionToken, month, year) {
             return;
           }
           const bizData = data && data.data && data.data.biz_data;
-          if (bizData) {
-            var entryCount = bizData.length;
-            var sample = bizData[0] ? JSON.stringify(bizData[0]).slice(0, 600) : 'empty';
-            console.log('[amount] biz_data entries:', entryCount, 'sample:', sample);
+          if (bizData && bizData[0]) {
+            console.log('[amount] days sample:', JSON.stringify(bizData[0].days).slice(0, 800));
           }
           resolve(data);
         } catch (e) {
