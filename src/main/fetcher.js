@@ -93,7 +93,7 @@ function parseDailyData(days, sumFn) {
 
     return {
       date: d.date,
-      total: Math.round(dayTotal),
+      total: dayTotal,
       cacheHit: Math.round(dayCacheHit),
       cacheMiss: Math.round(dayCacheMiss),
       completion: Math.round(dayCompletion),

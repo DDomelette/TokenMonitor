@@ -59,9 +59,9 @@ window.App = window.App || {};
       },
       animation: true,
       series: [
-        { name: '缓存命中', type: 'bar', stack: 'total', barMaxWidth: 20, itemStyle: { borderRadius: [0, 0, 0, 0] }, data: [] },
+        { name: '输出 Token', type: 'bar', stack: 'total', barMaxWidth: 20, itemStyle: { borderRadius: [0, 0, 0, 0] }, data: [] },
         { name: '缓存未命中', type: 'bar', stack: 'total', barMaxWidth: 20, itemStyle: { borderRadius: [0, 0, 0, 0] }, data: [] },
-        { name: '输出 Token', type: 'bar', stack: 'total', barMaxWidth: 20, itemStyle: { borderRadius: [3, 3, 0, 0] }, data: [] }
+        { name: '缓存命中', type: 'bar', stack: 'total', barMaxWidth: 20, itemStyle: { borderRadius: [3, 3, 0, 0] }, data: [] }
       ]
     });
 
@@ -90,9 +90,9 @@ window.App = window.App || {};
     dailyChart.setOption({
       xAxis: { data: dates },
       series: [
-        { data: hitData },
+        { data: completionData },
         { data: missData },
-        { data: completionData }
+        { data: hitData }
       ]
     });
   }
