@@ -240,8 +240,8 @@ async function fetchAndSendBalance() {
     const info = await fetchBalance(apiKey);
     console.log('[balance] fetchBalance returned:', info ? 'data' : 'null');
     if (mainWindow && info) {
-      console.log('[balance] sending balance:update IPC');
-    mainWindow.webContents.send('balance:update', info);
+      console.log('[balance] sending balance:update IPC, data:', JSON.stringify(info));
+      mainWindow.webContents.send('balance:update', info);
     setTimeout(() => {
       mainWindow.webContents.executeJavaScript('document.getElementById("fee-cards").innerHTML.slice(0,200)')
         .then(html => console.log('[verify] fee-cards HTML:', html))
