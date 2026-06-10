@@ -17,6 +17,20 @@ let lastUsageStats = null;
 let lastBalance = null;
 let proxyStatus = { running: false, port: 0, error: '未获取数据' };
 
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+  return;
+}
+
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
+
 function getWinBounds() {
   const win = store.get('window');
   return {
@@ -49,8 +63,10 @@ function createMainWindow() {
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 
   mainWindow.on('close', (e) => {
-    mainWindow.hide();
-    e.preventDefault();
+    if (!app.isQuitting) {
+      mainWindow.hide();
+      e.preventDefault();
+    }
   });
 
   mainWindow.on('resize', () => {
@@ -380,12 +396,15 @@ app.whenReady().then(() => {
   }
 });
 
-app.on('window-all-closed', () => {});
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
 
 app.on('before-quit', () => {
   app.isQuitting = true;
   if (balanceTimer) clearInterval(balanceTimer);
   if (usageTimer) clearInterval(usageTimer);
+  if (tray) { tray.destroy(); tray = null; }
 });
 
 app.on('activate', () => {
