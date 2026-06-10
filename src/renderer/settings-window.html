@@ -15,10 +15,15 @@
     margin: 0;
     padding: 0;
     user-select: none;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
   :root {
-    --primary: #4D6BFE;
-    --primary-light: #7B92FF;
+    --primary: #8B9FFF;
+    --primary-light: #ACBEFF;
+    --primary-dark: #7589E8;
     --bg-card: #F8F9FC;
     --text-primary: #1A1A2E;
     --text-secondary: #6B7280;
@@ -35,6 +40,9 @@
     --border: #3A3C45;
   }
   .settings-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
     overflow: hidden;
   }
   .settings-header {
@@ -44,6 +52,7 @@
     padding: 14px 16px;
     border-bottom: 1px solid var(--border);
     -webkit-app-region: drag;
+    flex-shrink: 0;
   }
   .settings-title {
     font-size: 15px;
@@ -71,6 +80,7 @@
   .settings-body {
     padding: 16px;
     overflow-y: auto;
+    flex: 1;
   }
   .settings-section {
     margin-bottom: 18px;
@@ -144,7 +154,7 @@
     border-radius: 50%;
     background: var(--primary);
     cursor: pointer;
-    box-shadow: 0 1px 4px rgba(77, 107, 254, 0.3);
+    box-shadow: 0 1px 4px rgba(139, 159, 255, 0.3);
   }
   .slider-value { font-size: 12px; color: var(--text-secondary); margin-left: 8px; min-width: 32px; text-align: right; }
   .select-input {
@@ -176,6 +186,7 @@
     padding: 12px 16px;
     border-top: 1px solid var(--border);
     justify-content: flex-end;
+    flex-shrink: 0;
   }
   .btn {
     font-size: 13px;

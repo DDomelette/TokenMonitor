@@ -22,7 +22,7 @@ window.App = window.App || {};
     dailyChart = echarts.init(dom, null, { width: dom.clientWidth, height: dom.clientHeight });
 
     dailyChart.setOption({
-      color: ['#22C55E', '#F97316', '#4D6BFE'],
+      color: ['#22C55E', '#F97316', '#8B9FFF'],
       backgroundColor: 'transparent',
       textStyle: { color: t.textColor, fontSize: 10 },
       grid: { left: 52, right: 12, top: 16, bottom: 28 },

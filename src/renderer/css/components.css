@@ -5,7 +5,7 @@
 }
 
 .card {
-  background: linear-gradient(135deg, rgba(77, 107, 254, 0.04), rgba(123, 146, 255, 0.02));
+  background: linear-gradient(135deg, rgba(139, 159, 255, 0.04), rgba(172, 190, 255, 0.02));
   border-radius: var(--radius-card);
   padding: 12px;
   border: 1px solid var(--border);
@@ -16,7 +16,7 @@
 .card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-card);
-  background: linear-gradient(135deg, rgba(77, 107, 254, 0.08), rgba(123, 146, 255, 0.04));
+  background: linear-gradient(135deg, rgba(139, 159, 255, 0.08), rgba(172, 190, 255, 0.04));
 }
 
 .card-label {
@@ -61,7 +61,7 @@
 .model-bar-track {
   flex: 1;
   height: 16px;
-  background: rgba(77, 107, 254, 0.08);
+  background: rgba(139, 159, 255, 0.08);
   border-radius: 8px;
   overflow: hidden;
   position: relative;

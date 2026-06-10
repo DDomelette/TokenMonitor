@@ -53,7 +53,7 @@ window.App = window.App || {};
         {
           name: '增量费用',
           type: 'bar',
-          barWidth: 2,
+          barWidth: 4,
           itemStyle: { color: 'rgba(34,197,94,0.35)' },
           data: []
         }
