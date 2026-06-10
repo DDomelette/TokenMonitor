@@ -21,7 +21,19 @@ window.App = window.App || {};
       grid: theme.grid,
       xAxis: theme.xAxis,
       yAxis: theme.yAxis,
-      tooltip: theme.tooltip,
+      tooltip: {
+        trigger: 'axis',
+        confine: true,
+        backgroundColor: theme.tooltip.backgroundColor,
+        borderColor: theme.tooltip.borderColor,
+        textStyle: theme.tooltip.textStyle,
+        formatter: function (params) {
+          return (params || []).map(function (p) {
+            var val = p.value || 0;
+            return '<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + p.color + '"></span> ' + p.seriesName + ': ¥' + val.toFixed(2);
+          }).join('<br/>');
+        }
+      },
       animation: false,
       series: [
         {

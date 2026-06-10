@@ -18,6 +18,9 @@
       <span class="titlebar-text">DeepSeek Monitor</span>
     </div>
     <div class="titlebar-actions">
+      <button class="titlebar-btn" id="refreshBtn" title="立即刷新">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5b6372" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      </button>
       <button class="titlebar-btn" id="settingsBtn" title="设置">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="#5b6372"><path d="M7.5 1a6.5 6.5 0 0 1 5.91 9.08l2.25 2.25a.75.75 0 1 1-1.06 1.06l-2.25-2.25A6.5 6.5 0 1 1 7.5 1zm0 1.5a5 5 0 1 0 0 10 5 5 0 0 0 0-10z"/><circle cx="7.5" cy="7.5" r="2.5"/></svg>
       </button>
@@ -38,7 +41,7 @@
     </div>
     <div class="component-wrapper" id="token-line">
       <div class="component-header">
-        <div class="component-title">Token 增长趋势</div>
+        <div class="component-title">Token 消耗</div>
         <select class="time-select" id="tokenTimeRange" style="display:none">
           <option value="30s">30 秒</option>
           <option value="1m" selected>分钟</option>
@@ -68,7 +71,9 @@
       <span id="statusText">未获取数据</span>
     </div>
     <span id="proxyPort">平台用量</span>
-    <span id="apiKeyDisplay">--</span>
+    <span id="apiKeyDisplay">
+      <span id="refreshTime">--</span>
+    </span>
   </div>
 </div>
 

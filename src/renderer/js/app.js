@@ -1,6 +1,9 @@
 window.App = window.App || {};
 
 (function () {
+  var lastRefreshTime = Date.now();
+  var refreshTimer = null;
+
   function applyComponentVisibility(settings) {
     if (settings && settings.components && settings.components.feeCards === false) {
       var el = document.getElementById('fee-cards');
@@ -20,24 +23,41 @@ window.App = window.App || {};
     }
   }
 
+  function updateRefreshTimer() {
+    var elapsed = Math.floor((Date.now() - lastRefreshTime) / 60000);
+    var el = document.getElementById('refreshTime');
+    if (el) {
+      if (elapsed === 0) {
+        el.textContent = '刚刚刷新';
+      } else {
+        el.textContent = elapsed + ' 分钟前';
+      }
+    }
+  }
+
+  function startRefreshTimer() {
+    if (refreshTimer) clearInterval(refreshTimer);
+    updateRefreshTimer();
+    refreshTimer = setInterval(updateRefreshTimer, 15000);
+  }
+
   function updateStatusBar(status) {
     var dot = document.getElementById('statusDot');
     var text = document.getElementById('statusText');
-    var portSpan = document.getElementById('proxyPort');
 
     if (status.running) {
       dot.className = 'status-dot online';
       text.textContent = '数据连接正常';
-      portSpan.textContent = '平台用量';
     } else {
       dot.className = 'status-dot offline';
       text.textContent = status.error || '未获取数据';
-      portSpan.textContent = '平台用量';
     }
   }
 
   function pollDashboard() {
     window.api.invoke('get:dashboard').then(function (dashboard) {
+      lastRefreshTime = Date.now();
+      updateRefreshTimer();
       if (dashboard.stats) {
         window.App.updateFeeCards(dashboard.balance, dashboard.stats);
         if (dashboard.stats.tokenDaily) {
@@ -68,15 +88,19 @@ window.App = window.App || {};
     });
 
     document.getElementById('settingsBtn').addEventListener('click', function () {
-      window.App.openSettings();
+      window.api.send('open:settings');
+    });
+
+    document.getElementById('refreshBtn').addEventListener('click', function () {
+      window.api.send('refresh:dashboard');
     });
 
     window.App.initDragSort('.content');
+    startRefreshTimer();
 
     window.api.invoke('get:settings').then(function (settings) {
       window._settingsData = settings;
       applyComponentVisibility(settings);
-      window.App.initSettings();
 
       var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       if (isDark && settings.window && settings.window.followSystemTheme !== false) {

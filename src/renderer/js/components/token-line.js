@@ -21,7 +21,23 @@ window.App = window.App || {};
       grid: theme.grid,
       xAxis: theme.xAxis,
       yAxis: theme.yAxis,
-      tooltip: theme.tooltip,
+      tooltip: {
+        trigger: 'axis',
+        confine: true,
+        backgroundColor: theme.tooltip.backgroundColor,
+        borderColor: theme.tooltip.borderColor,
+        textStyle: theme.tooltip.textStyle,
+        formatter: function (params) {
+          return (params || []).map(function (p) {
+            var val = p.value || 0;
+            var label;
+            if (val >= 1000000) label = (val / 1000000).toFixed(1) + 'M';
+            else if (val >= 1000) label = (val / 1000).toFixed(0) + 'K';
+            else label = val.toString();
+            return '<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + p.color + '"></span> ' + p.seriesName + ': ' + label;
+          }).join('<br/>');
+        }
+      },
       animation: false,
       series: [
         {

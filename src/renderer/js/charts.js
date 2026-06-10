@@ -54,6 +54,7 @@ window.Charts = window.Charts || {};
       },
       tooltip: {
         trigger: 'axis',
+        confine: true,
         backgroundColor: isDark ? 'rgba(30,32,38,0.95)' : 'rgba(255,255,255,0.95)',
         borderColor: isDark ? '#3A3C45' : '#E5E7EB',
         textStyle: {

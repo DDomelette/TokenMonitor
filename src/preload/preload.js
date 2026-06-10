@@ -25,7 +25,10 @@ contextBridge.exposeInMainWorld('api', {
       'settings:reset',
       'login:submit',
       'window:minimize',
-      'window:close'
+      'window:close',
+      'window:close-settings',
+      'refresh:dashboard',
+      'open:settings'
     ];
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data);

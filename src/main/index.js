@@ -7,6 +7,7 @@ const { fetchUsageCost, fetchUsageAmount } = require('./fetcher');
 let mainWindow = null;
 let loginWindow = null;
 let sessionWindow = null;
+let settingsWindow = null;
 let tray = null;
 let balanceTimer = null;
 let usageTimer = null;
@@ -355,6 +356,46 @@ function setupIPC() {
 
   ipcMain.on('window:close', () => {
     if (loginWindow) loginWindow.close();
+  });
+
+  ipcMain.on('window:close-settings', () => {
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.close();
+    }
+  });
+
+  ipcMain.on('refresh:dashboard', async () => {
+    fetchAndStoreBalance();
+    if (sessionToken) {
+      fetchAndStoreUsage();
+    }
+  });
+
+  var originalSettingsBtn = true;
+  ipcMain.on('open:settings', (event) => {
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.focus();
+      return;
+    }
+    settingsWindow = new BrowserWindow({
+      width: 370,
+      height: 520,
+      parent: mainWindow,
+      modal: false,
+      titleBarStyle: 'hidden',
+      resizable: true,
+      minimizable: false,
+      maximizable: false,
+      alwaysOnTop: true,
+      webPreferences: {
+        preload: path.join(__dirname, '..', 'preload', 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false
+      }
+    });
+    settingsWindow.setMenu(null);
+    settingsWindow.loadFile(path.join(__dirname, '..', 'renderer', 'settings-window.html'));
+    settingsWindow.on('closed', () => { settingsWindow = null; });
   });
 }
 

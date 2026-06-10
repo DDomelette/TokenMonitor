@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+<title>设置 — DeepSeek Monitor</title>
+<link rel="stylesheet" href="css/settings.css">
+<style>
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    font-size: 13px;
+    color: var(--text-primary);
+    background: var(--bg-card);
+    margin: 0;
+    padding: 0;
+    user-select: none;
+  }
+  :root {
+    --primary: #4D6BFE;
+    --primary-light: #7B92FF;
+    --bg-card: #F8F9FC;
+    --text-primary: #1A1A2E;
+    --text-secondary: #6B7280;
+    --text-inverse: #FFFFFF;
+    --border: #E5E7EB;
+    --radius-card: 12px;
+    --radius-btn: 8px;
+    --radius-input: 8px;
+  }
+  body.dark {
+    --bg-card: #252730;
+    --text-primary: #E5E7EB;
+    --text-secondary: #9CA3AF;
+    --border: #3A3C45;
+  }
+  .settings-panel {
+    overflow: hidden;
+  }
+  .settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    -webkit-app-region: drag;
+  }
+  .settings-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  .settings-close {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    -webkit-app-region: no-drag;
+  }
+  .settings-close:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-primary);
+  }
+  .settings-body {
+    padding: 16px;
+    overflow-y: auto;
+  }
+  .settings-section {
+    margin-bottom: 18px;
+  }
+  .settings-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+  }
+  .setting-row.vertical {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .setting-label {
+    font-size: 13px;
+    color: var(--text-primary);
+  }
+  .toggle-switch {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    flex-shrink: 0;
+  }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: var(--border);
+    border-radius: 22px;
+    cursor: pointer;
+    transition: all 200ms ease-out;
+  }
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: all 200ms ease-out;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  }
+  .toggle-switch input:checked + .toggle-slider { background: var(--primary); }
+  .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+  .slider-input {
+    width: 100%;
+    -webkit-appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    outline: none;
+  }
+  .slider-input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(77, 107, 254, 0.3);
+  }
+  .slider-value { font-size: 12px; color: var(--text-secondary); margin-left: 8px; min-width: 32px; text-align: right; }
+  .select-input {
+    font-size: 13px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    outline: none;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .text-input {
+    font-size: 13px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    outline: none;
+    font-family: inherit;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .settings-footer {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    justify-content: flex-end;
+  }
+  .btn {
+    font-size: 13px;
+    padding: 6px 16px;
+    border-radius: var(--radius-btn);
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 500;
+  }
+  .btn-secondary { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: rgba(0, 0, 0, 0.03); color: var(--text-primary); }
+  .btn-primary { background: var(--primary); color: var(--text-inverse); }
+  .btn-primary:hover { background: var(--primary-light); }
+</style>
+</head>
+<body>
+<div class="settings-panel" id="settingsPanel">
+  <div class="settings-header">
+    <span class="settings-title">设置</span>
+    <button class="settings-close" id="settingsCloseBtn">&times;</button>
+  </div>
+  <div class="settings-body" id="settingsBody"></div>
+  <div class="settings-footer">
+    <button class="btn btn-secondary" id="resetBtn">恢复默认</button>
+    <button class="btn btn-primary" id="settingsDoneBtn">关闭</button>
+  </div>
+</div>
+<script src="js/settings-window.js"></script>
+</body>
+</html>
