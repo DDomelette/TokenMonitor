@@ -219,8 +219,10 @@ function updateTrayMenu() {
 }
 
 function startBalanceTimer() {
+  console.log('[balance] startBalanceTimer called');
   if (balanceTimer) clearInterval(balanceTimer);
   const apiKey = store.get('apiKey');
+  console.log('[balance] apiKey in timer:', !!apiKey);
   if (!apiKey) return;
 
   fetchAndSendBalance();
@@ -228,14 +230,21 @@ function startBalanceTimer() {
 }
 
 async function fetchAndSendBalance() {
+  console.log('[balance] fetchAndSendBalance called');
   const apiKey = store.get('apiKey');
+  console.log('[balance] apiKey:', !!apiKey, 'mainWindow:', !!mainWindow);
   if (!apiKey || !mainWindow) return;
   try {
+    console.log('[balance] calling fetchBalance...');
     const info = await fetchBalance(apiKey);
+    console.log('[balance] fetchBalance returned:', info ? 'data' : 'null');
     if (mainWindow && info) {
+      console.log('[balance] sending balance:update IPC');
       mainWindow.webContents.send('balance:update', info);
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error('[balance] fetchBalance error:', e.message);
+  }
 }
 
 function startUsageTimer() {
@@ -362,15 +371,21 @@ app.whenReady().then(() => {
   app.setLoginItemSettings({ openAtLogin: store.get('window.autoLaunch') });
 
   const apiKey = store.get('apiKey');
+  console.log('[startup] apiKey present:', !!apiKey);
   if (apiKey) {
+    console.log('[startup] creating mainWindow...');
     createMainWindow();
     mainWindow.webContents.on('did-finish-load', () => {
+      console.log('[startup] did-finish-load fired');
       mainWindow.webContents.send('settings:loaded', store.store);
+      console.log('[startup] calling startBalanceTimer...');
       startBalanceTimer();
 
       sessionToken = store.get('sessionToken');
+      console.log('[startup] sessionToken present:', !!sessionToken);
       if (sessionToken) {
         startUsageTimer();
+        console.log('[startup] sending proxy:status running...');
         mainWindow.webContents.send('proxy:status', {
           running: true,
           port: 0,

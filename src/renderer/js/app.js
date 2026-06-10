@@ -50,12 +50,14 @@ window.App = window.App || {};
     });
 
     window.api.on('data:update', function (stats) {
+      console.log('[renderer] data:update received:', JSON.stringify(stats).slice(0, 200));
       window._lastStats = stats;
       window.App.updateFeeCards(null, stats);
       if (stats.models) window.App.updateModelBar(stats.models);
     });
 
     window.api.on('balance:update', function (balance) {
+      console.log('[renderer] balance:update received:', JSON.stringify(balance).slice(0, 200));
       window._lastBalance = balance;
       window.App.updateFeeCards(balance, window._lastStats);
     });
@@ -69,6 +71,7 @@ window.App = window.App || {};
     });
 
     window.api.on('proxy:status', function (status) {
+      console.log('[renderer] proxy:status received:', JSON.stringify(status));
       var dot = document.getElementById('statusDot');
       var text = document.getElementById('statusText');
       var portSpan = document.getElementById('proxyPort');
