@@ -49,7 +49,7 @@ function createMainWindow() {
     transparent: true,
     alwaysOnTop: store.get('window.alwaysOnTop'),
     resizable: true,
-    minWidth: 320,
+    minWidth: 380,
     minHeight: 200,
     skipTaskbar: true,
     webPreferences: {
