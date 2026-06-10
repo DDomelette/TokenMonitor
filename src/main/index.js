@@ -46,6 +46,7 @@ function createMainWindow() {
 
   mainWindow.setOpacity(store.get('window.opacity') / 100);
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  mainWindow.webContents.openDevTools({ mode: 'detach' });
 
   mainWindow.on('close', (e) => {
     mainWindow.hide();
@@ -240,7 +241,12 @@ async function fetchAndSendBalance() {
     console.log('[balance] fetchBalance returned:', info ? 'data' : 'null');
     if (mainWindow && info) {
       console.log('[balance] sending balance:update IPC');
-      mainWindow.webContents.send('balance:update', info);
+    mainWindow.webContents.send('balance:update', info);
+    setTimeout(() => {
+      mainWindow.webContents.executeJavaScript('document.getElementById("fee-cards").innerHTML.slice(0,200)')
+        .then(html => console.log('[verify] fee-cards HTML:', html))
+        .catch(e => console.error('[verify] check error:', e.message));
+    }, 2000);
     }
   } catch (e) {
     console.error('[balance] fetchBalance error:', e.message);
