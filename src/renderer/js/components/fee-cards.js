@@ -31,9 +31,9 @@ window.App = window.App || {};
       balanceHTML += '<div class="card-value primary">--</div>';
     }
 
-    if (statsData && statsData.token) {
-      costHTML += '<div class="card-value primary">' + formatTokens(statsData.token.totalTokens) + ' tk</div>';
-      costHTML += '<div class="card-sub">&yen;' + (statsData.cost ? statsData.cost.totalCost.toFixed(2) : '0') + '</div>';
+    if (statsData && statsData.token && statsData.cost) {
+      costHTML += '<div class="card-value primary">&yen;' + statsData.cost.totalCost.toFixed(2) + '</div>';
+      costHTML += '<div class="card-sub">' + formatTokens(statsData.token.totalTokens) + ' tokens</div>';
 
       var rate = statsData.token.cacheRate.toFixed(1);
       cacheHTML += '<div class="card-value primary">' + rate + '%</div>';

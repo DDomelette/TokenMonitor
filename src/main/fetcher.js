@@ -46,124 +46,84 @@ function fetchUsageCost(sessionToken, month, year) {
 
 function fetchUsageAmount(sessionToken, month, year) {
   return httpGet(sessionToken, `/api/v0/usage/amount?month=${month}&year=${year}`)
-    .then(function (data) {
-       console.log('[amount-raw] biz_data type:', Array.isArray(data.data.biz_data) ? 'array(' + data.data.biz_data.length + ')' : typeof data.data.biz_data);
-       var raw = JSON.stringify(data.data.biz_data).slice(0, 2000);
-       console.log('[amount-raw] biz_data sample:', raw);
-       return parseTokenData(data);
-     });
+    .then(parseTokenData);
 }
 
-function sumUsage(usageList) {
-  var prompt = 0, cacheHit = 0, cacheMiss = 0, completion = 0;
-  usageList.forEach(function (u) {
-    var amt = parseFloat(u.amount) || 0;
-    switch (u.type) {
-      case 'PROMPT_TOKEN': prompt += amt; break;
-      case 'PROMPT_CACHE_HIT_TOKEN': cacheHit += amt; break;
-      case 'PROMPT_CACHE_MISS_TOKEN': cacheMiss += amt; break;
-      case 'RESPONSE_TOKEN': completion += amt; break;
-    }
+function sumTokenUsage(usageList) {
+  var total = 0;
+  (usageList || []).forEach(function (u) {
+    total += parseFloat(u.amount) || 0;
   });
-  return { prompt: prompt, cacheHit: cacheHit, cacheMiss: cacheMiss, completion: completion, total: prompt + cacheHit + cacheMiss + completion };
+  return Math.round(total);
 }
 
-function parseDailyData(bizData) {
-  if (!bizData || !bizData[0] || !bizData[0].days) return [];
-
-  var days = bizData[0].days;
-  return days.map(function (d) {
-    var models = [];
-    var dayTotal = 0;
-
-    (d.data || []).forEach(function (m) {
-      var usage = sumUsage(m.usage || []);
-      dayTotal += usage.total;
-      models.push({
-        model: m.model,
-        tokens: Math.round(usage.total),
-        prompt: Math.round(usage.prompt),
-        cacheHit: Math.round(usage.cacheHit),
-        cacheMiss: Math.round(usage.cacheMiss),
-        completion: Math.round(usage.completion)
-      });
-    });
-
-    return {
-      date: d.date,
-      total: Math.round(dayTotal),
-      models: models.sort(function (a, b) { return b.tokens - a.tokens; })
-    };
+function sumCostUsage(usageList) {
+  var total = 0;
+  (usageList || []).forEach(function (u) {
+    total += parseFloat(u.amount) || 0;
   });
+  return total;
+}
+
+function getUsageMap(usageList) {
+  var map = {};
+  (usageList || []).forEach(function (u) {
+    map[u.type] = parseFloat(u.amount) || 0;
+  });
+  return map;
 }
 
 function parseCostData(data) {
   var bizData = data && data.data && data.data.biz_data;
-  if (!bizData || !bizData[0]) {
-    return { dailyData: [], aggregate: { totalCost: 0, models: [], cacheRate: 0, cacheHit: 0, cacheMiss: 0 } };
-  }
-
-  var dailyData = parseDailyData(bizData);
+  var root = Array.isArray(bizData) ? bizData[0] : bizData;
+  if (!root) return { dailyData: [], aggregate: { totalCost: 0, models: [] } };
 
   var modelMap = {};
   var totalCost = 0;
+  var days = parseDailyData(root.days, sumCostUsage);
 
-  (bizData[0].total || []).forEach(function (entry) {
-    if (!modelMap[entry.model]) {
-      modelMap[entry.model] = { model: entry.model, cost: 0 };
-    }
-    (entry.usage || []).forEach(function (u) {
-      var amt = parseFloat(u.amount) || 0;
-      modelMap[entry.model].cost += amt;
-      totalCost += amt;
-    });
+  (root.total || []).forEach(function (entry) {
+    var cost = sumCostUsage(entry.usage);
+    modelMap[entry.model] = { model: entry.model, cost: cost };
+    totalCost += cost;
   });
 
-  var result = {
-    dailyData: dailyData,
+  return {
+    dailyData: days,
     aggregate: {
       totalCost: totalCost,
       models: Object.values(modelMap).sort(function (a, b) { return b.cost - a.cost; })
     }
   };
-  console.log('[parseCost] totalCost:', totalCost, 'dailyData length:', dailyData.length);
-  return result;
 }
 
 function parseTokenData(data) {
   var bizData = data && data.data && data.data.biz_data;
-  if (!bizData || !bizData[0]) {
-    return { dailyData: [], aggregate: { totalTokens: 0, cacheRate: 0, cacheHit: 0, cacheMiss: 0, models: [] } };
-  }
-
-  var dailyData = parseDailyData(bizData);
+  var root = Array.isArray(bizData) ? bizData[0] : bizData;
+  if (!root) return { dailyData: [], aggregate: { totalTokens: 0, cacheRate: 0, cacheHit: 0, cacheMiss: 0, models: [] } };
 
   var modelMap = {};
   var totalCacheHit = 0;
   var totalCacheMiss = 0;
   var totalTokens = 0;
+  var days = parseDailyData(root.days, sumTokenUsage);
 
-  (bizData[0].total || []).forEach(function (entry) {
+  (root.total || []).forEach(function (entry) {
     if (!entry.model || !entry.usage) return;
-    if (!modelMap[entry.model]) {
-      modelMap[entry.model] = { model: entry.model, tokens: 0 };
-    }
-    entry.usage.forEach(function (u) {
-      var amt = parseFloat(u.amount) || 0;
-      modelMap[entry.model].tokens += Math.round(amt);
-      switch (u.type) {
-        case 'PROMPT_CACHE_HIT_TOKEN': totalCacheHit += amt; break;
-        case 'PROMPT_CACHE_MISS_TOKEN': totalCacheMiss += amt; break;
-      }
-      totalTokens += Math.round(amt);
-    });
+    var tokens = sumTokenUsage(entry.usage);
+    modelMap[entry.model] = { model: entry.model, tokens: tokens };
+    totalTokens += tokens;
+
+    var usage = getUsageMap(entry.usage);
+    totalCacheHit += usage['PROMPT_CACHE_HIT_TOKEN'] || 0;
+    totalCacheMiss += usage['PROMPT_CACHE_MISS_TOKEN'] || 0;
   });
 
   var inputTokens = totalCacheHit + totalCacheMiss;
   var cacheRate = (inputTokens > 0) ? (totalCacheHit / inputTokens * 100) : 0;
 
-  var result = {
-    dailyData: dailyData,
+  return {
+    dailyData: days,
     aggregate: {
       totalTokens: totalTokens,
       cacheRate: cacheRate,
@@ -172,8 +132,26 @@ function parseTokenData(data) {
       models: Object.values(modelMap).sort(function (a, b) { return b.tokens - a.tokens; })
     }
   };
-  console.log('[parseToken] totalTokens:', totalTokens, 'cacheHit:', totalCacheHit, 'cacheMiss:', totalCacheMiss, 'dailyData length:', dailyData.length, 'models:', JSON.stringify(result.aggregate.models).slice(0, 300));
-  return result;
+}
+
+function parseDailyData(days, sumFn) {
+  if (!days || !Array.isArray(days)) return [];
+  return days.map(function (d) {
+    var dayTotal = 0;
+    var models = [];
+
+    (d.data || []).forEach(function (m) {
+      var tokens = sumFn(m.usage || []);
+      dayTotal += tokens;
+      models.push({ model: m.model, tokens: Math.round(tokens) });
+    });
+
+    return {
+      date: d.date,
+      total: Math.round(dayTotal),
+      models: models.sort(function (a, b) { return b.tokens - a.tokens; })
+    };
+  });
 }
 
 module.exports = { fetchUsageCost, fetchUsageAmount };
