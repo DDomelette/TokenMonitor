@@ -143,10 +143,11 @@ window._isLayoutLocked = true;
       value = el.value;
     }
     clearTimeout(debounceTimer);
+    var delay = (key === 'window.opacity') ? 0 : 300;
     debounceTimer = setTimeout(function () {
       window.api.send('settings:update', { key: key, value: value });
       applyUISetting(key, value);
-    }, 300);
+    }, delay);
   }
 
   function applyUISetting(key, value) {

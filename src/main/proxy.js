@@ -12,10 +12,14 @@ class ProxyServer {
     this.activeSince = null;
   }
 
-  start() {
-    return new Promise((resolve, reject) => {
-      if (this.server) this.stop();
+  async start() {
+    if (this.server) {
+      await new Promise(r => this.server.close(r));
+      this.server = null;
+      this.running = false;
+    }
 
+    return new Promise((resolve, reject) => {
       this.server = http.createServer((clientReq, clientRes) => {
         this.handleRequest(clientReq, clientRes);
       });
