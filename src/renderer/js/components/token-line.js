@@ -45,11 +45,11 @@ window.App = window.App || {};
           type: 'line',
           smooth: true,
           showSymbol: false,
-          lineStyle: { color: '#8B9FFF', width: 1.5 },
+          lineStyle: { color: '#74B8FC', width: 1.5 },
           areaStyle: {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: 'rgba(139,159,255,0.15)' },
-              { offset: 1, color: 'rgba(139,159,255,0)' }
+              { offset: 0, color: 'rgba(116,184,252,0.15)' },
+              { offset: 1, color: 'rgba(116,184,252,0)' }
             ])
           },
           data: []
@@ -58,7 +58,7 @@ window.App = window.App || {};
           name: '增量 Token',
           type: 'bar',
           barWidth: 4,
-          itemStyle: { color: 'rgba(139,159,255,0.4)' },
+          itemStyle: { color: 'rgba(116,184,252,0.4)' },
           data: []
         }
       ]

@@ -1,7 +1,7 @@
 :root {
-  --primary: #8B9FFF;
-  --primary-light: #ACBEFF;
-  --primary-dark: #7589E8;
+  --primary: #74B8FC;
+  --primary-light: #95CAFF;
+  --primary-dark: #5A9FE0;
   --bg-window: rgba(255, 255, 255, 0.92);
   --bg-window-dark: rgba(30, 32, 38, 0.92);
   --bg-card: #F8F9FC;
@@ -111,7 +111,7 @@ body.dark {
 }
 
 .titlebar-btn:hover {
-  background: rgba(139, 159, 255, 0.1);
+  background: rgba(116, 184, 252, 0.1);
   color: var(--primary);
 }
 
@@ -198,7 +198,7 @@ body.dark {
 
 .component-wrapper.drag-over {
   border-color: var(--primary);
-  background: rgba(139, 159, 255, 0.04);
+  background: rgba(116, 184, 252, 0.04);
 }
 
 .component-title-selector {
@@ -227,7 +227,7 @@ body.dark {
 
 .time-select:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(139, 159, 255, 0.15);
+  box-shadow: 0 0 0 2px rgba(116, 184, 252, 0.15);
 }
 
 .chart-container {

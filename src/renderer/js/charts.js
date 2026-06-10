@@ -6,7 +6,7 @@ window.Charts = window.Charts || {};
 
   function getTheme(isDark) {
     return {
-      color: ['#8B9FFF', '#22C55E', '#F59E0B', '#EF4444', '#ACBEFF'],
+      color: ['#74B8FC', '#22C55E', '#F59E0B', '#EF4444', '#95CAFF'],
       backgroundColor: 'transparent',
       textStyle: {
         fontFamily: '-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif',

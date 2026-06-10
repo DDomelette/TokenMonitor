@@ -380,13 +380,17 @@ function setupIPC() {
     settingsWindow = new BrowserWindow({
       width: 370,
       height: 520,
+      minWidth: 340,
+      minHeight: 440,
       parent: mainWindow,
       modal: false,
-      titleBarStyle: 'hidden',
+      frame: false,
       resizable: true,
       minimizable: false,
       maximizable: false,
       alwaysOnTop: true,
+      transparent: true,
+      useContentSize: true,
       webPreferences: {
         preload: path.join(__dirname, '..', 'preload', 'preload.js'),
         contextIsolation: true,
