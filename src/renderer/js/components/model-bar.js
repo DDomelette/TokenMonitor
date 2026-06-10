@@ -32,9 +32,13 @@ window.App = window.App || {};
         textStyle: { fontSize: 11 },
         formatter: function (params) {
           var total = 0;
-          var parts = (params || []).map(function (p) {
-            total += p.value || 0;
-            return '<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + p.color + '"></span> ' + p.seriesName + ': ' + (p.value >= 1000000 ? (p.value / 1000000).toFixed(1) + 'M' : p.value >= 1000 ? (p.value / 1000).toFixed(0) + 'K' : p.value);
+          var lookup = {};
+          (params || []).forEach(function (p) { total += p.value || 0; lookup[p.seriesName] = p; });
+          var order = ['缓存命中', '缓存未命中', '输出 Token'];
+          var parts = order.map(function (name) {
+            var p = lookup[name];
+            if (!p) return '';
+            return '<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + p.color + '"></span> ' + name + ': ' + (p.value >= 1000000 ? (p.value / 1000000).toFixed(1) + 'M' : p.value >= 1000 ? (p.value / 1000).toFixed(0) + 'K' : p.value);
           });
           return '<b>' + params[0].axisValue + '</b><br/>' + parts.join('<br/>') + '<br/><b>合计: ' + (total >= 1000000 ? (total / 1000000).toFixed(1) + 'M' : total >= 1000 ? (total / 1000).toFixed(0) + 'K' : total) + '</b>';
         }

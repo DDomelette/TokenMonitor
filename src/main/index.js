@@ -277,10 +277,12 @@ async function fetchAndStoreUsage() {
 function buildCurvePoints(stats) {
   var tokenPoints = [];
   var costPoints = [];
+  var todayStr = new Date().toISOString().slice(0, 10);
 
   if (stats && stats.tokenDaily) {
     var cumToken = 0;
     stats.tokenDaily.forEach(function (d) {
+      if (d.date > todayStr) return;
       cumToken += d.total;
       tokenPoints.push({ time: new Date(d.date).getTime(), totalTokens: cumToken, cumTokens: cumToken, deltaTokens: d.total, totalCost: 0, deltaCost: 0 });
     });
@@ -289,6 +291,7 @@ function buildCurvePoints(stats) {
   if (stats && stats.costDaily) {
     var cumCost = 0;
     stats.costDaily.forEach(function (d) {
+      if (d.date > todayStr) return;
       cumCost += d.total;
       costPoints.push({ time: new Date(d.date).getTime(), totalCost: cumCost, cumCost: cumCost, deltaCost: d.total, totalTokens: 0, deltaTokens: 0 });
     });
