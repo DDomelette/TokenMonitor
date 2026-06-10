@@ -115,6 +115,10 @@ body.dark {
   color: var(--primary);
 }
 
+.titlebar-btn:hover svg {
+  fill: var(--primary);
+}
+
 .content {
   flex: 1;
   overflow-y: auto;
@@ -166,6 +170,7 @@ body.dark {
   border: 1px solid var(--border);
   transition: all 200ms ease-out;
   min-height: 60px;
+  flex-shrink: 0;
   position: relative;
 }
 
@@ -225,5 +230,17 @@ body.dark {
 
 .chart-container {
   width: 100%;
-  min-height: 120px;
+  min-height: 140px;
+}
+
+#fee-cards {
+  min-height: 80px;
+}
+
+#model-bar {
+  min-height: 60px;
+}
+
+#token-line, #cost-line {
+  min-height: 170px;
 }
