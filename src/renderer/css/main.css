@@ -47,8 +47,6 @@ body {
   box-shadow: var(--shadow-window);
   border: 1px solid var(--border);
   overflow: hidden;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
 }
 
 body.dark #app {
@@ -105,7 +103,7 @@ body.dark {
   justify-content: center;
   border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: #5b6372;
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
