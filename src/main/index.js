@@ -241,6 +241,7 @@ async function fetchAndStoreUsage() {
   try {
     var costData = await fetchUsageCost(sessionToken, month, year);
     var amountData = await fetchUsageAmount(sessionToken, month, year);
+    console.log('[usage] cost:', costData.aggregate.totalCost.toFixed(2), 'token:', amountData.aggregate.totalTokens, 'dailyDays:', amountData.dailyData.length);
     lastUsageStats = {
       cost: costData.aggregate,
       token: amountData.aggregate,
