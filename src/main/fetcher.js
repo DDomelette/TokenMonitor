@@ -23,7 +23,6 @@ function fetchUsageCost(sessionToken, month, year) {
       res.on('end', () => {
         try {
           const data = JSON.parse(body);
-          console.log('[fetcher] raw API response sample:', JSON.stringify(data).slice(0, 500));
           if (data.code && data.msg) {
             reject(new Error(data.msg));
             return;
