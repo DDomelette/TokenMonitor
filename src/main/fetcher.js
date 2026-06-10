@@ -27,6 +27,12 @@ function fetchUsageCost(sessionToken, month, year) {
             reject(new Error(data.msg));
             return;
           }
+          const bizData = data && data.data && data.data.biz_data;
+          if (bizData) {
+            var entryCount = bizData.length;
+            var sample = bizData[0] ? JSON.stringify(bizData[0]).slice(0, 600) : 'empty';
+            console.log('[fetcher] biz_data entries:', entryCount, 'first entry keys:', Object.keys(bizData[0] || {}).join(','), 'sample:', sample);
+          }
           resolve(parseUsageData(data));
         } catch (e) {
           reject(new Error('Failed to parse usage response'));
@@ -64,6 +70,12 @@ function fetchUsageAmount(sessionToken, month, year) {
           if (data.code && data.msg) {
             reject(new Error(data.msg));
             return;
+          }
+          const bizData = data && data.data && data.data.biz_data;
+          if (bizData) {
+            var entryCount = bizData.length;
+            var sample = bizData[0] ? JSON.stringify(bizData[0]).slice(0, 600) : 'empty';
+            console.log('[amount] biz_data entries:', entryCount, 'sample:', sample);
           }
           resolve(data);
         } catch (e) {

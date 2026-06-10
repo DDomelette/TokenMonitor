@@ -2,7 +2,7 @@ const { app, BrowserWindow, Tray, Menu, nativeTheme, ipcMain } = require('electr
 const path = require('path');
 const store = require('./store');
 const { fetchBalance } = require('./balance');
-const { fetchUsageCost } = require('./fetcher');
+const { fetchUsageCost, fetchUsageAmount } = require('./fetcher');
 
 let mainWindow = null;
 let loginWindow = null;
