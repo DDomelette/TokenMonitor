@@ -13,6 +13,8 @@ let aggregator = null;
 let balanceTimer = null;
 let ringBufferTimer = null;
 let persistTimer = null;
+let resizeDebounce = null;
+let moveDebounce = null;
 const dataDir = app.getPath('userData');
 
 function getWinBounds() {
@@ -52,15 +54,21 @@ function createMainWindow() {
   });
 
   mainWindow.on('resize', () => {
-    const [w, h] = mainWindow.getSize();
-    store.set('window.width', w);
-    store.set('window.height', h);
+    clearTimeout(resizeDebounce);
+    resizeDebounce = setTimeout(() => {
+      const [w, h] = mainWindow.getSize();
+      store.set('window.width', w);
+      store.set('window.height', h);
+    }, 300);
   });
 
   mainWindow.on('move', () => {
-    const [x, y] = mainWindow.getPosition();
-    store.set('window.x', x);
-    store.set('window.y', y);
+    clearTimeout(moveDebounce);
+    moveDebounce = setTimeout(() => {
+      const [x, y] = mainWindow.getPosition();
+      store.set('window.x', x);
+      store.set('window.y', y);
+    }, 300);
   });
 
   nativeTheme.on('updated', () => {
@@ -231,15 +239,32 @@ function startPersistTimer() {
   }, 5 * 60 * 1000);
 }
 
+function pushInitialStatus() {
+  if (!mainWindow || !proxyServer) return;
+  mainWindow.webContents.send('proxy:status', {
+    running: proxyServer.running,
+    port: store.get('data.proxyPort') || 7890,
+    activeSince: proxyServer.activeSince
+  });
+  const stats = aggregator ? aggregator.getTodayStats() : null;
+  if (stats) mainWindow.webContents.send('data:update', stats);
+  const apiKey = store.get('apiKey');
+  if (apiKey) fetchAndSendBalance();
+}
+
 function setupIPC() {
   ipcMain.on('login:submit', async (event, { apiKey }) => {
     try {
       await fetchBalance(apiKey);
       store.set('apiKey', apiKey);
-      startServices();
       if (loginWindow) loginWindow.close();
       if (!mainWindow) createMainWindow();
       else mainWindow.show();
+      startServices();
+      mainWindow.webContents.on('did-finish-load', () => {
+        mainWindow.webContents.send('settings:loaded', store.store);
+        pushInitialStatus();
+      });
     } catch (e) {
       if (loginWindow && !loginWindow.isDestroyed()) {
         event.sender.send('login:error', 'API Key 验证失败: ' + e.message);
@@ -392,6 +417,7 @@ app.whenReady().then(() => {
     startServices();
     mainWindow.webContents.on('did-finish-load', () => {
       mainWindow.webContents.send('settings:loaded', store.store);
+      pushInitialStatus();
     });
   } else {
     createLoginWindow();

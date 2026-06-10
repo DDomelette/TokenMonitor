@@ -50,11 +50,13 @@ window.App = window.App || {};
     });
 
     window.api.on('data:update', function (stats) {
+      window._lastStats = stats;
       window.App.updateFeeCards(null, stats);
       if (stats.models) window.App.updateModelBar(stats.models);
     });
 
     window.api.on('balance:update', function (balance) {
+      window._lastBalance = balance;
       window.App.updateFeeCards(balance, window._lastStats);
     });
 
