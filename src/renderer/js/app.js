@@ -20,6 +20,44 @@ window.App = window.App || {};
     }
   }
 
+  function updateStatusBar(status) {
+    var dot = document.getElementById('statusDot');
+    var text = document.getElementById('statusText');
+    var portSpan = document.getElementById('proxyPort');
+
+    if (status.running) {
+      dot.className = 'status-dot online';
+      text.textContent = '数据连接正常';
+      portSpan.textContent = '平台用量';
+    } else {
+      dot.className = 'status-dot offline';
+      text.textContent = status.error || '未获取数据';
+      portSpan.textContent = '平台用量';
+    }
+  }
+
+  function pollDashboard() {
+    window.api.invoke('get:dashboard').then(function (dashboard) {
+      if (dashboard.stats) {
+        window.App.updateFeeCards(dashboard.balance, dashboard.stats);
+        if (dashboard.stats.models) {
+          window.App.updateModelBar(dashboard.stats.models);
+        }
+      } else if (dashboard.balance) {
+        window.App.updateFeeCards(dashboard.balance, null);
+      }
+      if (dashboard.curveToken && dashboard.curveToken.length > 0) {
+        window.App.updateTokenChart(dashboard.curveToken);
+      }
+      if (dashboard.curveCost && dashboard.curveCost.length > 0) {
+        window.App.updateCostChart(dashboard.curveCost);
+      }
+      if (dashboard.proxyStatus) {
+        updateStatusBar(dashboard.proxyStatus);
+      }
+    }).catch(function () {});
+  }
+
   window.addEventListener('DOMContentLoaded', function () {
     document.getElementById('minimizeBtn').addEventListener('click', function () {
       window.api.send('window:minimize');
@@ -47,45 +85,11 @@ window.App = window.App || {};
 
       window.App.initTokenChart('token-chart');
       window.App.initCostChart('cost-chart');
+
+      setTimeout(pollDashboard, 500);
     });
 
-    window.api.on('data:update', function (stats) {
-      console.log('[renderer] data:update received:', JSON.stringify(stats).slice(0, 200));
-      window._lastStats = stats;
-      window.App.updateFeeCards(null, stats);
-      if (stats.models) window.App.updateModelBar(stats.models);
-    });
-
-    window.api.on('balance:update', function (balance) {
-      console.log('[renderer] balance:update received:', JSON.stringify(balance).slice(0, 200));
-      window._lastBalance = balance;
-      window.App.updateFeeCards(balance, window._lastStats);
-    });
-
-    window.api.on('curve:token', function (data) {
-      window.App.updateTokenChart(data.points);
-    });
-
-    window.api.on('curve:cost', function (data) {
-      window.App.updateCostChart(data.points);
-    });
-
-    window.api.on('proxy:status', function (status) {
-      console.log('[renderer] proxy:status received:', JSON.stringify(status));
-      var dot = document.getElementById('statusDot');
-      var text = document.getElementById('statusText');
-      var portSpan = document.getElementById('proxyPort');
-
-      if (status.running) {
-        dot.className = 'status-dot online';
-        text.textContent = '数据连接正常';
-        portSpan.textContent = '平台用量';
-      } else {
-        dot.className = 'status-dot offline';
-        text.textContent = status.error || '未获取数据';
-        portSpan.textContent = '平台用量';
-      }
-    });
+    setInterval(pollDashboard, 10000);
 
     window.api.on('settings:loaded', function (settings) {
       window._settingsData = settings;

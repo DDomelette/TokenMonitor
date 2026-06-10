@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeTheme, ipcMain, session } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeTheme, ipcMain } = require('electron');
 const path = require('path');
 const store = require('./store');
 const { fetchBalance } = require('./balance');
@@ -14,7 +14,8 @@ let resizeDebounce = null;
 let moveDebounce = null;
 let sessionToken = null;
 let lastUsageStats = null;
-const dataDir = app.getPath('userData');
+let lastBalance = null;
+let proxyStatus = { running: false, port: 0, error: '未获取数据' };
 
 function getWinBounds() {
   const win = store.get('window');
@@ -46,7 +47,6 @@ function createMainWindow() {
 
   mainWindow.setOpacity(store.get('window.opacity') / 100);
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
-  mainWindow.webContents.openDevTools({ mode: 'detach' });
 
   mainWindow.on('close', (e) => {
     mainWindow.hide();
@@ -126,22 +126,14 @@ function createSessionWindow() {
       if (auth.startsWith('Bearer ') && !auth.includes('sk-')) {
         sessionToken = auth.replace('Bearer ', '');
         store.set('sessionToken', sessionToken);
+        proxyStatus = { running: true, port: 0, activeSince: Date.now() };
 
         if (sessionWindow) {
           try { sessionWindow.close(); } catch (e) {}
           sessionWindow = null;
         }
 
-        if (mainWindow) {
-          mainWindow.webContents.send('proxy:status', {
-            running: true,
-            port: 0,
-            activeSince: Date.now()
-          });
-        }
-
         startUsageTimer();
-        fetchAndSendUsage();
       }
     }
     callback({ requestHeaders: details.requestHeaders });
@@ -151,12 +143,8 @@ function createSessionWindow() {
 
   sessionWindow.on('closed', () => {
     sessionWindow = null;
-    if (!sessionToken && mainWindow) {
-      mainWindow.webContents.send('proxy:status', {
-        running: false,
-        port: 0,
-        error: '未登录 DeepSeek 平台'
-      });
+    if (!sessionToken) {
+      proxyStatus = { running: false, port: 0, error: '未登录 DeepSeek 平台' };
     }
   });
 }
@@ -220,47 +208,31 @@ function updateTrayMenu() {
 }
 
 function startBalanceTimer() {
-  console.log('[balance] startBalanceTimer called');
   if (balanceTimer) clearInterval(balanceTimer);
   const apiKey = store.get('apiKey');
-  console.log('[balance] apiKey in timer:', !!apiKey);
   if (!apiKey) return;
 
-  fetchAndSendBalance();
-  balanceTimer = setInterval(fetchAndSendBalance, 5 * 60 * 1000);
+  fetchAndStoreBalance();
+  balanceTimer = setInterval(fetchAndStoreBalance, 5 * 60 * 1000);
 }
 
-async function fetchAndSendBalance() {
-  console.log('[balance] fetchAndSendBalance called');
+async function fetchAndStoreBalance() {
   const apiKey = store.get('apiKey');
-  console.log('[balance] apiKey:', !!apiKey, 'mainWindow:', !!mainWindow);
-  if (!apiKey || !mainWindow) return;
+  if (!apiKey) return;
   try {
-    console.log('[balance] calling fetchBalance...');
     const info = await fetchBalance(apiKey);
-    console.log('[balance] fetchBalance returned:', info ? 'data' : 'null');
-    if (mainWindow && info) {
-      console.log('[balance] sending balance:update IPC, data:', JSON.stringify(info));
-      mainWindow.webContents.send('balance:update', info);
-    setTimeout(() => {
-      mainWindow.webContents.executeJavaScript('document.getElementById("fee-cards").innerHTML.slice(0,200)')
-        .then(html => console.log('[verify] fee-cards HTML:', html))
-        .catch(e => console.error('[verify] check error:', e.message));
-    }, 2000);
-    }
-  } catch (e) {
-    console.error('[balance] fetchBalance error:', e.message);
-  }
+    if (info) lastBalance = info;
+  } catch (e) {}
 }
 
 function startUsageTimer() {
   if (usageTimer) clearInterval(usageTimer);
-  fetchAndSendUsage();
-  usageTimer = setInterval(fetchAndSendUsage, 60 * 1000);
+  fetchAndStoreUsage();
+  usageTimer = setInterval(fetchAndStoreUsage, 60 * 1000);
 }
 
-async function fetchAndSendUsage() {
-  if (!sessionToken || !mainWindow) return;
+async function fetchAndStoreUsage() {
+  if (!sessionToken) return;
 
   const now = new Date();
   const month = now.getMonth() + 1;
@@ -269,44 +241,31 @@ async function fetchAndSendUsage() {
   try {
     const stats = await fetchUsageCost(sessionToken, month, year);
     lastUsageStats = stats;
-    if (mainWindow) {
-      mainWindow.webContents.send('data:update', stats);
-      sendCurveData();
-    }
   } catch (e) {
-    if (mainWindow && e.message.includes('Authorization')) {
+    if (e.message && e.message.includes('Authorization')) {
       sessionToken = null;
       store.delete('sessionToken');
-      mainWindow.webContents.send('proxy:status', {
-        running: false,
-        port: 0,
-        error: '会话已过期，请重新登录'
-      });
+      lastUsageStats = null;
+      proxyStatus = { running: false, port: 0, error: '会话已过期，请重新登录' };
       updateTrayMenu();
     }
   }
 }
 
-function sendCurveData() {
-  if (!lastUsageStats || !mainWindow) return;
+function buildCurvePoints(stats) {
+  if (!stats) return { token: [], cost: [] };
   const now = Date.now();
-  const tokenPoints = [{
-    time: now - 120000, totalTokens: 0, totalCost: 0, deltaTokens: 0, deltaCost: 0
-  }, {
-    time: now - 60000, totalTokens: Math.round(lastUsageStats.totalTokens * 0.3), totalCost: 0, deltaTokens: 0, deltaCost: 0
-  }, {
-    time: now, totalTokens: lastUsageStats.totalTokens, totalCost: lastUsageStats.totalCost, deltaTokens: 0, deltaCost: 0
-  }];
-  const costPoints = [{
-    time: now - 120000, totalTokens: 0, totalCost: 0, deltaTokens: 0, deltaCost: 0
-  }, {
-    time: now - 60000, totalTokens: 0, totalCost: lastUsageStats.totalCost * 0.3, deltaTokens: 0, deltaCost: 0
-  }, {
-    time: now, totalTokens: 0, totalCost: lastUsageStats.totalCost, deltaTokens: 0, deltaCost: 0
-  }];
-
-  mainWindow.webContents.send('curve:token', { points: tokenPoints });
-  mainWindow.webContents.send('curve:cost', { points: costPoints });
+  const tokenPoints = [
+    { time: now - 120000, totalTokens: 0, totalCost: 0, deltaTokens: 0, deltaCost: 0 },
+    { time: now - 60000, totalTokens: Math.round(stats.totalTokens * 0.3), totalCost: 0, deltaTokens: 0, deltaCost: 0 },
+    { time: now, totalTokens: stats.totalTokens, totalCost: stats.totalCost || 0, deltaTokens: 0, deltaCost: 0 }
+  ];
+  const costPoints = [
+    { time: now - 120000, totalTokens: 0, totalCost: 0, deltaTokens: 0, deltaCost: 0 },
+    { time: now - 60000, totalTokens: 0, totalCost: (stats.totalCost || 0) * 0.3, deltaTokens: 0, deltaCost: 0 },
+    { time: now, totalTokens: 0, totalCost: stats.totalCost || 0, deltaTokens: 0, deltaCost: 0 }
+  ];
+  return { token: tokenPoints, cost: costPoints };
 }
 
 function setupIPC() {
@@ -327,6 +286,17 @@ function setupIPC() {
         event.sender.send('login:error', 'API Key 验证失败: ' + e.message);
       }
     }
+  });
+
+  ipcMain.handle('get:dashboard', () => {
+    const curves = buildCurvePoints(lastUsageStats);
+    return {
+      balance: lastBalance,
+      stats: lastUsageStats,
+      proxyStatus: proxyStatus,
+      curveToken: curves.token,
+      curveCost: curves.cost
+    };
   });
 
   ipcMain.on('settings:update', (event, { key, value }) => {
@@ -377,32 +347,18 @@ app.whenReady().then(() => {
   app.setLoginItemSettings({ openAtLogin: store.get('window.autoLaunch') });
 
   const apiKey = store.get('apiKey');
-  console.log('[startup] apiKey present:', !!apiKey);
   if (apiKey) {
-    console.log('[startup] creating mainWindow...');
     createMainWindow();
     mainWindow.webContents.on('did-finish-load', () => {
-      console.log('[startup] did-finish-load fired');
       mainWindow.webContents.send('settings:loaded', store.store);
-      console.log('[startup] calling startBalanceTimer...');
       startBalanceTimer();
 
       sessionToken = store.get('sessionToken');
-      console.log('[startup] sessionToken present:', !!sessionToken);
       if (sessionToken) {
         startUsageTimer();
-        console.log('[startup] sending proxy:status running...');
-        mainWindow.webContents.send('proxy:status', {
-          running: true,
-          port: 0,
-          activeSince: Date.now()
-        });
+        proxyStatus = { running: true, port: 0, activeSince: Date.now() };
       } else {
-        mainWindow.webContents.send('proxy:status', {
-          running: false,
-          port: 0,
-          error: '请登录平台获取用量'
-        });
+        proxyStatus = { running: false, port: 0, error: '请登录平台获取用量' };
         createSessionWindow();
       }
     });
