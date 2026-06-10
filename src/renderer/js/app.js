@@ -79,6 +79,13 @@ window.App = window.App || {};
   }
 
   window.addEventListener('DOMContentLoaded', function () {
+    window.addEventListener('wheel', function (e) {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        window.api.send('zoom:change', { delta: e.deltaY < 0 ? 0.1 : -0.1 });
+      }
+    }, { passive: false });
+
     document.getElementById('minimizeBtn').addEventListener('click', function () {
       window.api.send('window:minimize');
     });

@@ -28,7 +28,8 @@ contextBridge.exposeInMainWorld('api', {
       'window:close',
       'window:close-settings',
       'refresh:dashboard',
-      'open:settings'
+      'open:settings',
+      'zoom:change'
     ];
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data);

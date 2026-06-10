@@ -62,6 +62,8 @@ function createMainWindow() {
 
   mainWindow.setOpacity(store.get('window.opacity') / 100);
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  var savedZoom = store.get('window.zoom');
+  if (savedZoom) mainWindow.webContents.setZoomFactor(savedZoom);
 
   mainWindow.on('close', (e) => {
     if (!app.isQuitting) {
@@ -346,6 +348,7 @@ function setupIPC() {
     if (mainWindow) {
       mainWindow.setOpacity(0.92);
       mainWindow.setAlwaysOnTop(true);
+      mainWindow.webContents.setZoomFactor(1.0);
       mainWindow.webContents.send('settings:loaded', store.store);
     }
   });
@@ -369,6 +372,24 @@ function setupIPC() {
     if (sessionToken) {
       fetchAndStoreUsage();
     }
+  });
+
+  ipcMain.on('zoom:change', (event, { delta }) => {
+    if (!mainWindow) return;
+    var cur = mainWindow.webContents.getZoomFactor();
+    var winW = mainWindow.getBounds().width;
+
+    var minZoom = 0.75;
+    var maxZoom = 0.9 + (winW - 380) / 600;
+    if (maxZoom < 0.9) maxZoom = 0.9;
+    if (maxZoom > 1.8) maxZoom = 1.8;
+
+    var next = Math.round((cur + delta) * 100) / 100;
+    if (next < minZoom) next = minZoom;
+    if (next > maxZoom) next = maxZoom;
+
+    mainWindow.webContents.setZoomFactor(next);
+    store.set('window.zoom', next);
   });
 
   var originalSettingsBtn = true;
