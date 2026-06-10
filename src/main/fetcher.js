@@ -46,7 +46,15 @@ function fetchUsageCost(sessionToken, month, year) {
 
 function fetchUsageAmount(sessionToken, month, year) {
   return httpGet(sessionToken, `/api/v0/usage/amount?month=${month}&year=${year}`)
-    .then(parseTokenData);
+    .then(function (data) {
+      console.log('[amount-raw] top keys:', Object.keys(data).join(','));
+      if (data.data) console.log('[amount-raw] data keys:', Object.keys(data.data).join(','));
+      if (data.data && data.data.biz_data && data.data.biz_data[0]) {
+        console.log('[amount-raw] biz_data[0] keys:', Object.keys(data.data.biz_data[0]).join(','));
+        console.log('[amount-raw] first day sample:', JSON.stringify(data.data.biz_data[0].days ? data.data.biz_data[0].days[0] : 'no days').slice(0, 600));
+      }
+      return parseTokenData(data);
+    });
 }
 
 function sumUsage(usageList) {
