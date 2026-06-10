@@ -156,10 +156,21 @@ function createTray() {
 }
 
 async function toggleProxy() {
-  if (proxyServer && proxyServer.running) {
-    await proxyServer.stop();
-  } else if (proxyServer) {
-    await proxyServer.start();
+  try {
+    if (proxyServer && proxyServer.running) {
+      await proxyServer.stop();
+    } else if (proxyServer) {
+      await proxyServer.start();
+    }
+  } catch (e) {
+    console.error('toggleProxy error:', e.message);
+    if (mainWindow) {
+      mainWindow.webContents.send('proxy:status', {
+        running: false,
+        port: store.get('data.proxyPort') || 7890,
+        error: e.message
+      });
+    }
   }
   updateTrayMenu();
 }

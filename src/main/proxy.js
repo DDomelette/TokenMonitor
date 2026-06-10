@@ -17,6 +17,7 @@ class ProxyServer {
       await new Promise(r => this.server.close(r));
       this.server = null;
       this.running = false;
+      await new Promise(r => setTimeout(r, 200));
     }
 
     return new Promise((resolve, reject) => {
