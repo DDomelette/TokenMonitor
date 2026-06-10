@@ -8,10 +8,14 @@ contextBridge.exposeInMainWorld('api', {
       'curve:token',
       'curve:cost',
       'proxy:status',
-      'settings:loaded'
+      'settings:loaded',
+      'login:error',
+      'open:settings',
+      'theme:changed'
     ];
     if (validChannels.includes(channel)) {
-      ipcRenderer.on(channel, (event, ...args) => callback(...args));
+      const listener = (event, ...args) => callback(...args);
+      ipcRenderer.on(channel, listener);
     }
   },
 
@@ -23,8 +27,7 @@ contextBridge.exposeInMainWorld('api', {
       'proxy:toggle',
       'login:submit',
       'window:minimize',
-      'window:close',
-      'get:settings'
+      'window:close'
     ];
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data);
@@ -36,6 +39,6 @@ contextBridge.exposeInMainWorld('api', {
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args);
     }
-    return Promise.reject(new Error(`Invalid channel: ${channel}`));
+    return Promise.reject(new Error('Invalid channel: ' + channel));
   }
 });

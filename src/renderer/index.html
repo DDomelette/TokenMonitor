@@ -3,10 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline';">
 <title>DeepSeek Monitor</title>
 <link rel="stylesheet" href="css/main.css">
 <link rel="stylesheet" href="css/components.css">
 <link rel="stylesheet" href="css/settings.css">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 </head>
 <body>
 <div id="app">
@@ -62,6 +64,14 @@
     <span id="apiKeyDisplay">--</span>
   </div>
 </div>
+
+<script src="js/charts.js"></script>
+<script src="js/components/fee-cards.js"></script>
+<script src="js/components/model-bar.js"></script>
+<script src="js/components/token-line.js"></script>
+<script src="js/components/cost-line.js"></script>
+<script src="js/components/drag-sort.js"></script>
+<script src="js/settings.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

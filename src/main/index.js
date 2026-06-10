@@ -73,11 +73,12 @@ function createMainWindow() {
 function createLoginWindow() {
   loginWindow = new BrowserWindow({
     width: 400,
-    height: 300,
+    height: 320,
     frame: false,
     transparent: true,
     resizable: false,
     alwaysOnTop: true,
+    center: true,
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'preload.js'),
       contextIsolation: true,
@@ -85,12 +86,20 @@ function createLoginWindow() {
     }
   });
   loginWindow.loadFile(path.join(__dirname, '..', 'renderer', 'login.html'));
+  loginWindow.on('closed', () => {
+    loginWindow = null;
+  });
 }
 
 function createTray() {
   const trayIconPath = path.join(__dirname, '..', 'renderer', 'assets', 'tray-icon.png');
-  tray = new Tray(trayIconPath);
-  tray.setToolTip('DeepSeek Monitor');
+  try {
+    tray = new Tray(trayIconPath);
+    tray.setToolTip('DeepSeek Monitor');
+  } catch (e) {
+    console.error('Failed to create tray:', e.message);
+    return;
+  }
 
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -232,7 +241,9 @@ function setupIPC() {
       if (!mainWindow) createMainWindow();
       else mainWindow.show();
     } catch (e) {
-      event.sender.send('login:error', 'API Key 验证失败: ' + e.message);
+      if (loginWindow && !loginWindow.isDestroyed()) {
+        event.sender.send('login:error', 'API Key 验证失败: ' + e.message);
+      }
     }
   });
 
@@ -370,7 +381,7 @@ function startServices() {
   startPersistTimer();
 }
 
-app.on('ready', () => {
+app.whenReady().then(() => {
   setupIPC();
   createTray();
   app.setLoginItemSettings({ openAtLogin: store.get('window.autoLaunch') });
