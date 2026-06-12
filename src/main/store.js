@@ -1,4 +1,19 @@
 const Store = require('electron-store');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const { app } = require('electron');
+
+function getEncryptionKey() {
+  const keyPath = path.join(app.getPath('userData'), '.key');
+  try {
+    return fs.readFileSync(keyPath, 'utf-8');
+  } catch (e) {
+    const key = crypto.randomBytes(32).toString('hex');
+    fs.writeFileSync(keyPath, key, { mode: 0o600 });
+    return key;
+  }
+}
 
 const defaults = {
   apiKey: '',
@@ -30,7 +45,7 @@ const defaults = {
 
 const store = new Store({
   defaults,
-  encryptionKey: 'token-monitor-local-dev-key'
+  encryptionKey: getEncryptionKey()
 });
 
 module.exports = store;
