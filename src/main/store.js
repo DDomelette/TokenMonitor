@@ -49,7 +49,8 @@ const defaults = {
 
 const store = new Store({
   defaults,
-  encryptionKey: getEncryptionKey()
+  encryptionKey: getEncryptionKey(),
+  clearInvalidConfig: true
 });
 
 module.exports = store;
