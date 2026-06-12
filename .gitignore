@@ -2,3 +2,6 @@ node_modules/
 build/
 dist/
 *.log
+config.json
+history.json
+*.key
