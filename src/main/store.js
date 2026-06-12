@@ -7,8 +7,12 @@ const { app } = require('electron');
 function getEncryptionKey() {
   const keyPath = path.join(app.getPath('userData'), '.key');
   try {
-    return fs.readFileSync(keyPath, 'utf-8');
+    const raw = fs.readFileSync(keyPath, 'utf-8').trim();
+    if (/^[0-9a-f]{64}$/i.test(raw)) return raw;
+    throw new Error('invalid key');
   } catch (e) {
+    const dir = path.dirname(keyPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const key = crypto.randomBytes(32).toString('hex');
     fs.writeFileSync(keyPath, key, { mode: 0o600 });
     return key;
