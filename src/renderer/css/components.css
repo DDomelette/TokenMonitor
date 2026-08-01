@@ -1,46 +1,47 @@
-.cards-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.card {
+.fee-card-surface {
   background: linear-gradient(135deg, rgba(116, 184, 252, 0.04), rgba(149, 202, 255, 0.02));
-  border-radius: var(--radius-card);
-  padding: 12px;
-  border: 1px solid var(--border);
   transition: all 200ms ease-out;
   cursor: default;
 }
 
-.card:hover {
+.fee-card-surface:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-card);
   background: linear-gradient(135deg, rgba(116, 184, 252, 0.08), rgba(149, 202, 255, 0.04));
 }
 
-.card-label {
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin-bottom: 4px;
-  font-weight: 500;
+.fee-card-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
-.card-value {
-  font-size: 22px;
+.fee-card-value-wrap {
+  min-width: 0;
+}
+
+.fee-card-value {
+  font-size: clamp(13px, 16cqw, 30px);
   font-weight: 700;
   line-height: 1.2;
   transition: color 300ms ease-out;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.card-value.primary { color: var(--primary); }
-.card-value.warning { color: var(--warning); }
-.card-value.error { color: var(--error); }
+.fee-card-value.primary { color: var(--primary); }
+.fee-card-value.warning { color: var(--warning); }
+.fee-card-value.error { color: var(--error); }
 
-.card-sub {
+.fee-card-sub {
   font-size: 10px;
   color: var(--text-secondary);
   margin-top: 2px;
+  line-height: 1.35;
 }
 
 .model-bar-item {
