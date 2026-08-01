@@ -7,6 +7,10 @@ const root = path.resolve(__dirname, '..');
 const layoutCss = fs.readFileSync(path.join(root, 'src/renderer/css/layout.css'), 'utf8');
 const componentsCss = fs.readFileSync(path.join(root, 'src/renderer/css/components.css'), 'utf8');
 const mainCss = fs.readFileSync(path.join(root, 'src/renderer/css/main.css'), 'utf8');
+const modelBar = fs.readFileSync(
+  path.join(root, 'src/renderer/js/components/model-bar.js'),
+  'utf8'
+);
 
 test('widget content is a size container so cqw units resolve per widget', () => {
   const rule = layoutCss.match(/\.grid-stack-item-content\s*\{[^}]*\}/);
@@ -53,4 +57,12 @@ test('app root is an inline-size container and statusbar text scales with window
   const statusbar = mainCss.match(/\.statusbar\s*\{[^}]*\}/);
   assert.ok(statusbar);
   assert.match(statusbar[0], /font-size:\s*clamp\([^)]*cqw[^)]*\)/);
+});
+
+test('daily chart density options derive font size from container size', () => {
+  const fn = modelBar.match(/function densityOptions\(theme, compact\) \{[\s\S]*?\n  \}/);
+  assert.ok(fn);
+  assert.match(fn[0], /clientWidth/);
+  assert.match(fn[0], /clamp\(/);
+  assert.doesNotMatch(fn[0], /fontSize:\s*9/);
 });
