@@ -53,9 +53,9 @@ body {
   flex-direction: column;
   background: var(--bg-window);
   border-radius: 18px;
-  clip-path: inset(0 round 18px);
   box-shadow: var(--shadow-window), 0 0 0 1px var(--border);
   overflow: hidden;
+  container-type: inline-size;
 }
 
 body.dark #app {
@@ -81,9 +81,10 @@ body:not(.dark) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 14px;
-  -webkit-app-region: drag;
+  margin-top: 2px;
+  padding: 0 14px 4px;
   flex-shrink: 0;
+  -webkit-app-region: drag;
 }
 
 .titlebar-left {
@@ -136,16 +137,14 @@ body:not(.dark) {
 
 .content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 14px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  padding: 0 14px 24px;
 }
 
 .content::-webkit-scrollbar {
-  width: 4px;
+  width: 10px;
 }
 
 .content::-webkit-scrollbar-track {
@@ -153,8 +152,22 @@ body:not(.dark) {
 }
 
 .content::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+  transition: background 160ms ease-out;
+}
+
+.content:hover::-webkit-scrollbar-thumb,
+.content.is-scrolling::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 2px;
+  background-clip: content-box;
+}
+
+.content::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+  background-clip: content-box;
 }
 
 .statusbar {
@@ -162,7 +175,7 @@ body:not(.dark) {
   align-items: center;
   justify-content: space-between;
   padding: 6px 14px;
-  font-size: 11px;
+  font-size: clamp(10px, 2.8cqw, 12px);
   color: var(--text-secondary);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
@@ -180,15 +193,7 @@ body:not(.dark) {
 .status-dot.offline { background: var(--error); }
 
 .component-wrapper {
-  background: var(--bg-card);
-  border-radius: var(--radius-card);
-  padding: 12px;
-  border: 1px solid var(--border);
-  transition: all 200ms ease-out;
-  min-height: 60px;
-  flex-shrink: 0;
   min-width: 0;
-  position: relative;
 }
 
 .component-wrapper.hidden {
@@ -196,13 +201,13 @@ body:not(.dark) {
 }
 
 .component-title {
-  font-size: 11px;
+  font-size: clamp(10px, 8cqw, 14px);
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
   margin-bottom: 8px;
-  cursor: grab;
+  cursor: default;
   user-select: none;
 }
 
@@ -247,17 +252,28 @@ body:not(.dark) {
 
 .chart-container {
   width: 100%;
-  min-height: 140px;
+  min-height: 160px;
 }
 
-#fee-cards {
-  min-height: 80px;
+.resize-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
 }
-
-#model-bar {
-  min-height: 180px;
+.resize-layer .resize-handle {
+  pointer-events: auto;
 }
-
-#token-line, #cost-line {
-  min-height: 200px;
+.resize-handle {
+  position: fixed;
+  z-index: 9999;
+  -webkit-app-region: no-drag;
 }
+.resize-n { top: 0; left: 20px; right: 20px; height: 6px; cursor: n-resize; }
+.resize-s { bottom: 0; left: 20px; right: 20px; height: 6px; cursor: s-resize; }
+.resize-e { top: 20px; right: 0; bottom: 20px; width: 6px; cursor: e-resize; }
+.resize-w { top: 20px; left: 0; bottom: 20px; width: 6px; cursor: w-resize; }
+.resize-ne { top: 0; right: 0; width: 20px; height: 20px; cursor: ne-resize; }
+.resize-nw { top: 0; left: 0; width: 20px; height: 20px; cursor: nw-resize; }
+.resize-se { bottom: 0; right: 0; width: 20px; height: 20px; cursor: se-resize; }
+.resize-sw { bottom: 0; left: 0; width: 20px; height: 20px; cursor: sw-resize; }

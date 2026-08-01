@@ -38,7 +38,7 @@
 .fee-card-value.error { color: var(--error); }
 
 .fee-card-sub {
-  font-size: 10px;
+  font-size: clamp(9px, 7.5cqw, 12px);
   color: var(--text-secondary);
   margin-top: 2px;
   line-height: 1.35;

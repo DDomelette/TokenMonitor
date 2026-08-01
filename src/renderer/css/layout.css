@@ -82,7 +82,7 @@
 
 .grid-stack-item[data-layout-preset="card"] .component-title {
   margin-bottom: 4px;
-  font-size: 13px;
+  font-size: clamp(10px, 9cqw, 13px);
 }
 
 .grid-stack-item[data-layout-preset="card"] .component-header {
@@ -95,7 +95,7 @@
 }
 
 .grid-stack-item[data-layout-preset="card"] .fee-card-sub {
-  font-size: 12px;
+  font-size: clamp(9px, 8cqw, 12px);
   line-height: 1.4;
   align-self: flex-start;
   text-align: left;
