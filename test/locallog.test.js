@@ -1,0 +1,165 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const { parseRolloutLine } = require('../src/main/providers/codex/locallog');
+const { parseWireLine } = require('../src/main/providers/kimi/locallog');
+const { scanFiles } = require('../src/main/core/locallog');
+
+const codexSample = fs.readFileSync(path.join(__dirname, 'fixtures', 'codex-rollout-sample.jsonl'), 'utf8').trim();
+const kimiSample = fs.readFileSync(path.join(__dirname, 'fixtures', 'kimi-wire-sample.jsonl'), 'utf8').trim();
+
+test('parseRolloutLine maps last_token_usage fields', () => {
+  const rec = parseRolloutLine(codexSample);
+  assert.ok(rec);
+  assert.equal(new Date(rec.ts).toISOString(), '2026-08-02T13:17:43.794Z');
+  assert.equal(rec.usage.input, 125209);
+  assert.equal(rec.usage.cached, 123648);
+  assert.equal(rec.usage.output, 109);
+  assert.equal(rec.usage.reasoning, 11);
+  assert.equal(rec.usage.total, 125318);
+});
+
+test('parseRolloutLine returns null for non token_count / non JSON / garbage', () => {
+  assert.equal(parseRolloutLine('not json'), null);
+  assert.equal(parseRolloutLine(JSON.stringify({ type: 'event_msg', payload: { type: 'other' } })), null);
+  assert.equal(parseRolloutLine(JSON.stringify({ type: 'event_msg', payload: { type: 'token_count', info: {} } })), null);
+  assert.equal(parseRolloutLine(''), null);
+});
+
+test('parseWireLine maps kimi usage fields', () => {
+  const rec = parseWireLine(kimiSample);
+  assert.ok(rec);
+  assert.equal(rec.ts, 1785673474235);
+  assert.equal(rec.model, 'kimi-code/k3-256k');
+  assert.equal(rec.usage.input, 1326);
+  assert.equal(rec.usage.cached, 160512);
+  assert.equal(rec.usage.output, 576);
+});
+
+test('parseWireLine returns null for non usage.record / non JSON', () => {
+  assert.equal(parseWireLine('garbage'), null);
+  assert.equal(parseWireLine(JSON.stringify({ type: 'other', usage: {} })), null);
+  assert.equal(parseWireLine(JSON.stringify({ type: 'usage.record' })), null);
+});
+
+function makeTempDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'dsm-locallog-'));
+}
+
+function makeCursorStore() {
+  const data = {};
+  return {
+    data,
+    get(k) { return data[k]; },
+    set(k, v) { data[k] = v; }
+  };
+}
+
+test('scanFiles reads only new bytes on subsequent scans', () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'rollout-1.jsonl');
+  const cursorStore = makeCursorStore();
+  try {
+    fs.writeFileSync(file, '{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":5,"output_tokens":2,"reasoning_output_tokens":1,"total_tokens":12},"total_token_usage":{}}},"timestamp":"2026-08-02T10:00:00.000Z"}\n');
+
+    const first = scanFiles({
+      root: dir,
+      match: /rollout-.*\.jsonl$/,
+      cursorStore,
+      cursorKey: 'cursor.test',
+      providerId: 'codex',
+      parseLine: parseRolloutLine
+    });
+    assert.equal(first.length, 1);
+    assert.equal(first[0].provider, 'codex');
+    assert.equal(first[0].usage.input, 10);
+
+    // 追加一行,再扫只返回新增
+    fs.appendFileSync(file, '{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":20,"cached_input_tokens":10,"output_tokens":4,"reasoning_output_tokens":2,"total_tokens":24},"total_token_usage":{}}},"timestamp":"2026-08-02T10:01:00.000Z"}\n');
+    const second = scanFiles({
+      root: dir,
+      match: /rollout-.*\.jsonl$/,
+      cursorStore,
+      cursorKey: 'cursor.test',
+      providerId: 'codex',
+      parseLine: parseRolloutLine
+    });
+    assert.equal(second.length, 1);
+    assert.equal(second[0].usage.input, 20);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('scanFiles resets offset when a file is truncated', () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'rollout-2.jsonl');
+  const cursorStore = makeCursorStore();
+  const line = '{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1,"output_tokens":0}}},"timestamp":"2026-08-02T10:00:00.000Z"}\n';
+  const truncated = '{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":99,"output_tokens":0}}},"timestamp":"2026-08-02T11:00:00.000Z"}\n';
+  try {
+    // 初始文件足够长(3 行),确保截断后的单行短于已消费 offset
+    fs.writeFileSync(file, line + line + line);
+    const first = scanFiles({ root: dir, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'c', providerId: 'codex', parseLine: parseRolloutLine });
+    assert.equal(first.length, 3);
+    // 截断成更小的文件 → offset 回退 0,整文件重读
+    fs.writeFileSync(file, truncated);
+    const records = scanFiles({ root: dir, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'c', providerId: 'codex', parseLine: parseRolloutLine });
+    assert.equal(records.length, 1);
+    assert.equal(records[0].usage.input, 99);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('scanFiles skips a partial trailing line until it completes', () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'rollout-3.jsonl');
+  const cursorStore = makeCursorStore();
+  try {
+    fs.writeFileSync(file, '{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1},"total_token_usage":{}}},"timestamp":"2026-08-02T12:00:00.000Z"}\n{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":42');
+    const records = scanFiles({ root: dir, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'c', providerId: 'codex', parseLine: parseRolloutLine });
+    assert.equal(records.length, 1);
+    // 补齐被截断的行后能完整读到
+    fs.appendFileSync(file, '}}},"timestamp":"2026-08-02T12:01:00.000Z"}\n');
+    const more = scanFiles({ root: dir, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'c', providerId: 'codex', parseLine: parseRolloutLine });
+    assert.equal(more.length, 1);
+    assert.equal(more[0].usage.input, 42);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('readLocalLog merges incremental daily rollup into store usageDaily', () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'rollout-4.jsonl');
+  const data = {};
+  const store = {
+    get(k) { return data[k]; },
+    set(k, v) { data[k] = v; }
+  };
+  try {
+    store.set('providers.codex.localLogRoot', dir);
+    const line1 = '{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":50,"output_tokens":10,"total_tokens":160}}},"timestamp":"2026-08-02T10:00:00.000Z"}\n';
+    const line2 = '{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":200,"cached_input_tokens":100,"output_tokens":20,"total_tokens":320}}},"timestamp":"2026-08-02T10:05:00.000Z"}\n';
+    fs.writeFileSync(file, line1);
+    const { readLocalLog } = require('../src/main/providers/codex/locallog');
+    const first = readLocalLog({ store });
+    assert.equal(first.length, 1);
+    // 追加第二行后再次读取:只返回新增,store 聚合按日累加
+    fs.appendFileSync(file, line2);
+    const second = readLocalLog({ store });
+    assert.equal(second.length, 1);
+    const day = new Date(Date.now()).toISOString().slice(0, 10);
+    const key = 'codex:' + day;
+    const agg = store.get('usageDaily')[key];
+    assert.deepEqual(agg, { input: 300, cached: 150, output: 30, total: 480 });
+    // 无新增时返回空
+    assert.equal(readLocalLog({ store }).length, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

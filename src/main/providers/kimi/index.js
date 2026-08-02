@@ -1,6 +1,7 @@
-// Kimi Provider 适配器(accountQuota 通道 + localLog 通道(Task 6 接入))。
+// Kimi Provider 适配器(accountQuota 通道 + localLog 通道)。
 const { fetchQuota } = require('./quota');
 const { readCred, isExpired } = require('./auth');
+const { readLocalLog } = require('./locallog');
 
 module.exports = {
   id: 'kimi',
@@ -14,7 +15,7 @@ module.exports = {
     return 'ok';
   },
 
-  fetchQuota
+  fetchQuota,
 
-  // readLocalLog: Task 6 接入
+  readLocalLog
 };

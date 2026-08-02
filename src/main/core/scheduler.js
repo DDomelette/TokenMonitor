@@ -2,7 +2,7 @@
 // 401/403/expired 类错误 → authStatus='expired' → broadcast('providers:changed', 全量快照)。
 const { httpGet } = require('./http');
 
-const DEFAULT_INTERVALS = { usage: 10 * 1000, quota: 60 * 1000, balance: 60 * 1000 };
+const DEFAULT_INTERVALS = { usage: 10 * 1000, quota: 60 * 1000, balance: 60 * 1000, localLog: 60 * 1000 };
 
 function isAuthError(err) {
   const msg = (err && (err.message || String(err))) || '';
@@ -121,6 +121,17 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange }
     }
   }
 
+  async function pollLocalLog(provider) {
+    try {
+      // readLocalLog 自行增量合并进 store 键 'usageDaily',无需 broadcast(热力图按需读取)。
+      await provider.readLocalLog(ctxFor(provider));
+    } catch (e) {
+      // localLog 失败不改变 authStatus,仅记录
+      const st = states[provider.id];
+      if (st) st.lastError = e && e.message ? e.message : String(e);
+    }
+  }
+
   function schedule(provider, channel, fn, intervalMs) {
     if (!enabled) return;
     runOnce(provider.id, channel, fn);
@@ -142,6 +153,9 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange }
       }
       if (provider.capabilities.quota && typeof provider.fetchQuota === 'function') {
         schedule(provider, 'quota', () => pollQuota(provider), enabled.quota);
+      }
+      if (provider.capabilities.localLog && typeof provider.readLocalLog === 'function') {
+        schedule(provider, 'localLog', () => pollLocalLog(provider), enabled.localLog);
       }
     });
     touch('__all__');

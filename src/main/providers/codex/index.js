@@ -1,6 +1,7 @@
-// Codex Provider 适配器(accountQuota 通道 + localLog 通道(Task 6 接入))。
+// Codex Provider 适配器(accountQuota 通道 + localLog 通道)。
 const { fetchQuota } = require('./quota');
 const { readAuth, tokenExpiryMs } = require('./auth');
+const { readLocalLog } = require('./locallog');
 
 module.exports = {
   id: 'codex',
@@ -15,7 +16,7 @@ module.exports = {
     return 'ok';
   },
 
-  fetchQuota
+  fetchQuota,
 
-  // readLocalLog: Task 6 接入
+  readLocalLog
 };
