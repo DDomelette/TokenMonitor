@@ -12,12 +12,22 @@ function parseProxyUrl(url) {
 // GET JSON。2xx 解析 JSON 并 resolve;401/403 reject 含 "Unauthorized: ... (HTTP xxx)"(供 scheduler 判定 authStatus);
 // 其余非 2xx reject 含状态码与响应体片段。headers 可选,proxyUrl 可选。
 function httpGet(url, headers, proxyUrl) {
+  return requestCore('GET', url, headers, null, proxyUrl);
+}
+
+// POST JSON,返回解析后的 JSON(供 codex refresh_token 等场景)。
+function httpPostJson(url, jsonBody, headers, proxyUrl) {
+  return requestCore('POST', url, headers, JSON.stringify(jsonBody), proxyUrl);
+}
+
+function requestCore(method, url, headers, body, proxyUrl) {
   return new Promise((resolve, reject) => {
     const target = new URL(url);
     const reqHeaders = Object.assign({
       'Accept': 'application/json',
       'User-Agent': 'deepseek-monitor/1.0'
     }, headers || {});
+    if (body) reqHeaders['Content-Type'] = 'application/json';
 
     const doRequest = (socket) => {
       const req = https.request(
@@ -26,26 +36,26 @@ function httpGet(url, headers, proxyUrl) {
             hostname: target.hostname,
             port: target.port || 443,
             path: target.pathname + target.search,
-            method: 'GET',
+            method: method,
             headers: reqHeaders,
             rejectUnauthorized: true
           },
           socket ? { createConnection: () => socket } : {}
         ),
         (res) => {
-          let body = '';
-          res.on('data', (c) => { body += c; });
+          let resBody = '';
+          res.on('data', (c) => { resBody += c; });
           res.on('end', () => {
             if (res.statusCode === 401 || res.statusCode === 403) {
               reject(new Error('Unauthorized: session expired (HTTP ' + res.statusCode + ')'));
               return;
             }
             if (res.statusCode < 200 || res.statusCode >= 300) {
-              reject(new Error('HTTP ' + res.statusCode + ': ' + body.slice(0, 300)));
+              reject(new Error('HTTP ' + res.statusCode + ': ' + resBody.slice(0, 300)));
               return;
             }
             try {
-              resolve(JSON.parse(body));
+              resolve(JSON.parse(resBody));
             } catch (e) {
               reject(new Error('Failed to parse response'));
             }
@@ -54,6 +64,7 @@ function httpGet(url, headers, proxyUrl) {
       );
       req.on('error', reject);
       req.setTimeout(20000, () => { req.destroy(new Error('Request timeout')); });
+      if (body) req.write(body);
       req.end();
     };
 
@@ -83,4 +94,4 @@ function httpGet(url, headers, proxyUrl) {
   });
 }
 
-module.exports = { httpGet, parseProxyUrl };
+module.exports = { httpGet, httpPostJson, parseProxyUrl };
