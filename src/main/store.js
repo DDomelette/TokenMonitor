@@ -83,3 +83,5 @@ function migrateLegacyKeys(storeLike) {
 
 module.exports = store;
 module.exports.migrateLegacyKeys = migrateLegacyKeys;
+// 安全边界函数实现于 core/settings-security.js(无 electron 依赖,便于单测),此处透传
+Object.assign(module.exports, require('./core/settings-security'));

@@ -7,6 +7,7 @@ import { getSettings, send } from '../api.js';
 import { useDashboard, useProviders } from '../store.js';
 import {
   validateState,
+  validateLayout,
   breakpointForWidth,
   nearestPreset
 } from '../grid/policy.js';
@@ -25,11 +26,31 @@ const LABELS = {
 };
 
 const FEE_IDS = ['balance-card', 'today-cost-card', 'cache-rate-card'];
+// 嵌入式板块:quota 卡与热力图也作为 grid item(自带标题,不再渲染 component-title)
+const QUOTA_IDS = ['quota-codex', 'quota-kimi'];
+const EMBED_IDS = QUOTA_IDS.concat(['token-heatmap']);
 
 function WidgetBody({ id }) {
   const dashboard = useDashboard('deepseek');
+  const providers = useProviders();
   if (FEE_IDS.includes(id)) {
     return <FeeCard id={id} balance={dashboard ? dashboard.balance : null} stats={dashboard ? dashboard.stats : null} />;
+  }
+  if (QUOTA_IDS.includes(id)) {
+    const pid = id.slice('quota-'.length);
+    const provider = providers.find((p) => p.id === pid);
+    if (!provider) return <div className="embed-empty">未检测到 {pid} 数据源</div>;
+    return (
+      <QuotaCard
+        provider={provider}
+        quotaState={provider.quota}
+        authStatus={provider.authStatus}
+        onReauthorize={() => send('refresh:dashboard')}
+      />
+    );
+  }
+  if (id === 'token-heatmap') {
+    return <TokenHeatmap />;
   }
   return <ChartWidget id={id} dashboard={dashboard} />;
 }
@@ -42,7 +63,16 @@ export default function Dashboard({ editing }) {
   const [rebuildKey, setRebuildKey] = useState(0);
   const bpRef = useRef(breakpointForWidth(window.innerWidth));
   const providers = useProviders();
-  const quotaProviders = providers.filter((p) => p.capabilities && p.capabilities.quota);
+  const quotaSig = providers.map((p) => p.id).join(',');
+  const quotaSigRef = useRef(quotaSig);
+
+  // quota 数据源上线/下线时重建 grid,让对应板块出现/隐藏
+  useEffect(() => {
+    if (quotaSigRef.current !== quotaSig) {
+      quotaSigRef.current = quotaSig;
+      setRebuildKey((k) => k + 1);
+    }
+  }, [quotaSig]);
 
   useEffect(() => {
     getSettings().then((settings) => {
@@ -71,7 +101,7 @@ export default function Dashboard({ editing }) {
     const bp = bpRef.current;
     const layout = layoutRef.current[bp];
 
-    const grid = GridStack.makeGrid(host, {
+    const grid = GridStack.init({
       column: layout.columns,
       cellHeight: 24,
       margin: 8,
@@ -79,7 +109,7 @@ export default function Dashboard({ editing }) {
       animate: true,
       staticGrid: !editing,
       resizable: { handles: 'e, se, s, sw, w, nw, n, ne' }
-    });
+    }, host);
     gridRef.current = grid;
 
     const onChange = () => {
@@ -119,27 +149,30 @@ export default function Dashboard({ editing }) {
   }, [editing]);
 
   // 布局冻结:仅随 ready/rebuildKey 重建,避免 React 重渲染与 gridstack DOM 冲突
+  // quota 板块只在其数据源存在时渲染 DOM(布局记录仍保留,数据源上线后重建恢复)
   const gridChildren = useMemo(() => {
     if (!ready) return null;
     const layout = layoutRef.current[bpRef.current];
-    return layout.items.map((item) => (
-      <section
-        key={item.id}
-        className={'component-wrapper grid-stack-item ' + (FEE_IDS.includes(item.id) ? 'fee-card-widget' : 'chart-widget')}
-        data-component-id={item.id}
-        data-layout-preset={item.preset}
-        gs-id={item.id}
-        gs-x={item.x}
-        gs-y={item.y}
-        gs-w={item.w}
-        gs-h={item.h}
-      >
-        <div className={'grid-stack-item-content component-surface' + (FEE_IDS.includes(item.id) ? ' fee-card-surface' : '')}>
-          <div className="component-title">{LABELS[item.id] || item.id}</div>
-          <WidgetBody id={item.id} />
-        </div>
-      </section>
-    ));
+    return layout.items
+      .filter((item) => !QUOTA_IDS.includes(item.id) || providers.some((p) => 'quota-' + p.id === item.id))
+      .map((item) => (
+        <section
+          key={item.id}
+          className={'component-wrapper grid-stack-item ' + (FEE_IDS.includes(item.id) ? 'fee-card-widget' : 'chart-widget')}
+          data-component-id={item.id}
+          data-layout-preset={item.preset}
+          gs-id={item.id}
+          gs-x={item.x}
+          gs-y={item.y}
+          gs-w={item.w}
+          gs-h={item.h}
+        >
+          <div className={'grid-stack-item-content component-surface' + (FEE_IDS.includes(item.id) ? ' fee-card-surface' : '') + (EMBED_IDS.includes(item.id) ? ' embed-surface' : '')}>
+            {EMBED_IDS.includes(item.id) ? null : <div className="component-title">{LABELS[item.id] || item.id}</div>}
+            <WidgetBody id={item.id} />
+          </div>
+        </section>
+      ));
   }, [ready, rebuildKey]);
 
   if (!ready) {
@@ -148,24 +181,8 @@ export default function Dashboard({ editing }) {
 
   return (
     <div className="content">
-      {quotaProviders.length > 0 ? (
-        <div className="quota-strip">
-          {quotaProviders.map((p) => (
-            <QuotaCard
-              key={p.id}
-              provider={p}
-              quotaState={p.quota}
-              authStatus={p.authStatus}
-              onReauthorize={() => send('refresh:dashboard')}
-            />
-          ))}
-        </div>
-      ) : null}
       <div className="grid-stack" ref={hostRef}>
         {gridChildren}
-      </div>
-      <div className="heatmap-slot">
-        <TokenHeatmap />
       </div>
     </div>
   );

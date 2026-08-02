@@ -26,5 +26,5 @@ test('React dashboard persists layout edits back through settings:update', () =>
 
 test('React dashboard is driven by the policy registry', () => {
   assert.match(dashboard, /nearestPreset/);
-  assert.match(dashboard, /GridStack\.makeGrid/);
+  assert.match(dashboard, /GridStack\.init\(/);
 });

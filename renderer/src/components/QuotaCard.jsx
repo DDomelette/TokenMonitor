@@ -26,10 +26,13 @@ export default function QuotaCard({ provider, quotaState, authStatus, onReauthor
   }
 
   const windows = quotaState.windows || [];
+  const title = (provider && provider.displayName) || quotaState.planName || '';
+  const planSub = quotaState.planName && quotaState.planName !== title ? quotaState.planName : null;
   return (
     <div className="quota-card">
       <div className="quota-card-head">
-        <span className="quota-card-plan">{quotaState.planName || (provider && provider.displayName) || ''}</span>
+        <span className="quota-card-plan">{title}</span>
+        {planSub ? <span className="quota-card-plan-sub">{planSub}</span> : null}
       </div>
       {windows.map((w) => (
         <WindowBar key={w.kind} kind={w.kind} used={w.used} limit={w.limit} remaining={w.remaining} resetsAt={w.resetsAt} />

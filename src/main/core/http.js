@@ -20,6 +20,14 @@ function httpPostJson(url, jsonBody, headers, proxyUrl) {
   return requestCore('POST', url, headers, JSON.stringify(jsonBody), proxyUrl);
 }
 
+// POST application/x-www-form-urlencoded(kimi OAuth refresh 等场景)。
+function httpPostForm(url, formObj, headers, proxyUrl) {
+  const body = Object.keys(formObj)
+    .map((k) => encodeURIComponent(k) + '=' + encodeURIComponent(formObj[k]))
+    .join('&');
+  return requestCore('POST', url, Object.assign({ 'Content-Type': 'application/x-www-form-urlencoded' }, headers), body, proxyUrl);
+}
+
 function requestCore(method, url, headers, body, proxyUrl) {
   return new Promise((resolve, reject) => {
     const target = new URL(url);
@@ -27,7 +35,7 @@ function requestCore(method, url, headers, body, proxyUrl) {
       'Accept': 'application/json',
       'User-Agent': 'deepseek-monitor/1.0'
     }, headers || {});
-    if (body) reqHeaders['Content-Type'] = 'application/json';
+    if (body && !reqHeaders['Content-Type']) reqHeaders['Content-Type'] = 'application/json';
 
     const doRequest = (socket) => {
       const req = https.request(
@@ -94,4 +102,4 @@ function requestCore(method, url, headers, body, proxyUrl) {
   });
 }
 
-module.exports = { httpGet, httpPostJson, parseProxyUrl };
+module.exports = { httpGet, httpPostJson, httpPostForm, parseProxyUrl };

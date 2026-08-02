@@ -159,7 +159,11 @@ function buildDailyOption(dom, dailyData) {
   const hitData = [];
   const missData = [];
   const completionData = [];
+  // 平台按月返回零填充数据:截掉今天之后的空白天,避免图表尾部大片空白
+  const now = new Date();
+  const todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
   (dailyData || []).forEach((d) => {
+    if (d.date > todayStr) return;
     dates.push(d.date.slice(5));
     hitData.push(d.cacheHit || 0);
     missData.push(d.cacheMiss || 0);
@@ -191,7 +195,10 @@ function buildDailyOption(dom, dailyData) {
       }
     },
     xAxis: Object.assign({ type: 'category', data: dates }, density.xAxis),
-    yAxis: Object.assign({ type: 'value', axisLabel: { color: t.textColor, fontSize: 9, formatter: (v) => formatToken(v) } }, density.yAxis),
+    // density.yAxis.axisLabel 只含 show/fontSize,必须显式合并,否则 formatter 被整体覆盖丢千分位缩写
+    yAxis: Object.assign({ type: 'value' }, density.yAxis, {
+      axisLabel: Object.assign({ color: t.textColor, fontSize: 9, formatter: (v) => formatToken(v) }, density.yAxis.axisLabel)
+    }),
     animation: true,
     series: [
       Object.assign({ name: '输出 Token', type: 'bar', stack: 'total', itemStyle: { borderRadius: [0, 0, 0, 0] }, data: completionData }, density.series && density.series[0]),
@@ -216,7 +223,8 @@ function buildCurveOption(dom, points, config) {
     backgroundColor: theme.backgroundColor,
     textStyle: theme.textStyle,
     grid: density.grid,
-    xAxis: Object.assign({ type: 'category', data: dates }, density.xAxis),
+    // theme.xAxis 自带 data:[],必须把真实日期放在最后合并,否则覆盖为空导致 axis 触发失效、无 x 轴标签
+    xAxis: Object.assign({ type: 'category' }, density.xAxis, { data: dates }),
     yAxis: Object.assign({ type: 'value' }, density.yAxis),
     tooltip: config.tooltip(theme),
     animation: false,
@@ -224,22 +232,30 @@ function buildCurveOption(dom, points, config) {
   };
 }
 
+// 与 model-bar 一致的悬浮窗:加粗日期头 + 圆点行;axisPointer 竖线跟随
+function curveTooltip(theme, formatValue) {
+  return {
+    trigger: 'axis',
+    appendToBody: true,
+    confine: false,
+    axisPointer: { type: 'line' },
+    backgroundColor: theme.tooltip.backgroundColor,
+    borderColor: theme.tooltip.borderColor,
+    textStyle: theme.tooltip.textStyle,
+    formatter: (params) => {
+      const rows = (params || []).map((p) => {
+        return '<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + p.color + '"></span> ' + p.seriesName + ': ' + formatValue(p.value || 0);
+      }).join('<br/>');
+      return '<b>' + (params && params[0] ? params[0].axisValue : '') + '</b><br/>' + rows;
+    }
+  };
+}
+
 const CURVE_CONFIGS = {
   'token-line': {
     totalField: 'totalTokens',
     deltaField: 'deltaTokens',
-    tooltip: (theme) => ({
-      trigger: 'axis',
-      appendToBody: true,
-      confine: false,
-      backgroundColor: theme.tooltip.backgroundColor,
-      borderColor: theme.tooltip.borderColor,
-      textStyle: theme.tooltip.textStyle,
-      formatter: (params) => (params || []).map((p) => {
-        const val = p.value || 0;
-        return '<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + p.color + '"></span> ' + p.seriesName + ': ' + formatToken(val);
-      }).join('<br/>')
-    }),
+    tooltip: (theme) => curveTooltip(theme, formatToken),
     series: (isDark, totalData, deltaData) => [
       {
         name: '累计 Token', type: 'line', smooth: true, showSymbol: false,
@@ -262,18 +278,7 @@ const CURVE_CONFIGS = {
   'cost-line': {
     totalField: 'totalCost',
     deltaField: 'deltaCost',
-    tooltip: (theme) => ({
-      trigger: 'axis',
-      appendToBody: true,
-      confine: false,
-      backgroundColor: theme.tooltip.backgroundColor,
-      borderColor: theme.tooltip.borderColor,
-      textStyle: theme.tooltip.textStyle,
-      formatter: (params) => (params || []).map((p) => {
-        const val = p.value || 0;
-        return '<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + p.color + '"></span> ' + p.seriesName + ': ¥' + val.toFixed(2);
-      }).join('<br/>')
-    }),
+    tooltip: (theme) => curveTooltip(theme, (v) => '¥' + v.toFixed(2)),
     series: (isDark, totalData, deltaData) => [
       {
         name: '累计费用', type: 'line', smooth: true, showSymbol: false,

@@ -59,3 +59,10 @@ test('TitleBar wires refresh / settings / minimize buttons to their IPC channels
 test('preload exposes get:heatmap for the heatmap api', () => {
   assert.match(preload, /'get:heatmap'/);
 });
+
+test('Dashboard imports every policy symbol its grid change handler uses', () => {
+  const dashboard = fs.readFileSync(path.join(root, 'renderer/src/components/Dashboard.jsx'), 'utf8');
+  // onChange 持久化路径依赖 validateLayout,缺失会在拖动网格时抛 ReferenceError
+  assert.match(dashboard, /validateLayout\(bp,/);
+  assert.match(dashboard, /import \{[\s\S]*?validateLayout[\s\S]*?\} from '\.\.\/grid\/policy\.js'/);
+});

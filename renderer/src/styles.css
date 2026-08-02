@@ -118,6 +118,11 @@ body,
   background: rgba(0, 0, 0, 0.06);
 }
 
+.titlebar-btn.active {
+  background: rgba(116, 184, 252, 0.22);
+  color: var(--primary-dark);
+}
+
 .titlebar-btn:hover svg {
   stroke: #1f2329;
 }
@@ -196,14 +201,11 @@ html.is-window-resizing #app {
   touch-action: none;
 }
 
-.grid-stack-item-content {
-  min-height: 100%;
-}
-
+/* gridstack 内容是绝对定位(top/bottom 由 --gs-item-margin-* 撑开),
+   不能再设 height/min-height:100%,否则会覆盖 bottom、向下溢出 8px 顶掉纵向间距 */
 .component-surface {
   display: flex;
   flex-direction: column;
-  height: 100%;
   min-height: 0;
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -273,13 +275,9 @@ html.is-window-resizing #app {
   width: 100%;
 }
 
-/* gridstack 基础覆写:隐藏默认边框,内容占满 */
+/* gridstack 基础覆写:隐藏默认边框,内容占满(margin 由 --gs-item-margin-* 变量生效,勿再 inset:0 覆盖) */
 .grid-stack {
   background: transparent;
-}
-
-.grid-stack > .grid-stack-item > .grid-stack-item-content {
-  inset: 0;
 }
 
 .grid-stack-item-content {
@@ -287,18 +285,28 @@ html.is-window-resizing #app {
 }
 
 /* ======== 订阅制额度卡片 ======== */
-.quota-strip {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
 .quota-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   padding: 8px 10px;
+  font-size: 11px;
+}
+
+/* 嵌入 grid 板块时:外层 component-surface 已提供卡片外观,内层去掉重复边框/底色 */
+.embed-surface .quota-card {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.embed-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
   font-size: 11px;
 }
 
@@ -312,6 +320,11 @@ html.is-window-resizing #app {
 .quota-card-plan {
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.quota-card-plan-sub {
+  font-size: 10px;
+  color: var(--text-secondary);
 }
 
 .quota-window {
@@ -351,6 +364,17 @@ html.is-window-resizing #app {
 .quota-bar-fill.mid { background: var(--warning); }
 .quota-bar-fill.high { background: var(--error); }
 
+/* 剩余为 0:斜纹填满整条,直观表示耗尽 */
+.quota-bar-fill.empty {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--error) 0,
+    var(--error) 6px,
+    rgba(239, 68, 68, 0.2) 6px,
+    rgba(239, 68, 68, 0.2) 12px
+  );
+}
+
 .quota-window-reset {
   margin-top: 4px;
   color: var(--text-secondary);
@@ -385,13 +409,8 @@ html.is-window-resizing #app {
 }
 
 /* ======== Token 活动热力图 ======== */
-.heatmap-slot {
-  margin-top: 12px;
-  padding: 10px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  overflow-x: auto;
+.heatmap-widget {
+  width: 100%;
 }
 
 .heatmap-head {
@@ -495,6 +514,42 @@ html.is-window-resizing #app {
   width: 10px;
   height: 10px;
   border-radius: 2px;
+}
+
+/* 自定义悬停提示:原生 title 在透明窗口不显示 */
+.heatmap-tooltip {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  background: rgba(30, 32, 38, 0.95);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  pointer-events: none;
+  z-index: 10000;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  transition: left 0.12s ease-out, top 0.12s ease-out;
+}
+
+.heatmap-tooltip-date {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.heatmap-tooltip.below {
+  transform: translate(-50%, 0);
+}
+
+.heatmap-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.heatmap-tooltip-label {
+  color: rgba(255, 255, 255, 0.75);
 }
 
 

@@ -28,9 +28,25 @@ test('normalizeWhamUsage maps the synthetic fixture into QuotaState', () => {
   // secondary_window:null 不产生窗口;additional_rate_limits 合并进 windows
   assert.ok(quota.windows.length >= 2);
 
+  // additional_rate_limits 的限额名称必须保留,否则与主周窗口(同为 weekly)无法区分
+  const spark = quota.windows.find((w) => w.name === 'GPT-5.3-Codex-Spark');
+  assert.ok(spark, 'additional rate limit must keep its limit_name');
+  assert.equal(spark.kind, 'weekly');
+
   // credits.has_credits=false → balance 为 null
   assert.equal(quota.balance, null);
   assert.ok(quota.fetchedAt > 0);
+});
+
+// 语义锚点(用户 2026-08-02 在真实账户上核实):端点返回 used_percent=44 时,
+// CLI 显示的是"剩余 44%"。此断言钉住该锚点,防止 remaining/used 被对调。
+test('used_percent=44 means 44 remaining, 56 used (semantic anchor)', () => {
+  const anchored = JSON.parse(JSON.stringify(fixture));
+  anchored.rate_limit.primary_window.used_percent = 44;
+  const quota = normalizeWhamUsage(anchored);
+  const weekly = quota.windows.find((w) => w.kind === 'weekly' && w.name === null);
+  assert.equal(weekly.remaining, 44);
+  assert.equal(weekly.used, 56);
 });
 
 test('normalizeWhamUsage maps credits into balance when has_credits', () => {

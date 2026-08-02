@@ -27,6 +27,13 @@ export function initProviders() {
   refreshProviders();
   onProvidersChanged((snapshot) => {
     providers = Array.isArray(snapshot) ? snapshot : [];
+    // 任何 provider 更新都可能伴随 dashboard 数据变化:重取已缓存的 dashboard,避免停在首帧空数据
+    Object.keys(dashboardCache).forEach((pid) => {
+      apiGetDashboard(pid).then((payload) => {
+        dashboardCache[pid] = payload;
+        emit();
+      }).catch(() => {});
+    });
     emit();
   });
 }

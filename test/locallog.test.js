@@ -133,6 +133,50 @@ test('scanFiles skips a partial trailing line until it completes', () => {
   }
 });
 
+test('scanFiles uses byte offsets so multi-byte content is never re-counted', () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'rollout-utf8.jsonl');
+  const cursorStore = makeCursorStore();
+  const rec = (n) => '{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":' + n + '},"total_token_usage":{}}},"timestamp":"2026-08-02T10:00:00.000Z"}\n';
+  try {
+    // 先写一条含大量中文的行(多字节字符),再写一条记录行
+    fs.writeFileSync(file, '{"type":"message","payload":{"content":"' + '汉'.repeat(200) + '"}}\n' + rec(10));
+    const first = scanFiles({ root: dir, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'c', providerId: 'codex', parseLine: parseRolloutLine });
+    assert.equal(first.length, 1);
+    assert.equal(first[0].usage.input, 10);
+
+    // 追加一条新记录:旧记录不得被重复消费(此前字符数当字节偏移的 bug 会导致重复计数)
+    fs.appendFileSync(file, rec(20));
+    const second = scanFiles({ root: dir, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'c', providerId: 'codex', parseLine: parseRolloutLine });
+    assert.equal(second.length, 1);
+    assert.equal(second[0].usage.input, 20);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('scanFiles resets offset when a rotated file has an older mtime', () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'rollout-rotate.jsonl');
+  const cursorStore = makeCursorStore();
+  const rec = (n) => '{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":' + n + '},"total_token_usage":{}}},"timestamp":"2026-08-02T10:00:00.000Z"}\n';
+  try {
+    fs.writeFileSync(file, rec(1) + rec(2) + rec(3));
+    const first = scanFiles({ root: dir, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'c', providerId: 'codex', parseLine: parseRolloutLine });
+    assert.equal(first.length, 3);
+
+    // 同路径轮换:内容更长(size >= 旧 offset)但 mtime 更早 → 必须从头重读
+    fs.writeFileSync(file, rec(7) + rec(8) + rec(9) + rec(10));
+    const old = new Date(Date.now() - 60 * 60 * 1000);
+    fs.utimesSync(file, old, old);
+    const rotated = scanFiles({ root: dir, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'c', providerId: 'codex', parseLine: parseRolloutLine });
+    assert.equal(rotated.length, 4);
+    assert.equal(rotated[0].usage.input, 7);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('readLocalLog merges incremental daily rollup into store usageDaily', () => {
   const dir = makeTempDir();
   const file = path.join(dir, 'rollout-4.jsonl');

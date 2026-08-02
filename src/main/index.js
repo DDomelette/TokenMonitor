@@ -5,6 +5,8 @@ const store = require('./store');
 const { migrateLegacyKeys } = store;
 const registry = require('./providers/registry');
 const deepseekProvider = require('./providers/deepseek');
+const codexProvider = require('./providers/codex');
+const kimiProvider = require('./providers/kimi');
 const { startScheduler } = require('./core/scheduler');
 const setupIPC = require('./ipc');
 const { captureSession } = require('./providers/deepseek/session');
@@ -69,7 +71,7 @@ function broadcastToWindows(channel, payload) {
 }
 
 function broadcastSettings() {
-  broadcastToWindows('settings:loaded', store.store);
+  broadcastToWindows('settings:loaded', store.sanitizeSettings(store.store));
 }
 
 function broadcastSessionState() {
@@ -98,6 +100,17 @@ function createMainWindow() {
 
   mainWindow.setOpacity(store.get('window.opacity') / 100);
   loadRenderer(mainWindow);
+
+  // 渲染进程异常诊断:加载失败/进程崩溃时写入日志
+  mainWindow.webContents.on('console-message', function (e, level, message) {
+    if (level >= 2) console.error('[renderer:console]', level, message);
+  });
+  mainWindow.webContents.on('did-fail-load', function (e, code, desc) {
+    console.error('[renderer:did-fail-load]', code, desc);
+  });
+  mainWindow.webContents.on('render-process-gone', function (e, details) {
+    console.error('[renderer:gone]', JSON.stringify(details));
+  });
 
   mainWindow.webContents.on('did-finish-load', function () {
     mainWindow.webContents.setZoomFactor(store.get('window.zoomFactor') || 1);
@@ -436,6 +449,8 @@ function startSchedulerRuntime() {
 app.whenReady().then(() => {
   migrateLegacyKeys(store);
   registry.register(deepseekProvider);
+  registry.register(codexProvider);
+  registry.register(kimiProvider);
   startSchedulerRuntime();
 
   setupIPC({
@@ -467,7 +482,7 @@ app.whenReady().then(() => {
   if (apiKey) {
     createMainWindow();
     mainWindow.webContents.on('did-finish-load', () => {
-      mainWindow.webContents.send('settings:loaded', store.store);
+      mainWindow.webContents.send('settings:loaded', store.sanitizeSettings(store.store));
       scheduler.poll('deepseek', 'balance');
 
       runtime.sessionToken = store.get('providers.deepseek.sessionToken') || null;

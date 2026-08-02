@@ -3,6 +3,50 @@
 
 const components = [
   {
+    id: 'quota-codex',
+    label: 'Codex 额度',
+    settingsKey: 'components.quotaCodex',
+    defaultVisible: true,
+    presets: {
+      compact: [
+        { name: 'full', w: 12, h: 7 },
+        { name: 'half', w: 6, h: 7 },
+        { name: 'tall', w: 12, h: 9 }
+      ],
+      wide: [
+        { name: 'full', w: 12, h: 7 },
+        { name: 'half', w: 6, h: 7 },
+        { name: 'tall', w: 12, h: 9 }
+      ]
+    },
+    defaultPlacement: {
+      compact: { x: 0, y: 0, w: 12, h: 7, preset: 'full' },
+      wide: { x: 0, y: 0, w: 12, h: 7, preset: 'full' }
+    }
+  },
+  {
+    id: 'quota-kimi',
+    label: 'Kimi 额度',
+    settingsKey: 'components.quotaKimi',
+    defaultVisible: true,
+    presets: {
+      compact: [
+        { name: 'full', w: 12, h: 7 },
+        { name: 'half', w: 6, h: 7 },
+        { name: 'tall', w: 12, h: 9 }
+      ],
+      wide: [
+        { name: 'full', w: 12, h: 7 },
+        { name: 'half', w: 6, h: 7 },
+        { name: 'tall', w: 12, h: 9 }
+      ]
+    },
+    defaultPlacement: {
+      compact: { x: 0, y: 7, w: 12, h: 7, preset: 'full' },
+      wide: { x: 0, y: 7, w: 12, h: 7, preset: 'full' }
+    }
+  },
+  {
     id: 'balance-card',
     label: '余额',
     settingsKey: 'components.balanceCard',
@@ -19,8 +63,8 @@ const components = [
       ]
     },
     defaultPlacement: {
-      compact: { x: 0, y: 0, w: 4, h: 4, preset: 'card' },
-      wide: { x: 0, y: 0, w: 4, h: 4, preset: 'card' }
+      compact: { x: 0, y: 14, w: 4, h: 4, preset: 'card' },
+      wide: { x: 0, y: 14, w: 4, h: 4, preset: 'card' }
     }
   },
   {
@@ -40,8 +84,8 @@ const components = [
       ]
     },
     defaultPlacement: {
-      compact: { x: 4, y: 0, w: 4, h: 4, preset: 'card' },
-      wide: { x: 4, y: 0, w: 4, h: 4, preset: 'card' }
+      compact: { x: 4, y: 14, w: 4, h: 4, preset: 'card' },
+      wide: { x: 4, y: 14, w: 4, h: 4, preset: 'card' }
     }
   },
   {
@@ -61,8 +105,8 @@ const components = [
       ]
     },
     defaultPlacement: {
-      compact: { x: 8, y: 0, w: 4, h: 4, preset: 'card' },
-      wide: { x: 8, y: 0, w: 4, h: 4, preset: 'card' }
+      compact: { x: 8, y: 14, w: 4, h: 4, preset: 'card' },
+      wide: { x: 8, y: 14, w: 4, h: 4, preset: 'card' }
     }
   },
   {
@@ -85,8 +129,8 @@ const components = [
       ]
     },
     defaultPlacement: {
-      compact: { x: 0, y: 4, w: 12, h: 6, preset: 'full' },
-      wide: { x: 0, y: 4, w: 12, h: 6, preset: 'full' }
+      compact: { x: 0, y: 18, w: 12, h: 6, preset: 'full' },
+      wide: { x: 0, y: 18, w: 12, h: 6, preset: 'full' }
     }
   },
   {
@@ -109,8 +153,8 @@ const components = [
       ]
     },
     defaultPlacement: {
-      compact: { x: 0, y: 13, w: 12, h: 6, preset: 'full' },
-      wide: { x: 0, y: 13, w: 12, h: 6, preset: 'full' }
+      compact: { x: 0, y: 24, w: 12, h: 6, preset: 'full' },
+      wide: { x: 0, y: 24, w: 12, h: 6, preset: 'full' }
     }
   },
   {
@@ -133,8 +177,30 @@ const components = [
       ]
     },
     defaultPlacement: {
-      compact: { x: 0, y: 22, w: 12, h: 6, preset: 'full' },
-      wide: { x: 0, y: 22, w: 12, h: 6, preset: 'full' }
+      compact: { x: 0, y: 30, w: 12, h: 6, preset: 'full' },
+      wide: { x: 0, y: 30, w: 12, h: 6, preset: 'full' }
+    }
+  },
+  {
+    id: 'token-heatmap',
+    label: 'Token 活动',
+    settingsKey: 'components.tokenHeatmap',
+    defaultVisible: true,
+    presets: {
+      compact: [
+        { name: 'full', w: 12, h: 10 },
+        { name: 'half', w: 6, h: 11 },
+        { name: 'tall', w: 12, h: 12 }
+      ],
+      wide: [
+        { name: 'full', w: 12, h: 10 },
+        { name: 'half', w: 6, h: 11 },
+        { name: 'tall', w: 12, h: 12 }
+      ]
+    },
+    defaultPlacement: {
+      compact: { x: 0, y: 36, w: 12, h: 10, preset: 'full' },
+      wide: { x: 0, y: 36, w: 12, h: 10, preset: 'full' }
     }
   }
 ];

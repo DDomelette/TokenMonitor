@@ -2,7 +2,7 @@
 // registry 数据源为同目录 components.js;gridstack 渲染层(React)只消费本模块的纯函数结果。
 import * as registry from './components.js';
 
-export const VERSION = 3;
+export const VERSION = 7;
 export const BREAKPOINT_WIDTH = 640;
 
 function clone(value) {
@@ -221,8 +221,18 @@ export function migrate(settings) {
   const order = requested.filter(function (id, index) {
     return available.indexOf(id) !== -1 && requested.indexOf(id) === index;
   });
+  // 缺失组件(新增板块)按注册表顺序插回对应位置,而不是一律追加到末尾
   available.forEach(function (id) {
-    if (order.indexOf(id) === -1) order.push(id);
+    if (order.indexOf(id) !== -1) return;
+    const registryIndex = available.indexOf(id);
+    let insertAt = order.length;
+    for (let i = 0; i < order.length; i += 1) {
+      if (available.indexOf(order[i]) > registryIndex) {
+        insertAt = i;
+        break;
+      }
+    }
+    order.splice(insertAt, 0, id);
   });
 
   const compactColumns = columnsForBreakpoint('compact');

@@ -10,7 +10,8 @@ function windowKind(seconds) {
 }
 
 // used_percent 语义(用户已核实):即"剩余百分比"。limit 归一为 100。
-function mapWindow(w) {
+// name 保留限额名称(如 additional_rate_limits 的 "GPT-5.3-Codex-Spark"),主窗口为 null。
+function mapWindow(w, name) {
   const remaining = Number(w.used_percent) || 0;
   const limit = 100;
   let resetsAt = null;
@@ -19,6 +20,7 @@ function mapWindow(w) {
   else resetsAt = Date.now();
   return {
     kind: windowKind(Number(w.limit_window_seconds)),
+    name: name || null,
     used: Math.max(0, limit - remaining),
     limit: limit,
     remaining: remaining,
@@ -26,7 +28,7 @@ function mapWindow(w) {
   };
 }
 
-// 归一化 wham/usage 响应(纯函数)。处理 secondary_window:null、additional_rate_limits[] 合并进 windows。
+// 归一化 wham/usage 响应(纯函数)。处理 secondary_window:null、additional_rate_limits[] 合并进 windows(保留 limit_name)。
 function normalizeWhamUsage(data) {
   const windows = [];
   const rate = data && data.rate_limit;
@@ -34,7 +36,7 @@ function normalizeWhamUsage(data) {
   if (rate && rate.secondary_window) windows.push(mapWindow(rate.secondary_window));
   ((data && data.additional_rate_limits) || []).forEach(function (limit) {
     if (limit && limit.rate_limit && limit.rate_limit.primary_window) {
-      windows.push(mapWindow(limit.rate_limit.primary_window));
+      windows.push(mapWindow(limit.rate_limit.primary_window, limit.limit_name));
     }
   });
 

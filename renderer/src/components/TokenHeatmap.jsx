@@ -1,6 +1,6 @@
 // GitHub 风格 Token 活动热力图:每日(53×7)/每周(53 列 1 行)/累计(高度条)三模式。
 // 颜色用主题 primary(#74B8FC)的 5 档透明度;hover tooltip 显示日期与用量。
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getHeatmap } from '../api.js';
 import { buildWeeks, colorLevel, formatToken, isoWeekKey } from '../lib/heatmap.js';
 
@@ -14,24 +14,53 @@ const PROVIDER_OPTS = [
   { id: 'kimi', label: 'Kimi' }
 ];
 
-function tooltipText(date, total) {
+function dateLabel(date) {
   const d = new Date(date + 'T00:00:00');
-  const label = (d.getMonth() + 1) + '月' + d.getDate() + '日';
-  return total > 0 ? (label + ' 使用了 ' + formatToken(total) + ' 个 Token') : (label + ' 无消耗');
+  return (d.getMonth() + 1) + '月' + d.getDate() + '日';
 }
 
 export default function TokenHeatmap({ provider = 'all', year = new Date().getFullYear() }) {
   const [selProvider, setSelProvider] = useState(provider);
   const [mode, setMode] = useState('daily');
   const [data, setData] = useState({ days: {}, maxDaily: 0 });
+  const [boxWidth, setBoxWidth] = useState(0);
+  const [tip, setTip] = useState(null);
+  const rootRef = useRef(null);
 
   useEffect(() => {
     getHeatmap({ provider: selProvider, year: year }).then(setData).catch(() => {});
   }, [selProvider, year]);
 
+  // 以容器宽度为准(grid 内板块可被拖窄),而不是窗口宽度
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const update = () => setBoxWidth(el.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const weeks = useMemo(() => buildWeeks(year), [year]);
   const days = data.days || {};
   const maxDaily = data.maxDaily || 0;
+
+  // 自适应容器宽度:只保留最近若干周(结尾对齐本周);宽度足够时显示全年
+  const colWidth = mode === 'weekly' ? CELL + GAP + 6 : CELL + GAP;
+  const availWidth = boxWidth > 0 ? boxWidth - 4 : window.innerWidth - 52;
+  const maxCols = Math.max(4, Math.floor(availWidth / colWidth));
+  const todayCol = useMemo(() => {
+    const now = new Date();
+    const iso = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+    for (let c = 0; c < weeks.length; c++) {
+      if (weeks[c].some((cell) => cell && cell.date === iso)) return c;
+    }
+    return weeks.length - 1;
+  }, [weeks]);
+  const end = maxCols >= weeks.length ? weeks.length : Math.min(weeks.length, todayCol + 1);
+  const start = maxCols >= weeks.length ? 0 : Math.max(0, end - maxCols);
+  const visibleWeeks = useMemo(() => weeks.slice(start, end), [weeks, start, end]);
 
   // 月份标签:每月 1 日所在列显示 'M月'
   const monthLabels = useMemo(() => {
@@ -81,11 +110,59 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
     return null;
   }
 
+  // 自定义悬停提示(原生 title 在透明窗口不显示;内容:日期 + 平台/模型明细)
+  const clampTipX = (x) => Math.max(104, Math.min(window.innerWidth - 104, x));
+  const showTip = (e, date, overrideLines) => {
+    if (!date) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const below = r.top < 140;
+    setTip({
+      // 浮层最宽约 200px:钳制中心点,防止右/左边缘被窗口裁掉
+      x: clampTipX(r.left + r.width / 2),
+      y: below ? r.bottom + 6 : r.top - 6,
+      below: below,
+      date: date,
+      overrideLines: overrideLines || null
+    });
+  };
+  // 格子内跟随鼠标横移,配合 CSS transition 在格子间平滑滑动
+  const moveTip = (e) => {
+    setTip((prev) => (prev ? Object.assign({}, prev, { x: clampTipX(e.clientX) }) : prev));
+  };
+  const hideTip = () => setTip(null);
+
+  function tipLines(date) {
+    const det = data.details || {};
+    const byProvider = det.byProvider || {};
+    const cachedByProvider = det.cachedByProvider || {};
+    const total = Number(days[date]) || 0;
+    const lines = [];
+    const cachedSuffix = (pid) => {
+      const c = cachedByProvider[pid] && Number(cachedByProvider[pid][date]);
+      return c > 0 ? '（缓存 ' + formatToken(c) + '）' : '';
+    };
+    if (selProvider === 'all') {
+      PROVIDER_OPTS.filter((p) => p.id !== 'all').forEach((p) => {
+        const t = byProvider[p.id] && Number(byProvider[p.id][date]);
+        if (t > 0) lines.push({ label: p.label, value: formatToken(t) + ' Token' + cachedSuffix(p.id) });
+      });
+    } else if (selProvider === 'deepseek') {
+      if (total > 0) lines.push({ label: 'DeepSeek 合计', value: formatToken(total) + ' Token' + cachedSuffix('deepseek') });
+      ((det.deepseekModels || {})[date] || []).forEach((m) => {
+        if (m.tokens > 0) lines.push({ label: m.model, value: formatToken(m.tokens) + ' Token' });
+      });
+    } else {
+      const p = PROVIDER_OPTS.find((o) => o.id === selProvider);
+      if (total > 0) lines.push({ label: p ? p.label : selProvider, value: formatToken(total) + ' Token' + cachedSuffix(selProvider) });
+    }
+    return lines;
+  }
+
   function renderDaily() {
     return (
       <div className="heatmap-grid heatmap-grid-daily">
-        {weeks.map((col, c) => (
-          <div className="heatmap-col" key={c}>
+        {visibleWeeks.map((col, i) => (
+          <div className="heatmap-col" key={start + i}>
             {col.map((cell, r) => {
               const total = cell && days[cell.date] ? Number(days[cell.date]) : 0;
               const level = colorLevel(total, maxDaily);
@@ -97,7 +174,13 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
                   : 'rgba(0,0,0,0.04)'
               };
               return cell ? (
-                <div key={r} className="heatmap-cell" style={style} title={tooltipText(cell.date, total)} />
+                <div
+                  key={r}
+                  className="heatmap-cell"
+                  style={style}
+                  onMouseEnter={(e) => showTip(e, cell.date)}
+                  onMouseMove={moveTip} onMouseLeave={hideTip}
+                />
               ) : <div key={r} style={{ width: CELL, height: CELL }} />;
             })}
           </div>
@@ -109,7 +192,8 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
   function renderWeekly() {
     return (
       <div className="heatmap-grid heatmap-grid-weekly">
-        {weeks.map((col, c) => {
+        {visibleWeeks.map((col, i) => {
+          const c = start + i;
           const date = lastInYearDate(c);
           const total = date && weekTotals[isoWeekKey(new Date(date + 'T00:00:00'))] ? weekTotals[isoWeekKey(new Date(date + 'T00:00:00'))] : 0;
           const level = colorLevel(total, maxWeek);
@@ -122,7 +206,8 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
                 height: CELL + 6,
                 background: 'rgba(116,184,252,' + LEVEL_ALPHA[level] + ')'
               }}
-              title={date ? (tooltipText(date, total) + '（该周）') : ''}
+              onMouseEnter={(e) => showTip(e, date)}
+              onMouseMove={moveTip} onMouseLeave={hideTip}
             />
           );
         })}
@@ -133,7 +218,8 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
   function renderCumulative() {
     return (
       <div className="heatmap-grid heatmap-grid-cumulative">
-        {weeks.map((col, c) => {
+        {visibleWeeks.map((col, i) => {
+          const c = start + i;
           const date = lastInYearDate(c);
           const cum = date && cumByDate[date] ? cumByDate[date] : 0;
           const height = maxCum > 0 ? Math.max(2, Math.round((cum / maxCum) * 60)) : 2;
@@ -142,7 +228,8 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
               key={c}
               className="heatmap-cum-bar"
               style={{ height: height, background: 'rgba(116,184,252,0.55)' }}
-              title={date ? (tooltipText(date, cum) + '（累计）') : ''}
+              onMouseEnter={(e) => showTip(e, date, cum > 0 ? [{ label: '累计消耗', value: formatToken(cum) + ' Token' }] : null)}
+              onMouseMove={moveTip} onMouseLeave={hideTip}
             />
           );
         })}
@@ -152,16 +239,19 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
 
   const monthRow = (
     <div className="heatmap-months">
-      {weeks.map((col, c) => (
-        <div key={c} className="heatmap-month-cell" style={{ width: CELL + (mode === 'daily' ? GAP : GAP + 6) }}>
-          {monthLabels[c] || ''}
-        </div>
-      ))}
+      {visibleWeeks.map((col, i) => {
+        const c = start + i;
+        return (
+          <div key={c} className="heatmap-month-cell" style={{ width: CELL + (mode === 'daily' ? GAP : GAP + 6) }}>
+            {monthLabels[c] || ''}
+          </div>
+        );
+      })}
     </div>
   );
 
   return (
-    <div className="heatmap-widget">
+    <div className="heatmap-widget" ref={rootRef}>
       <div className="heatmap-head">
         <span className="heatmap-title">Token 活动</span>
         <div className="heatmap-providers">
@@ -195,6 +285,18 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
         ))}
         <span>多</span>
       </div>
+      {tip ? (
+        <div className={'heatmap-tooltip' + (tip.below ? ' below' : '')} style={{ left: tip.x, top: tip.y }}>
+          <div className="heatmap-tooltip-date">{dateLabel(tip.date)}</div>
+          {(tip.overrideLines || tipLines(tip.date)).map((l, i) => (
+            <div key={i} className="heatmap-tooltip-row">
+              <span className="heatmap-tooltip-label">{l.label}</span>
+              <span className="heatmap-tooltip-value">{l.value}</span>
+            </div>
+          ))}
+          {!(tip.overrideLines || tipLines(tip.date)).length ? <div className="heatmap-tooltip-row">无消耗</div> : null}
+        </div>
+      ) : null}
     </div>
   );
 }

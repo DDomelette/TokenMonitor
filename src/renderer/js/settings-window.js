@@ -29,7 +29,7 @@
     btn.textContent = loggedIn ? '重新登录平台' : '登录平台获取用量';
   }
 
-  function render(def, val) {
+  function render(def, val, placeholder) {
     var v = val !== undefined ? val : def.default;
     switch (def.type) {
       case 'toggle':
@@ -39,7 +39,7 @@
       case 'select':
         return '<select class="select-input" data-key="' + def.key + '">' + def.options.map(function (o) { return '<option value="' + o.value + '" ' + (String(v) === String(o.value) ? 'selected' : '') + '>' + o.label + '</option>'; }).join('') + '</select>';
       case 'password':
-        return '<input type="password" class="text-input" data-key="' + def.key + '" value="' + v + '">';
+        return '<input type="password" class="text-input" data-key="' + def.key + '" value="' + v + '"' + (placeholder ? ' placeholder="' + placeholder + '"' : '') + '>';
       default:
         return '';
     }
@@ -54,7 +54,13 @@
     var html = '';
     Object.keys(groups).forEach(function (g) {
       html += '<div class="settings-section"><div class="settings-section-title">' + g + '</div>' +
-        groups[g].map(function (d) { return '<div class="setting-row' + (d.type === 'slider' ? ' vertical' : '') + '"><div><span class="setting-label">' + d.label + '</span></div>' + render(d, getNested(settings, d.key)) + '</div>'; }).join('') + '</div>';
+        groups[g].map(function (d) {
+          var placeholder = '';
+          if (d.key === 'apiKey' && settings.providers && settings.providers.deepseek && settings.providers.deepseek.apiKeySet) {
+            placeholder = '已保存,输入新 Key 以更换';
+          }
+          return '<div class="setting-row' + (d.type === 'slider' ? ' vertical' : '') + '"><div><span class="setting-label">' + d.label + '</span></div>' + render(d, getNested(settings, d.key), placeholder) + '</div>';
+        }).join('') + '</div>';
     });
     return html;
   }
@@ -62,7 +68,10 @@
   function bindEvents() {
     document.getElementById('settingsCloseBtn').addEventListener('click', function () { window.api.send('window:close-settings'); });
     document.getElementById('settingsDoneBtn').addEventListener('click', function () { window.api.send('window:close-settings'); });
-    document.getElementById('resetBtn').addEventListener('click', function () { window.api.send('settings:reset'); });
+    document.getElementById('resetBtn').addEventListener('click', function () {
+      if (!window.confirm('确定要重置外观与布局设置吗?\nAPI Key、平台登录与用量数据都会保留。')) return;
+      window.api.send('settings:reset');
+    });
 
     var reloginBtn = document.getElementById('sessionReloginBtn');
     if (reloginBtn) {

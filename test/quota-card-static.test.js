@@ -40,12 +40,13 @@ test('QuotaCard replaces card with reauthorize button when authStatus is expired
   assert.match(quotaCard, /重新授权/);
 });
 
-test('WindowBar consumes used/limit/remaining/resetsAt and colors by percent', () => {
+test('WindowBar consumes used/limit/remaining/resetsAt and colors by remaining percent', () => {
   assert.match(windowBar, /used/);
   assert.match(windowBar, /limit/);
   assert.match(windowBar, /remaining/);
   assert.match(windowBar, /resetsAt/);
-  // 着色三档:绿 <70% / 橙 <90% / 红 ≥90%
-  assert.match(windowBar, /70/);
-  assert.match(windowBar, /90/);
+  // 条长与着色都按剩余占比:>40% 绿 / 20~40% 黄 / ≤20% 红,耗尽时斜纹整条
+  assert.match(windowBar, /40/);
+  assert.match(windowBar, /20/);
+  assert.match(windowBar, /empty/);
 });

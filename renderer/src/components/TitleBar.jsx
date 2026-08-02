@@ -3,7 +3,7 @@
 import React from 'react';
 import { send } from '../api.js';
 
-export default function TitleBar({ onToggleLayoutEdit }) {
+export default function TitleBar({ editing, onToggleLayoutEdit }) {
   return (
     <div className="titlebar">
       <div className="titlebar-left">
@@ -17,7 +17,7 @@ export default function TitleBar({ onToggleLayoutEdit }) {
         <button className="titlebar-btn" title="设置" onClick={() => send('open:settings')}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="#5b6372"><path d="M7.5 1a6.5 6.5 0 0 1 5.91 9.08l2.25 2.25a.75.75 0 1 1-1.06 1.06l-2.25-2.25A6.5 6.5 0 1 1 7.5 1zm0 1.5a5 5 0 1 0 0 10 5 5 0 0 0 0-10z" /><circle cx="7.5" cy="7.5" r="2.5" /></svg>
         </button>
-        <button className="titlebar-btn" title="编辑布局" aria-label="编辑布局" aria-pressed="false" onClick={onToggleLayoutEdit}>
+        <button className={'titlebar-btn' + (editing ? ' active' : '')} title="编辑布局" aria-label="编辑布局" aria-pressed={editing ? 'true' : 'false'} onClick={onToggleLayoutEdit}>
           <span className="layout-edit-icon" aria-hidden="true">▦</span>
         </button>
         <button className="titlebar-btn" title="最小化" onClick={() => send('window:minimize')}>

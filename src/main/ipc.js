@@ -2,6 +2,7 @@
 // 依赖由 index.js 注入(deps),窗口创建/生命周期仍留在 index.js。
 const { ipcMain, BrowserWindow } = require('electron');
 const { buildHeatmap } = require('./core/heatmap');
+const { sanitizeSettings, isWritableSettingKey, resolveWritableSettingKey } = require('./core/settings-security');
 
 function deepseekApiKeyCtx(deps, apiKey) {
   return {
@@ -62,7 +63,7 @@ module.exports = function setupIPC(deps) {
       const win = getMain();
       if (win && !win.webContents.isDestroyed()) {
         win.webContents.on('did-finish-load', () => {
-          win.webContents.send('settings:loaded', deps.store.store);
+          win.webContents.send('settings:loaded', sanitizeSettings(deps.store.store));
           deps.scheduler.poll('deepseek', 'balance');
           deps.createSessionWindow();
         });
@@ -91,6 +92,7 @@ module.exports = function setupIPC(deps) {
     // codex/kimi:store 键 'usageDaily' 的扁平聚合 { '<provider>:<date>': { ..., total } }
     const usageDaily = deps.store.get('usageDaily') || {};
     const byProvider = {};
+    const cachedByProvider = {};
     Object.keys(usageDaily).forEach((key) => {
       const idx = key.indexOf(':');
       if (idx <= 0) return;
@@ -100,6 +102,11 @@ module.exports = function setupIPC(deps) {
       if (total <= 0) return;
       byProvider[pid] = byProvider[pid] || {};
       byProvider[pid][date] = (byProvider[pid][date] || 0) + total;
+      const cached = Number(usageDaily[key] && usageDaily[key].cached) || 0;
+      if (cached > 0) {
+        cachedByProvider[pid] = cachedByProvider[pid] || {};
+        cachedByProvider[pid][date] = (cachedByProvider[pid][date] || 0) + cached;
+      }
     });
     // deepseek:日数据来自 webUsage dailyData(total 字段)
     const ds = deps.scheduler.getState('deepseek');
@@ -109,25 +116,58 @@ module.exports = function setupIPC(deps) {
         if (!d || !d.date) return;
         const total = Number(d.total) || 0;
         if (total > 0) byProvider.deepseek[d.date] = (byProvider.deepseek[d.date] || 0) + total;
+        const cached = Number(d.cacheHit) || 0;
+        if (cached > 0) {
+          cachedByProvider.deepseek = cachedByProvider.deepseek || {};
+          cachedByProvider.deepseek[d.date] = (cachedByProvider.deepseek[d.date] || 0) + cached;
+        }
       });
     }
-    return buildHeatmap(byProvider, provider || 'all', year || new Date().getFullYear());
+    const result = buildHeatmap(byProvider, provider || 'all', year || new Date().getFullYear());
+    // 悬停明细:各平台当日总量与缓存占比 + deepseek 当日模型分布(dailyData[].models 由 usage 解析器产出)
+    const deepseekModels = {};
+    if (ds && ds.usage && ds.usage.amount && Array.isArray(ds.usage.amount.dailyData)) {
+      ds.usage.amount.dailyData.forEach((d) => {
+        if (!d || !d.date || !Array.isArray(d.models) || !d.models.length) return;
+        deepseekModels[d.date] = d.models.map((m) => ({ model: m.model, tokens: m.tokens }));
+      });
+    }
+    result.details = { byProvider: byProvider, cachedByProvider: cachedByProvider, deepseekModels: deepseekModels };
+    return result;
   });
 
   /* ======== Settings ======== */
 
   ipcMain.on('settings:update', (event, { key, value }) => {
-    deps.store.set(key, value);
-    deps.applySetting(key, value);
+    if (!isWritableSettingKey(key)) {
+      console.warn('[settings] rejected non-whitelisted settings:update key:', key);
+      return;
+    }
+    const targetKey = resolveWritableSettingKey(key);
+    deps.store.set(targetKey, value);
+    deps.applySetting(targetKey, value);
     deps.broadcastSettings();
   });
 
   ipcMain.handle('get:settings', () => {
-    return deps.store.store;
+    return sanitizeSettings(deps.store.store);
   });
 
   ipcMain.on('settings:reset', () => {
+    // 只重置外观/布局,凭证与用量数据必须保留(防止误点清空登录状态)
+    const KEEP_KEYS = [
+      'providers.deepseek.apiKey',
+      'providers.deepseek.sessionToken',
+      'providers.proxyUrl',
+      'usageDaily'
+    ];
+    const kept = {};
+    KEEP_KEYS.forEach((k) => { kept[k] = deps.store.get(k); });
     deps.store.clear();
+    KEEP_KEYS.forEach((k) => {
+      if (kept[k] !== undefined && kept[k] !== '' && kept[k] !== null) deps.store.set(k, kept[k]);
+    });
+    console.log('[settings] reset done (credentials preserved)');
     if (getMain()) {
       getMain().setOpacity(0.92);
       getMain().setAlwaysOnTop(true);

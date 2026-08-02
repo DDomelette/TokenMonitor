@@ -27,7 +27,7 @@ export default function App() {
     <>
       <ResizeHandles />
       <div id="app">
-        <TitleBar onToggleLayoutEdit={() => setEditing((e) => !e)} />
+        <TitleBar editing={editing} onToggleLayoutEdit={() => setEditing((e) => !e)} />
         <Dashboard editing={editing} />
         <StatusBar />
       </div>

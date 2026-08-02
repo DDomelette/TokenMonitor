@@ -41,6 +41,6 @@ test('TokenHeatmap renders 53x7 grid with daily/weekly/cumulative tabs and toolt
   assert.match(heatmapJsx, /每日/);
   assert.match(heatmapJsx, /每周/);
   assert.match(heatmapJsx, /累计/);
-  assert.match(heatmapJsx, /个 Token/);
+  assert.match(heatmapJsx, /heatmap-tooltip/);
   assert.match(heatmapJsx, /getHeatmap/);
 });

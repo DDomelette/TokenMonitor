@@ -28,6 +28,18 @@ test('default compact layout keeps stat cards as square tiles above full-width c
   const byId = Object.fromEntries(compact.items.map((item) => [item.id, item]));
 
   assert.equal(compact.columns, 12);
+  // 订阅额度卡置顶,统计卡紧随其后,图表与热力图依次排下
+  assert.deepEqual(
+    ['quota-codex', 'quota-kimi'].map((id) => ({
+      x: byId[id].x,
+      y: byId[id].y,
+      w: byId[id].w
+    })),
+    [
+      { x: 0, y: 0, w: 12 },
+      { x: 0, y: 7, w: 12 }
+    ]
+  );
   assert.deepEqual(
     ['balance-card', 'today-cost-card', 'cache-rate-card'].map((id) => ({
       x: byId[id].x,
@@ -36,14 +48,15 @@ test('default compact layout keeps stat cards as square tiles above full-width c
       h: byId[id].h
     })),
     [
-      { x: 0, y: 0, w: 4, h: 4 },
-      { x: 4, y: 0, w: 4, h: 4 },
-      { x: 8, y: 0, w: 4, h: 4 }
+      { x: 0, y: 14, w: 4, h: 4 },
+      { x: 4, y: 14, w: 4, h: 4 },
+      { x: 8, y: 14, w: 4, h: 4 }
     ]
   );
   assert.deepEqual(
-    ['model-bar', 'token-line', 'cost-line'].map((id) => ({ x: byId[id].x, w: byId[id].w })),
+    ['model-bar', 'token-line', 'cost-line', 'token-heatmap'].map((id) => ({ x: byId[id].x, w: byId[id].w })),
     [
+      { x: 0, w: 12 },
       { x: 0, w: 12 },
       { x: 0, w: 12 },
       { x: 0, w: 12 }
@@ -59,6 +72,7 @@ test('migration rebuilds default compact layout with stat cards in a row', () =>
 
   assert.equal(migrated.version, policy.VERSION);
   assert.equal(migrated.compact.columns, 12);
+  // 旧 componentOrder 不含新增板块:quota 卡按注册表顺序插到统计卡之前
   assert.deepEqual(
     ['balance-card', 'today-cost-card', 'cache-rate-card'].map((id) => ({
       x: byId[id].x,
@@ -67,9 +81,9 @@ test('migration rebuilds default compact layout with stat cards in a row', () =>
       h: byId[id].h
     })),
     [
-      { x: 0, y: 0, w: 4, h: 4 },
-      { x: 4, y: 0, w: 4, h: 4 },
-      { x: 8, y: 0, w: 4, h: 4 }
+      { x: 0, y: 14, w: 4, h: 4 },
+      { x: 4, y: 14, w: 4, h: 4 },
+      { x: 8, y: 14, w: 4, h: 4 }
     ]
   );
 });
@@ -92,15 +106,15 @@ test('migration preserves compact component order', () => {
 
   assert.deepEqual(
     migrated.compact.items.map((item) => item.id),
-    ['cost-line', 'balance-card', 'today-cost-card', 'cache-rate-card', 'model-bar', 'token-line']
+    ['quota-codex', 'quota-kimi', 'cost-line', 'balance-card', 'today-cost-card', 'cache-rate-card', 'model-bar', 'token-line', 'token-heatmap']
   );
   assert.deepEqual(
     migrated.compact.items.map((item) => item.y),
-    [0, 6, 6, 6, 10, 16]
+    [0, 7, 14, 20, 20, 20, 24, 30, 36]
   );
   assert.deepEqual(
     migrated.compact.items.map((item) => item.x),
-    [0, 0, 4, 8, 0, 0]
+    [0, 0, 0, 0, 4, 8, 0, 0, 0]
   );
 });
 
@@ -116,9 +130,9 @@ test('validation removes unknown and duplicate ids but restores missing records'
 
   assert.deepEqual(
     result.items.map((item) => item.id).sort(),
-    ['balance-card', 'cache-rate-card', 'cost-line', 'model-bar', 'today-cost-card', 'token-line']
+    ['balance-card', 'cache-rate-card', 'cost-line', 'model-bar', 'quota-codex', 'quota-kimi', 'today-cost-card', 'token-heatmap', 'token-line']
   );
-  assert.equal(new Set(result.items.map((item) => item.id)).size, 6);
+  assert.equal(new Set(result.items.map((item) => item.id)).size, 9);
 });
 
 test('validation commits legal preset geometry and resolves overlap', () => {

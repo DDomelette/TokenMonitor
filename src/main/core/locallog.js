@@ -27,7 +27,8 @@ function walkFiles(root, match) {
 }
 
 // 增量扫描:只读自上次 offset 起的新字节。游标存 { path: { offset, mtimeMs } }(store 键 cursorKey)。
-// 文件截断/轮换(stat.size < offset)→ offset 回退 0。末尾无换行的不完整行不消费,等补齐后再读。
+// 文件截断(stat.size < offset)或轮换(mtime 变小)→ offset 回退 0。末尾无换行的不完整行不消费,等补齐后再读。
+// 注意:offset 是字节偏移,消费长度必须按 Buffer.byteLength 计算,不能按字符数。
 // 返回 UsageRecord[] 行记录(带 provider 标记)。
 function scanFiles({ root, match, cursorStore, cursorKey, providerId, parseLine }) {
   const records = [];
@@ -42,7 +43,8 @@ function scanFiles({ root, match, cursorStore, cursorKey, providerId, parseLine 
     try { stat = fs.statSync(filePath); } catch (e) { return; }
 
     let offset = cursor.offset || 0;
-    if (stat.size < offset) offset = 0; // 截断/轮换
+    // 截断(文件变小)或轮换(mtime 回退)→ 从头重读
+    if (stat.size < offset || (cursor.mtimeMs && stat.mtimeMs < cursor.mtimeMs)) offset = 0;
 
     if (stat.size <= offset) {
       cursors[filePath] = { offset: offset, mtimeMs: stat.mtimeMs };
@@ -55,7 +57,7 @@ function scanFiles({ root, match, cursorStore, cursorKey, providerId, parseLine 
     fs.closeSync(fd);
 
     const text = buf.toString('utf8');
-    let consumed = text.length;
+    let consumText = text;
     if (!text.endsWith('\n')) {
       const lastNl = text.lastIndexOf('\n');
       if (lastNl === -1) {
@@ -63,16 +65,18 @@ function scanFiles({ root, match, cursorStore, cursorKey, providerId, parseLine 
         cursors[filePath] = { offset: offset, mtimeMs: stat.mtimeMs };
         return;
       }
-      consumed = lastNl + 1;
+      consumText = text.slice(0, lastNl + 1);
     }
+    // '\n' 是单字节,不会落在多字节字符中间,前缀的 UTF-8 字节数即精确消费偏移
+    const consumedBytes = Buffer.byteLength(consumText, 'utf8');
 
-    text.slice(0, consumed).split('\n').forEach((line) => {
+    consumText.split('\n').forEach((line) => {
       if (!line) return;
       const rec = parseLine(line);
       if (rec) records.push(Object.assign({ provider: providerId }, rec));
     });
 
-    cursors[filePath] = { offset: offset + consumed, mtimeMs: stat.mtimeMs };
+    cursors[filePath] = { offset: offset + consumedBytes, mtimeMs: stat.mtimeMs };
   });
 
   Object.keys(cursors).forEach((p) => {
