@@ -166,3 +166,124 @@ html.is-window-resizing #app {
   box-shadow: none;
 }
 
+/* ======== CSS 变量(从旧 main.css 平移) ======== */
+:root {
+  --primary: #74B8FC;
+  --primary-light: #95CAFF;
+  --primary-dark: #5A9FE0;
+  --bg-window: rgba(255, 255, 255, 0.92);
+  --bg-window-dark: rgba(30, 32, 38, 0.92);
+  --bg-card: #F8F9FC;
+  --bg-card-dark: #252730;
+  --text-primary: #1A1A2E;
+  --text-secondary: #6B7280;
+  --text-inverse: #FFFFFF;
+  --border: #E5E7EB;
+  --border-dark: #3A3C45;
+  --success: #22C55E;
+  --warning: #F59E0B;
+  --error: #EF4444;
+  --radius-window: 16px;
+  --radius-card: 12px;
+  --radius-btn: 8px;
+  --radius-input: 8px;
+  --shadow-window: 0 4px 24px rgba(0, 0, 0, 0.08);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* ======== 仪表盘组件 ======== */
+.component-wrapper {
+  touch-action: none;
+}
+
+.grid-stack-item-content {
+  min-height: 100%;
+}
+
+.component-surface {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 8px 10px;
+  overflow: hidden;
+  container-type: inline-size;
+}
+
+.component-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+
+.fee-card-surface {
+  background: linear-gradient(135deg, rgba(116, 184, 252, 0.04), rgba(149, 202, 255, 0.02));
+  transition: all 200ms ease-out;
+  cursor: default;
+}
+
+.fee-card-surface:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card);
+  background: linear-gradient(135deg, rgba(116, 184, 252, 0.08), rgba(149, 202, 255, 0.04));
+}
+
+.fee-card-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.fee-card-value-wrap {
+  min-width: 0;
+}
+
+.fee-card-value {
+  font-size: clamp(13px, 16cqw, 30px);
+  font-weight: 700;
+  line-height: 1.2;
+  transition: color 300ms ease-out;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fee-card-value.primary { color: var(--primary); }
+.fee-card-value.warning { color: var(--warning); }
+.fee-card-value.error { color: var(--error); }
+
+.fee-card-sub {
+  font-size: clamp(9px, 7.5cqw, 12px);
+  color: var(--text-secondary);
+  margin-top: 2px;
+  line-height: 1.35;
+}
+
+.chart-container {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+/* gridstack 基础覆写:隐藏默认边框,内容占满 */
+.grid-stack {
+  background: transparent;
+}
+
+.grid-stack > .grid-stack-item > .grid-stack-item-content {
+  inset: 0;
+}
+
+.grid-stack-item-content {
+  overflow: hidden;
+}
+
+

@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const policy = require('../src/renderer/js/layout/layout-policy');
+const policy = require('../renderer/src/grid/policy.js');
 
 test('639 is compact and 640 is wide', () => {
   assert.equal(policy.breakpointForWidth(639), 'compact');
