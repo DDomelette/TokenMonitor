@@ -1,6 +1,7 @@
 // 主进程 IPC 模块:全部 ipcMain 处理器 + 缩放状态机。
 // 依赖由 index.js 注入(deps),窗口创建/生命周期仍留在 index.js。
 const { ipcMain, BrowserWindow } = require('electron');
+const { buildHeatmap } = require('./core/heatmap');
 
 function deepseekApiKeyCtx(deps, apiKey) {
   return {
@@ -81,6 +82,36 @@ module.exports = function setupIPC(deps) {
 
   ipcMain.handle('get:providers', () => {
     return deps.scheduler.getSnapshot();
+  });
+
+  /* ======== Heatmap ======== */
+
+  ipcMain.handle('get:heatmap', (event, arg) => {
+    const { provider, year } = arg || {};
+    // codex/kimi:store 键 'usageDaily' 的扁平聚合 { '<provider>:<date>': { ..., total } }
+    const usageDaily = deps.store.get('usageDaily') || {};
+    const byProvider = {};
+    Object.keys(usageDaily).forEach((key) => {
+      const idx = key.indexOf(':');
+      if (idx <= 0) return;
+      const pid = key.slice(0, idx);
+      const date = key.slice(idx + 1);
+      const total = Number(usageDaily[key] && usageDaily[key].total) || 0;
+      if (total <= 0) return;
+      byProvider[pid] = byProvider[pid] || {};
+      byProvider[pid][date] = (byProvider[pid][date] || 0) + total;
+    });
+    // deepseek:日数据来自 webUsage dailyData(total 字段)
+    const ds = deps.scheduler.getState('deepseek');
+    if (ds && ds.usage && ds.usage.amount && Array.isArray(ds.usage.amount.dailyData)) {
+      byProvider.deepseek = byProvider.deepseek || {};
+      ds.usage.amount.dailyData.forEach((d) => {
+        if (!d || !d.date) return;
+        const total = Number(d.total) || 0;
+        if (total > 0) byProvider.deepseek[d.date] = (byProvider.deepseek[d.date] || 0) + total;
+      });
+    }
+    return buildHeatmap(byProvider, provider || 'all', year || new Date().getFullYear());
   });
 
   /* ======== Settings ======== */
