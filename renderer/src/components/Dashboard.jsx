@@ -13,6 +13,7 @@ import {
 import FeeCard from './FeeCard.jsx';
 import ChartWidget from './ChartWidget.jsx';
 import QuotaCard from './QuotaCard.jsx';
+import TokenHeatmap from './TokenHeatmap.jsx';
 
 const LABELS = {
   'balance-card': '余额',
@@ -162,6 +163,9 @@ export default function Dashboard({ editing }) {
       ) : null}
       <div className="grid-stack" ref={hostRef}>
         {gridChildren}
+      </div>
+      <div className="heatmap-slot">
+        <TokenHeatmap />
       </div>
     </div>
   );

@@ -384,5 +384,119 @@ html.is-window-resizing #app {
   color: var(--text-secondary);
 }
 
+/* ======== Token 活动热力图 ======== */
+.heatmap-slot {
+  margin-top: 12px;
+  padding: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  overflow-x: auto;
+}
+
+.heatmap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.heatmap-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.heatmap-providers,
+.heatmap-modes {
+  display: flex;
+  gap: 4px;
+}
+
+.heatmap-tab {
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.heatmap-tab.active {
+  background: rgba(116, 184, 252, 0.16);
+  color: var(--primary-dark);
+  font-weight: 600;
+}
+
+.heatmap-modes {
+  margin-bottom: 8px;
+}
+
+.heatmap-local-only {
+  font-size: 10px;
+  color: var(--warning);
+  margin-left: 6px;
+  align-self: center;
+}
+
+.heatmap-grid {
+  display: flex;
+  gap: 2px;
+}
+
+.heatmap-grid-daily .heatmap-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.heatmap-cell {
+  border-radius: 2px;
+}
+
+.heatmap-grid-weekly {
+  width: max-content;
+}
+
+.heatmap-grid-cumulative {
+  align-items: flex-end;
+  height: 62px;
+}
+
+.heatmap-cum-bar {
+  width: 14px;
+  border-radius: 2px 2px 0 0;
+}
+
+.heatmap-months {
+  display: flex;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.heatmap-month-cell {
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.heatmap-legend-cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+
 
 
