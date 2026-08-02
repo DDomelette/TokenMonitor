@@ -1,25 +1,21 @@
 import React from 'react';
+import ResizeHandles from './components/ResizeHandles.jsx';
+import TitleBar from './components/TitleBar.jsx';
+import StatusBar from './components/StatusBar.jsx';
+import { initProviders } from './store.js';
 
-const EDGES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
+initProviders();
 
 export default function App() {
   return (
     <>
-      <div className="resize-layer">
-        {EDGES.map((edge) => (
-          <div key={edge} className={`resize-handle resize-${edge}`} />
-        ))}
-      </div>
+      <ResizeHandles />
       <div id="app">
-        <div className="titlebar">
-          <div className="titlebar-left">
-            <span className="titlebar-logo"> </span>
-            <span className="titlebar-text">DeepSeek Monitor v2</span>
-          </div>
-        </div>
+        <TitleBar />
         <div className="content">
           <div className="placeholder">渲染层迁移中…</div>
         </div>
+        <StatusBar />
       </div>
     </>
   );

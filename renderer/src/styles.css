@@ -92,3 +92,77 @@ body,
   color: #8a919f;
   font-size: 13px;
 }
+
+/* ======== 标题栏按钮 ======== */
+.titlebar-actions {
+  display: flex;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: #5b6372;
+  cursor: pointer;
+  padding: 0;
+}
+
+.titlebar-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.titlebar-btn:hover svg {
+  stroke: #1f2329;
+}
+
+.layout-edit-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* ======== 状态栏 ======== */
+.statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: #8a919f;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  display: inline-block;
+}
+
+.status-dot.online {
+  background: #22c55e;
+}
+
+.status-dot.offline {
+  background: #ef4444;
+}
+
+/* ======== 拖动缩放期间:实心直角渲染(掩盖透明窗口帧竞态) ======== */
+html.is-window-resizing body {
+  background: #FFFFFF;
+  border-radius: 0;
+}
+
+html.is-window-resizing #app {
+  border-radius: 0;
+  box-shadow: none;
+}
+
