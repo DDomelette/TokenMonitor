@@ -2,7 +2,7 @@ const { app, BrowserWindow, Tray, Menu, nativeTheme, ipcMain } = require('electr
 const path = require('path');
 const store = require('./store');
 const { fetchBalance } = require('./balance');
-const { fetchUsageCost, fetchUsageAmount } = require('./fetcher');
+const { fetchUsageWithFallback, localTodayStr } = require('./fetcher');
 
 let mainWindow = null;
 let loginWindow = null;
@@ -14,9 +14,12 @@ let usageTimer = null;
 let resizeDebounce = null;
 let moveDebounce = null;
 let sessionToken = null;
+let sessionReopenPending = false;
 let lastUsageStats = null;
 let lastBalance = null;
 let proxyStatus = { running: false, port: 0, error: '未获取数据' };
+let mainResizeState = null;
+let settingsResizeState = null;
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -42,6 +45,28 @@ function getWinBounds() {
   };
 }
 
+function sendMainWindowBounds() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.webContents.isDestroyed()) return;
+  if (mainResizeState) return;
+  mainWindow.webContents.send('window:bounds-changed', mainWindow.getBounds());
+}
+
+function broadcastSettings() {
+  [mainWindow, settingsWindow].forEach(function (win) {
+    if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
+    win.webContents.send('settings:loaded', store.store);
+  });
+}
+
+function broadcastSessionState() {
+  var payload = { loggedIn: !!sessionToken, error: proxyStatus.error || null };
+  [mainWindow, settingsWindow].forEach(function (win) {
+    if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
+    win.webContents.send('session:changed', payload);
+  });
+}
+
 function createMainWindow() {
   const bounds = getWinBounds();
   mainWindow = new BrowserWindow({
@@ -50,7 +75,7 @@ function createMainWindow() {
     transparent: true,
     backgroundColor: '#00000000',
     alwaysOnTop: store.get('window.alwaysOnTop'),
-    resizable: true,
+    resizable: false,
     minWidth: 380,
     minHeight: 200,
     skipTaskbar: true,
@@ -63,42 +88,31 @@ function createMainWindow() {
 
   mainWindow.setOpacity(store.get('window.opacity') / 100);
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
-  var savedZoom = store.get('window.zoom');
-  if (savedZoom) mainWindow.webContents.setZoomFactor(savedZoom);
 
-  mainWindow.on('close', (e) => {
+  mainWindow.webContents.on('did-finish-load', function () {
+    mainWindow.webContents.setZoomFactor(store.get('window.zoomFactor') || 1);
+  });
+
+  mainWindow.on('close', function (e) {
     if (!app.isQuitting) {
       mainWindow.hide();
       e.preventDefault();
     }
   });
 
-  mainWindow.on('resize', () => {
-    var [w, h] = mainWindow.getSize();
-
-    var zoom = mainWindow.webContents.getZoomFactor();
-    var maxZoom = 0.9 + (w - 380) / 600;
-    if (maxZoom < 0.9) maxZoom = 0.9;
-    if (zoom > maxZoom) {
-      mainWindow.webContents.setZoomFactor(maxZoom);
-    }
-
-    clearTimeout(resizeDebounce);
-    resizeDebounce = setTimeout(function () {
-      store.set('window.width', w);
-      store.set('window.height', h);
-      var z = mainWindow.webContents.getZoomFactor();
-      store.set('window.zoom', z);
+  mainWindow.on('move', function () {
+    if (mainResizeState) return;
+    sendMainWindowBounds();
+    clearTimeout(moveDebounce);
+    moveDebounce = setTimeout(function () {
+      var pos = mainWindow.getPosition();
+      store.set('window.x', pos[0]);
+      store.set('window.y', pos[1]);
     }, 300);
   });
 
-  mainWindow.on('move', () => {
-    clearTimeout(moveDebounce);
-    moveDebounce = setTimeout(() => {
-      const [x, y] = mainWindow.getPosition();
-      store.set('window.x', x);
-      store.set('window.y', y);
-    }, 300);
+  mainWindow.on('resize', function () {
+    sendMainWindowBounds();
   });
 
   nativeTheme.on('updated', () => {
@@ -130,6 +144,7 @@ function createLoginWindow() {
 }
 
 function createSessionWindow() {
+  console.log('[session] createSessionWindow called, sessionToken:', sessionToken ? 'present' : 'none');
   if (sessionWindow) {
     try { sessionWindow.close(); } catch (e) {}
     sessionWindow = null;
@@ -155,7 +170,9 @@ function createSessionWindow() {
       const auth = details.requestHeaders['authorization'];
       if (auth.startsWith('Bearer ') && !auth.includes('sk-')) {
         sessionToken = auth.replace('Bearer ', '');
+        sessionReopenPending = false;
         store.set('sessionToken', sessionToken);
+        broadcastSessionState();
         proxyStatus = { running: true, port: 0, activeSince: Date.now() };
 
         if (sessionWindow) {
@@ -176,6 +193,7 @@ function createSessionWindow() {
     if (!sessionToken) {
       proxyStatus = { running: false, port: 0, error: '未登录 DeepSeek 平台' };
     }
+    broadcastSessionState();
   });
 }
 
@@ -255,9 +273,36 @@ async function fetchAndStoreBalance() {
   } catch (e) {}
 }
 
+function debugDumpUsageRaw() {
+  if (!sessionToken) return;
+  const https = require('https');
+  [7, 8].forEach(function (month) {
+    var req = https.request({
+      hostname: 'platform.deepseek.com',
+      path: '/api/v0/usage/cost?month=' + month + '&year=2026',
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + sessionToken,
+        'Accept': 'application/json',
+        'x-app-version': '1.0.0'
+      }
+    }, function (res) {
+      var body = '';
+      res.on('data', function (c) { body += c; });
+      res.on('end', function () {
+        console.log('[raw] month=' + month + ' status=' + res.statusCode + ' body[:600]=' + body.slice(0, 600));
+      });
+    });
+    req.on('error', function (e) { console.error('[raw] month=' + month + ' error: ' + e.message); });
+    req.setTimeout(15000, function () { req.destroy(); });
+    req.end();
+  });
+}
+
 function startUsageTimer() {
   if (usageTimer) clearInterval(usageTimer);
   fetchAndStoreUsage();
+  debugDumpUsageRaw();
   usageTimer = setInterval(fetchAndStoreUsage, 60 * 1000);
 }
 
@@ -269,8 +314,17 @@ async function fetchAndStoreUsage() {
   const year = now.getFullYear();
 
   try {
-    var costData = await fetchUsageCost(sessionToken, month, year);
-    var amountData = await fetchUsageAmount(sessionToken, month, year);
+    var usageResult = await fetchUsageWithFallback(sessionToken, month, year);
+    var costData = usageResult.cost;
+    var amountData = usageResult.amount;
+    if (usageResult.fellBack) {
+      console.log('[usage] current month (' + month + '/' + year + ') empty, showing ' + usageResult.month + '/' + usageResult.year);
+    }
+    console.log('[usage] cost total=' + costData.aggregate.totalCost +
+      ' token total=' + amountData.aggregate.totalTokens +
+      ' today=' + localTodayStr());
+    console.log('[usage] last cost days: ' + JSON.stringify(costData.dailyData.slice(-3).map(function (d) { return { date: d.date, total: d.total }; })));
+    console.log('[usage] last token days: ' + JSON.stringify(amountData.dailyData.slice(-3).map(function (d) { return { date: d.date, total: d.total }; })));
     lastUsageStats = {
       cost: costData.aggregate,
       token: amountData.aggregate,
@@ -278,12 +332,19 @@ async function fetchAndStoreUsage() {
       tokenDaily: amountData.dailyData
     };
   } catch (e) {
-    if (e.message && e.message.includes('Authorization')) {
+    console.error('[usage] fetch failed:', e && e.message);
+    if (e.message && /unauthoriz|authorization|401|403|登录|expired|invalid token/i.test(e.message)) {
       sessionToken = null;
       store.delete('sessionToken');
       lastUsageStats = null;
       proxyStatus = { running: false, port: 0, error: '会话已过期，请重新登录' };
       updateTrayMenu();
+      broadcastSessionState();
+      if (!sessionReopenPending) {
+        sessionReopenPending = true;
+        console.log('[session] expired, reopening platform login window');
+        createSessionWindow();
+      }
     }
   }
 }
@@ -291,7 +352,7 @@ async function fetchAndStoreUsage() {
 function buildCurvePoints(stats) {
   var tokenPoints = [];
   var costPoints = [];
-  var todayStr = new Date().toISOString().slice(0, 10);
+  var todayStr = localTodayStr();
 
   if (stats && stats.tokenDaily) {
     var cumToken = 0;
@@ -312,6 +373,59 @@ function buildCurvePoints(stats) {
   }
 
   return { token: tokenPoints, cost: costPoints };
+}
+
+function persistMainWindowBounds() {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+
+  var bounds = mainWindow.getBounds();
+
+  store.set('window.width', bounds.width);
+  store.set('window.height', bounds.height);
+  store.set('window.x', bounds.x);
+  store.set('window.y', bounds.y);
+
+  return bounds;
+}
+
+function normalizeMainBounds(bounds) {
+  var current = mainWindow.getBounds();
+
+  function finite(value, fallback) {
+    var num = Number(value);
+    return Number.isFinite(num) ? Math.round(num) : fallback;
+  }
+
+  function clamp(value, min, max) {
+    if (value < min) return min;
+    if (value > max) return max;
+    return value;
+  }
+
+  var width = clamp(finite(bounds && bounds.width, current.width), 380, 2400);
+  var height = clamp(finite(bounds && bounds.height, current.height), 200, 1600);
+  var edge = bounds && typeof bounds.edge === 'string' ? bounds.edge : '';
+  var x = current.x;
+  var y = current.y;
+
+  if (edge.indexOf('w') !== -1) {
+    x = current.x + current.width - width;
+  } else if (!edge) {
+    x = finite(bounds && bounds.x, current.x);
+  }
+
+  if (edge.indexOf('n') !== -1) {
+    y = current.y + current.height - height;
+  } else if (!edge) {
+    y = finite(bounds && bounds.y, current.y);
+  }
+
+  return {
+    x: x,
+    y: y,
+    width: width,
+    height: height
+  };
 }
 
 function setupIPC() {
@@ -348,6 +462,7 @@ function setupIPC() {
   ipcMain.on('settings:update', (event, { key, value }) => {
     store.set(key, value);
     applySetting(key, value);
+    broadcastSettings();
   });
 
   ipcMain.handle('get:settings', () => {
@@ -359,13 +474,59 @@ function setupIPC() {
     if (mainWindow) {
       mainWindow.setOpacity(0.92);
       mainWindow.setAlwaysOnTop(true);
-      mainWindow.webContents.setZoomFactor(1.0);
-      mainWindow.webContents.send('settings:loaded', store.store);
     }
+    broadcastSettings();
+  });
+
+  ipcMain.handle('get:bounds', () => {
+    if (!mainWindow) return null;
+    return mainWindow.getBounds();
+  });
+
+  ipcMain.handle('window:commit', (event, bounds) => {
+    if (!mainWindow) return null;
+    var next = normalizeMainBounds(bounds);
+    var current = mainWindow.getBounds();
+    var sameSize = current.width === next.width && current.height === next.height;
+
+    if (sameSize) {
+      return persistMainWindowBounds();
+    }
+
+    mainWindow.setBounds(next);
+    return persistMainWindowBounds();
+  });
+
+  ipcMain.on('window:set-bounds', (event, bounds) => {
+    var win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || win !== mainWindow || win.isDestroyed()) return;
+    var next = normalizeMainBounds(bounds);
+    var current = win.getBounds();
+    if (current.x === next.x && current.y === next.y
+        && current.width === next.width && current.height === next.height) {
+      return;
+    }
+    win.setBounds(next, false);
   });
 
   ipcMain.on('window:minimize', () => {
     if (mainWindow) mainWindow.hide();
+  });
+
+  ipcMain.on('zoom:change', (event, { delta }) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    var current = mainWindow.webContents.getZoomFactor();
+    var next = Math.min(1.6, Math.max(0.7, Math.round((current + delta) * 100) / 100));
+    mainWindow.webContents.setZoomFactor(next);
+    store.set('window.zoomFactor', next);
+  });
+
+  ipcMain.on('session:relogin', () => {
+    createSessionWindow();
+  });
+
+  ipcMain.handle('get:session-state', () => {
+    return { loggedIn: !!sessionToken, error: proxyStatus.error || null };
   });
 
   ipcMain.on('window:close', () => {
@@ -385,24 +546,6 @@ function setupIPC() {
     }
   });
 
-  ipcMain.on('zoom:change', (event, { delta }) => {
-    if (!mainWindow) return;
-    var cur = mainWindow.webContents.getZoomFactor();
-    var winW = mainWindow.getBounds().width;
-
-    var minZoom = 0.75;
-    var maxZoom = 0.9 + (winW - 380) / 600;
-    if (maxZoom < 0.9) maxZoom = 0.9;
-    if (maxZoom > 1.8) maxZoom = 1.8;
-
-    var next = Math.round((cur + delta) * 100) / 100;
-    if (next < minZoom) next = minZoom;
-    if (next > maxZoom) next = maxZoom;
-
-    mainWindow.webContents.setZoomFactor(next);
-    store.set('window.zoom', next);
-  });
-
   var originalSettingsBtn = true;
   ipcMain.on('open:settings', (event) => {
     if (settingsWindow && !settingsWindow.isDestroyed()) {
@@ -419,7 +562,7 @@ function setupIPC() {
       frame: false,
       transparent: true,
       backgroundColor: '#00000000',
-      resizable: true,
+      resizable: false,
       minimizable: false,
       maximizable: false,
       alwaysOnTop: true,
@@ -433,6 +576,110 @@ function setupIPC() {
     settingsWindow.setMenu(null);
     settingsWindow.loadFile(path.join(__dirname, '..', 'renderer', 'settings-window.html'));
     settingsWindow.on('closed', () => { settingsWindow = null; });
+  });
+
+  function getResizeState(win) {
+    if (win === mainWindow) return mainResizeState;
+    if (win === settingsWindow) return settingsResizeState;
+    return null;
+  }
+
+  function setResizeState(win, state) {
+    if (win === mainWindow) mainResizeState = state;
+    else if (win === settingsWindow) settingsResizeState = state;
+  }
+
+  function applyResizeBounds(win, state) {
+    if (!state || !state.pendingBounds || !win || win.isDestroyed()) return;
+    var next = state.pendingBounds;
+    state.pendingBounds = null;
+    var current = win.getBounds();
+    if (current.x !== next.x || current.y !== next.y
+        || current.width !== next.width || current.height !== next.height) {
+      win.setBounds(next, false);
+    }
+  }
+
+  function scheduleResizeFrame(win, state) {
+    if (state.timer) return;
+    state.timer = setTimeout(function () {
+      state.timer = null;
+      if (getResizeState(win) !== state) return;
+      applyResizeBounds(win, state);
+    }, 16);
+  }
+
+  function flushResizeFrame(win, state) {
+    if (!state) return;
+    if (state.timer) {
+      clearTimeout(state.timer);
+      state.timer = null;
+    }
+    applyResizeBounds(win, state);
+  }
+
+  ipcMain.on('resize:start', (event, { edge, screenX, screenY }) => {
+    var win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return;
+    var bounds = win.getBounds();
+    setResizeState(win, {
+      edge: edge,
+      startBounds: bounds,
+      startScreenX: screenX,
+      startScreenY: screenY,
+      pendingBounds: null,
+      timer: null
+    });
+  });
+
+  ipcMain.on('resize:move', (event, { screenX, screenY }) => {
+    var win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return;
+    var state = getResizeState(win);
+    if (!state) return;
+
+    var dx = screenX - state.startScreenX;
+    var dy = screenY - state.startScreenY;
+    var newBounds = { x: state.startBounds.x, y: state.startBounds.y, width: state.startBounds.width, height: state.startBounds.height };
+    var edge = state.edge;
+    var isSettings = win === settingsWindow;
+    var minW = isSettings ? 340 : 380;
+    var minH = isSettings ? 440 : 200;
+    var maxW = isSettings ? 1600 : 2400;
+    var maxH = isSettings ? 1200 : 1600;
+
+    if (edge.indexOf('e') !== -1) {
+      newBounds.width = Math.min(maxW, Math.max(minW, state.startBounds.width + dx));
+    }
+    if (edge.indexOf('w') !== -1) {
+      var proposedW = Math.min(maxW, Math.max(minW, state.startBounds.width - dx));
+      newBounds.x = state.startBounds.x + state.startBounds.width - proposedW;
+      newBounds.width = proposedW;
+    }
+    if (edge.indexOf('s') !== -1) {
+      newBounds.height = Math.min(maxH, Math.max(minH, state.startBounds.height + dy));
+    }
+    if (edge.indexOf('n') !== -1) {
+      var proposedH = Math.min(maxH, Math.max(minH, state.startBounds.height - dy));
+      newBounds.y = state.startBounds.y + state.startBounds.height - proposedH;
+      newBounds.height = proposedH;
+    }
+
+    state.pendingBounds = newBounds;
+    scheduleResizeFrame(win, state);
+  });
+
+  ipcMain.on('resize:end', (event) => {
+    var win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return;
+    var state = getResizeState(win);
+    flushResizeFrame(win, state);
+    setResizeState(win, null);
+
+    if (win === mainWindow) {
+      persistMainWindowBounds();
+      sendMainWindowBounds();
+    }
   });
 }
 
@@ -486,9 +733,11 @@ app.whenReady().then(() => {
 
       sessionToken = store.get('sessionToken');
       if (sessionToken) {
+        console.log('[session] startup with stored token, starting usage timer');
         startUsageTimer();
         proxyStatus = { running: true, port: 0, activeSince: Date.now() };
       } else {
+        console.log('[session] startup without token, opening platform login window');
         proxyStatus = { running: false, port: 0, error: '请登录平台获取用量' };
         createSessionWindow();
       }

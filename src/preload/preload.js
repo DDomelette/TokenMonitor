@@ -6,7 +6,9 @@ contextBridge.exposeInMainWorld('api', {
       'settings:loaded',
       'login:error',
       'open:settings',
-      'theme:changed'
+      'theme:changed',
+      'window:bounds-changed',
+      'session:changed'
     ];
     if (validChannels.includes(channel)) {
       const listener = (event, ...args) => callback(...args);
@@ -24,7 +26,12 @@ contextBridge.exposeInMainWorld('api', {
       'window:close-settings',
       'refresh:dashboard',
       'open:settings',
-      'zoom:change'
+      'zoom:change',
+      'session:relogin',
+      'window:set-bounds',
+      'resize:start',
+      'resize:move',
+      'resize:end'
     ];
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data);
@@ -32,7 +39,13 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   invoke: (channel, ...args) => {
-    const validChannels = ['get:settings', 'get:dashboard'];
+    const validChannels = [
+      'get:settings',
+      'get:dashboard',
+      'get:bounds',
+      'get:session-state',
+      'window:commit'
+    ];
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args);
     }

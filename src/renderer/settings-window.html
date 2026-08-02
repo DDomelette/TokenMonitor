@@ -5,105 +5,48 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
 <title>设置</title>
+<link rel="stylesheet" href="css/main.css">
 <style>
-  html {
-    height: 100%;
-    background: transparent;
-    overflow: hidden;
-    border-radius: 10px;
-  }
-  body {
-    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
-    font-size: 13px;
-    color: var(--text-primary);
-    margin: 0;
-    padding: 0;
-    user-select: none;
-    width: 100%;
-    height: 100%;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    border: none;
-    border-radius: 10px;
-    clip-path: inset(0 round 10px);
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15), 0 0 0 1px var(--border);
-    background: var(--bg-card);
-  }
-  :root {
-    --primary: #74B8FC;
-    --primary-light: #95CAFF;
-    --primary-dark: #5A9FE0;
-    --bg-card: #F8F9FC;
-    --text-primary: #1A1A2E;
-    --text-secondary: #6B7280;
-    --text-inverse: #FFFFFF;
-    --border: #E5E7EB;
-    --radius-card: 12px;
-    --radius-btn: 8px;
-    --radius-input: 8px;
-  }
-  body.dark {
-    --bg-card: #252730;
-    --text-primary: #E5E7EB;
-    --text-secondary: #9CA3AF;
-    --border: #3A3C45;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px #4B4D58;
-  }
-  body:not(.dark) {
-    --primary: #4B90E0;
-    --primary-light: #74ABF0;
-    --primary-dark: #3A78C0;
-  }
-  .settings-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 16px;
-    border-bottom: 1px solid var(--border);
-    -webkit-app-region: drag;
-    flex-shrink: 0;
-  }
-  .settings-title {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-  .settings-close {
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 16px;
-    -webkit-app-region: no-drag;
-  }
-  .settings-close:hover {
-    background: rgba(0, 0, 0, 0.05);
-    color: var(--text-primary);
-  }
   .settings-body {
-    padding: 16px;
-    overflow-y: auto;
     flex: 1;
     min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0 14px 14px;
+  }
+  .settings-body::-webkit-scrollbar {
+    width: 10px;
+  }
+  .settings-body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .settings-body::-webkit-scrollbar-thumb {
+    background: transparent;
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+    transition: background 160ms ease-out;
+  }
+  .settings-body:hover::-webkit-scrollbar-thumb,
+  .settings-body.is-scrolling::-webkit-scrollbar-thumb {
+    background: var(--border);
+    background-clip: content-box;
+  }
+  .settings-body::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+    background-clip: content-box;
   }
   .settings-section {
     margin-bottom: 18px;
   }
   .settings-section-title {
-    font-size: 10px;
-    font-weight: 700;
+    font-size: 11px;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
+    letter-spacing: 0;
     color: var(--text-secondary);
-    margin-bottom: 10px;
+    margin-top: 10px;
+    margin-bottom: 8px;
     padding-bottom: 6px;
     border-bottom: 1px solid var(--border);
   }
@@ -121,6 +64,13 @@
   .setting-label {
     font-size: 13px;
     color: var(--text-primary);
+  }
+  .session-status {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 12px;
+    color: var(--text-secondary);
   }
   .toggle-switch {
     position: relative;
@@ -179,6 +129,14 @@
     outline: none;
     cursor: pointer;
     font-family: inherit;
+    transition: all 200ms ease-out;
+  }
+  .select-input:hover,
+  .select-input:focus {
+    border-color: var(--primary);
+  }
+  .select-input:focus {
+    box-shadow: 0 0 0 2px rgba(116, 184, 252, 0.15);
   }
   .text-input {
     font-size: 13px;
@@ -191,11 +149,19 @@
     font-family: inherit;
     width: 100%;
     box-sizing: border-box;
+    transition: all 200ms ease-out;
+  }
+  .text-input:hover,
+  .text-input:focus {
+    border-color: var(--primary);
+  }
+  .text-input:focus {
+    box-shadow: 0 0 0 2px rgba(116, 184, 252, 0.15);
   }
   .settings-footer {
     display: flex;
     gap: 8px;
-    padding: 12px 16px;
+    padding: 10px 14px;
     border-top: 1px solid var(--border);
     justify-content: flex-end;
     flex-shrink: 0;
@@ -208,23 +174,43 @@
     cursor: pointer;
     font-family: inherit;
     font-weight: 500;
+    transition: all 200ms ease-out;
   }
   .btn-secondary { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
-  .btn-secondary:hover { background: rgba(0, 0, 0, 0.03); color: var(--text-primary); }
+  .btn-secondary:hover { border-color: var(--primary); color: var(--primary); }
   .btn-primary { background: var(--primary); color: var(--text-inverse); }
   .btn-primary:hover { background: var(--primary-light); }
 </style>
 </head>
 <body>
-  <div class="settings-header">
-    <span class="settings-title">设置</span>
-    <button class="settings-close" id="settingsCloseBtn">&times;</button>
+  <div class="resize-layer">
+    <div class="resize-handle resize-n"></div>
+    <div class="resize-handle resize-s"></div>
+    <div class="resize-handle resize-e"></div>
+    <div class="resize-handle resize-w"></div>
+    <div class="resize-handle resize-ne"></div>
+    <div class="resize-handle resize-nw"></div>
+    <div class="resize-handle resize-se"></div>
+    <div class="resize-handle resize-sw"></div>
   </div>
-  <div class="settings-body" id="settingsBody"></div>
-  <div class="settings-footer">
-    <button class="btn btn-secondary" id="resetBtn">恢复默认</button>
-    <button class="btn btn-primary" id="settingsDoneBtn">关闭</button>
+  <div id="app">
+    <div class="titlebar">
+      <div class="titlebar-left">
+        <span class="titlebar-text">设置</span>
+      </div>
+      <div class="titlebar-actions">
+        <button class="titlebar-btn" id="settingsCloseBtn" title="关闭">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="#5b6372"><path d="M3.22 3.22a.75.75 0 0 1 1.06 0L8 6.94l3.72-3.72a.75.75 0 1 1-1.06 1.06L9.06 8l3.72 3.72a.75.75 0 1 1-1.06 1.06L8 9.06l-3.72 3.72a.75.75 0 1 1-1.06-1.06L6.94 8 3.22 4.28a.75.75 0 0 1 0-1.06z"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="settings-body" id="settingsBody"></div>
+    <div class="settings-footer">
+      <button class="btn btn-secondary" id="resetBtn">恢复默认</button>
+      <button class="btn btn-primary" id="settingsDoneBtn">关闭</button>
+    </div>
   </div>
+<script src="js/layout/component-registry.js"></script>
 <script src="js/settings-definitions.js"></script>
 <script src="js/settings-window.js"></script>
 </body>

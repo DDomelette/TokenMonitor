@@ -64,6 +64,24 @@ body.dark #app {
   color: #E5E7EB;
 }
 
+/* 拖动缩放期间: 临时改为不透明的直角实心渲染。
+   透明窗口在快速缩放时存在无法从渲染侧消除的帧竞态
+   (旧帧被裁剪 / 透明区残留旧像素), 实心直角下这些竞态不可见。
+   松手且原生窗口落定后由 app.js 移除该类恢复圆角与透明。 */
+html.is-window-resizing body {
+  background: #FFFFFF;
+  border-radius: 0;
+}
+
+html.is-window-resizing body.dark {
+  background: rgb(30, 32, 38);
+}
+
+html.is-window-resizing #app {
+  border-radius: 0;
+  box-shadow: none;
+}
+
 body.dark {
   --text-primary: #E5E7EB;
   --text-secondary: #9CA3AF;

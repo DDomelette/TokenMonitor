@@ -20,6 +20,10 @@ function httpGet(sessionToken, path) {
       let body = '';
       res.on('data', chunk => { body += chunk; });
       res.on('end', () => {
+        if (res.statusCode === 401 || res.statusCode === 403) {
+          reject(new Error('Unauthorized: session expired (HTTP ' + res.statusCode + ')'));
+          return;
+        }
         try {
           const data = JSON.parse(body);
           if (data.code && data.msg) {
@@ -39,6 +43,14 @@ function httpGet(sessionToken, path) {
   });
 }
 
+function localTzSec() {
+  return -new Date().getTimezoneOffset() * 60;
+}
+
+function localTodayStr() {
+  return new Date(Date.now() + localTzSec() * 1000).toISOString().slice(0, 10);
+}
+
 function fetchUsageCost(sessionToken, month, year) {
   return httpGet(sessionToken, `/api/v0/usage/cost?month=${month}&year=${year}`)
     .then(parseCostData);
@@ -47,6 +59,22 @@ function fetchUsageCost(sessionToken, month, year) {
 function fetchUsageAmount(sessionToken, month, year) {
   return httpGet(sessionToken, `/api/v0/usage/amount?month=${month}&year=${year}`)
     .then(parseTokenData);
+}
+
+// Fetches the given month; if it has no usage at all, falls back to the previous month
+// (handles the month-start window where the current month is still empty).
+async function fetchUsageWithFallback(sessionToken, month, year) {
+  var cost = await fetchUsageCost(sessionToken, month, year);
+  var amount = await fetchUsageAmount(sessionToken, month, year);
+  if (cost.aggregate.totalCost === 0 && amount.aggregate.totalTokens === 0) {
+    var prev = new Date(year, month - 2, 1);
+    var prevMonth = prev.getMonth() + 1;
+    var prevYear = prev.getFullYear();
+    var prevCost = await fetchUsageCost(sessionToken, prevMonth, prevYear);
+    var prevAmount = await fetchUsageAmount(sessionToken, prevMonth, prevYear);
+    return { cost: prevCost, amount: prevAmount, month: prevMonth, year: prevYear, fellBack: true };
+  }
+  return { cost: cost, amount: amount, month: month, year: year, fellBack: false };
 }
 
 function sumAll(usageList) {
@@ -104,7 +132,7 @@ function parseDailyData(days, sumFn) {
 
 function lastDay(dailyData) {
   if (!dailyData || !dailyData.length) return null;
-  var todayStr = new Date().toISOString().slice(0, 10);
+  var todayStr = localTodayStr();
   for (var i = dailyData.length - 1; i >= 0; i--) {
     if (dailyData[i].date === todayStr) return dailyData[i];
   }
@@ -182,4 +210,4 @@ function parseTokenData(data) {
   };
 }
 
-module.exports = { fetchUsageCost, fetchUsageAmount };
+module.exports = { fetchUsageCost, fetchUsageAmount, fetchUsageWithFallback, localTodayStr };

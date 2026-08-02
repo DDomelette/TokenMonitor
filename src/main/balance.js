@@ -16,6 +16,10 @@ function fetchBalance(apiKey) {
       let body = '';
       res.on('data', chunk => { body += chunk; });
       res.on('end', () => {
+        if (res.statusCode === 401 || res.statusCode === 403) {
+          reject(new Error('Unauthorized: invalid API key (HTTP ' + res.statusCode + ')'));
+          return;
+        }
         try {
           const data = JSON.parse(body);
           if (data.is_available !== undefined && data.balance_infos && data.balance_infos.length > 0) {
@@ -27,6 +31,8 @@ function fetchBalance(apiKey) {
               granted: info.granted_balance,
               toppedUp: info.topped_up_balance
             });
+          } else if (data.error || res.statusCode !== 200) {
+            reject(new Error((data.error && data.error.message) || ('Balance request failed (HTTP ' + res.statusCode + ')')));
           } else {
             resolve(null);
           }
