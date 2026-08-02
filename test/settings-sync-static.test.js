@@ -6,12 +6,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const main = fs.readFileSync(path.join(root, 'src/main/index.js'), 'utf8');
 const ipc = fs.readFileSync(path.join(root, 'src/main/ipc.js'), 'utf8');
-const app = fs.readFileSync(path.join(root, 'src/renderer/js/app.js'), 'utf8');
-const controller = fs.readFileSync(
-  path.join(root, 'src/renderer/js/layout/layout-controller.js'),
-  'utf8'
-);
-const html = fs.readFileSync(path.join(root, 'src/renderer/index.html'), 'utf8');
+const dashboard = fs.readFileSync(path.join(root, 'renderer/src/components/Dashboard.jsx'), 'utf8');
 
 test('accepted settings updates are broadcast to live windows', () => {
   assert.match(main, /function broadcastSettings\(/);
@@ -20,18 +15,16 @@ test('accepted settings updates are broadcast to live windows', () => {
   assert.match(updateHandler[0], /broadcastSettings\(\)/);
 });
 
-test('component visibility is registry driven in the main renderer', () => {
-  assert.match(app, /ComponentRegistry\.list\(\)/);
-  assert.match(app, /AppLayout\.setComponentVisible/);
-  assert.doesNotMatch(app, /components\.feeCards|components\.modelBar|components\.tokenLine|components\.costLine/);
+test('React dashboard initializes layout from settings via validateState', () => {
+  assert.match(dashboard, /validateState\(settings\.layout, settings\)/);
 });
 
-test('hidden widgets leave grid geometry and can be restored', () => {
-  assert.match(controller, /removeWidget\(element, false, false\)/);
-  assert.match(controller, /makeWidget\(element/);
+test('React dashboard persists layout edits back through settings:update', () => {
+  assert.match(dashboard, /settings:update/);
+  assert.match(dashboard, /key: 'layout'/);
 });
 
-test('empty dashboard keeps a settings entry point', () => {
-  assert.match(html, /id="dashboardEmpty"/);
-  assert.match(html, /id="emptySettingsBtn"/);
+test('React dashboard is driven by the policy registry', () => {
+  assert.match(dashboard, /nearestPreset/);
+  assert.match(dashboard, /GridStack\.makeGrid/);
 });

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const https = require('node:https');
 
-const { fetchUsageCost, fetchUsageAmount, fetchUsageWithFallback, localTodayStr } = require('../src/main/fetcher');
+const { UsageFetcher, localTodayStr } = require('../src/main/providers/deepseek/usage');
 
 function mockHttpsResponse(statusCode, body) {
   const original = https.request;
@@ -110,10 +110,14 @@ function responseBody(dayData) {
   });
 }
 
+function fetcher() {
+  return new UsageFetcher();
+}
+
 test('fetchUsageCost requests the legacy month/year cost endpoint', async () => {
   const mock = mockHttpsResponse(200, responseBody());
   try {
-    await fetchUsageCost('token', 8, 2026);
+    await fetcher().fetchUsageCost('token', 8, 2026);
     assert.equal(mock.getPath(), '/api/v0/usage/cost?month=8&year=2026');
   } finally {
     mock.restore();
@@ -123,7 +127,7 @@ test('fetchUsageCost requests the legacy month/year cost endpoint', async () => 
 test('fetchUsageAmount requests the legacy month/year amount endpoint', async () => {
   const mock = mockHttpsResponse(200, responseBody());
   try {
-    await fetchUsageAmount('token', 8, 2026);
+    await fetcher().fetchUsageAmount('token', 8, 2026);
     assert.equal(mock.getPath(), '/api/v0/usage/amount?month=8&year=2026');
   } finally {
     mock.restore();
@@ -133,7 +137,7 @@ test('fetchUsageAmount requests the legacy month/year amount endpoint', async ()
 test('cost parsing reads legacy total + days structure', async () => {
   const mock = mockHttpsResponse(200, responseBody());
   try {
-    const r = await fetchUsageCost('token', 8, 2026);
+    const r = await fetcher().fetchUsageCost('token', 8, 2026);
     assert.equal(r.aggregate.totalCost, 660);
     assert.equal(r.aggregate.todayCost, 6);
     assert.deepEqual(r.aggregate.models, [
@@ -153,7 +157,7 @@ test('cost parsing reads legacy total + days structure', async () => {
 test('token parsing reads legacy total + days structure', async () => {
   const mock = mockHttpsResponse(200, responseBody());
   try {
-    const r = await fetchUsageAmount('token', 8, 2026);
+    const r = await fetcher().fetchUsageAmount('token', 8, 2026);
     assert.equal(r.aggregate.totalTokens, 660);
     assert.equal(r.aggregate.todayTokens, 6);
     assert.equal(r.aggregate.cacheHit, 110);
@@ -206,7 +210,7 @@ function zeroResponseBody() {
 test('fetchUsageWithFallback keeps current month when it has data', async () => {
   const mock = mockHttpsSequence([responseBody(), responseBody()]);
   try {
-    const r = await fetchUsageWithFallback('token', 8, 2026);
+    const r = await fetcher().fetchUsageWithFallback('token', 8, 2026);
     assert.equal(r.fellBack, false);
     assert.equal(r.month, 8);
     assert.equal(r.year, 2026);
@@ -223,7 +227,7 @@ test('fetchUsageWithFallback keeps current month when it has data', async () => 
 test('fetchUsageWithFallback falls back to previous month when current month is empty', async () => {
   const mock = mockHttpsSequence([zeroResponseBody(), zeroResponseBody(), responseBody(), responseBody()]);
   try {
-    const r = await fetchUsageWithFallback('token', 8, 2026);
+    const r = await fetcher().fetchUsageWithFallback('token', 8, 2026);
     assert.equal(r.fellBack, true);
     assert.equal(r.month, 7);
     assert.equal(r.year, 2026);
@@ -240,7 +244,7 @@ test('fetchUsageWithFallback falls back to previous month when current month is 
 test('fetchUsageWithFallback crosses year boundary from January to December', async () => {
   const mock = mockHttpsSequence([zeroResponseBody(), zeroResponseBody(), responseBody(), responseBody()]);
   try {
-    const r = await fetchUsageWithFallback('token', 1, 2026);
+    const r = await fetcher().fetchUsageWithFallback('token', 1, 2026);
     assert.equal(r.fellBack, true);
     assert.equal(r.month, 12);
     assert.equal(r.year, 2025);
@@ -253,10 +257,10 @@ test('fetchUsageWithFallback crosses year boundary from January to December', as
 test('empty or null biz_data resolves to empty aggregate instead of throwing', async () => {
   const mock = mockHttpsResponse(200, JSON.stringify({ code: 0, msg: '', data: { biz_code: 0, biz_msg: '', biz_data: [] } }));
   try {
-    const cost = await fetchUsageCost('token', 8, 2026);
+    const cost = await fetcher().fetchUsageCost('token', 8, 2026);
     assert.equal(cost.aggregate.totalCost, 0);
     assert.deepEqual(cost.dailyData, []);
-    const amount = await fetchUsageAmount('token', 8, 2026);
+    const amount = await fetcher().fetchUsageAmount('token', 8, 2026);
     assert.equal(amount.aggregate.totalTokens, 0);
     assert.deepEqual(amount.dailyData, []);
   } finally {

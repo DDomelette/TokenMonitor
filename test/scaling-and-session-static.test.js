@@ -7,14 +7,9 @@ const root = path.resolve(__dirname, '..');
 const main = fs.readFileSync(path.join(root, 'src/main/index.js'), 'utf8');
 const ipc = fs.readFileSync(path.join(root, 'src/main/ipc.js'), 'utf8');
 const scheduler = fs.readFileSync(path.join(root, 'src/main/core/scheduler.js'), 'utf8');
-const app = fs.readFileSync(path.join(root, 'src/renderer/js/app.js'), 'utf8');
+const app = fs.readFileSync(path.join(root, 'renderer/src/App.jsx'), 'utf8');
 const preload = fs.readFileSync(path.join(root, 'src/preload/preload.js'), 'utf8');
-const controller = fs.readFileSync(
-  path.join(root, 'src/renderer/js/layout/layout-controller.js'),
-  'utf8'
-);
-const mainCss = fs.readFileSync(path.join(root, 'src/renderer/css/main.css'), 'utf8');
-const componentsCss = fs.readFileSync(path.join(root, 'src/renderer/css/components.css'), 'utf8');
+const stylesCss = fs.readFileSync(path.join(root, 'renderer/src/styles.css'), 'utf8');
 
 test('expired session marks authStatus expired and surfaces the relogin error', () => {
   assert.match(scheduler, /setAuth\(provider\.id, 'expired'\)/);
@@ -47,12 +42,5 @@ test('zoom factor is persisted and restored on startup', () => {
 });
 
 test('css no longer relies on the partial font-scale variable', () => {
-  assert.doesNotMatch(mainCss, /--ui-font-scale/);
-  assert.doesNotMatch(componentsCss, /--ui-font-scale/);
-});
-
-test('grid reflow is deferred while the window edge resize is active', () => {
-  const resize = controller.match(/function resize\(\) \{[\s\S]*?\n  \}/);
-  assert.ok(resize);
-  assert.match(resize[0], /resizing/);
+  assert.doesNotMatch(stylesCss, /--ui-font-scale/);
 });

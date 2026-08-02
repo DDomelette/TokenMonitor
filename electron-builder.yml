@@ -4,6 +4,7 @@ directories:
   output: build
 files:
   - src/**/*
+  - renderer/dist/**/*
   - node_modules/**/*
   - package.json
 win:

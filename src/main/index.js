@@ -25,11 +25,9 @@ const runtime = {
 // 缩放状态机运行标记(状态本体在 ipc.js,这里只消费布尔值)
 const resizeState = { main: false, settings: false };
 
-// 优先加载 Vite 构建产物(renderer/dist), 否则回退旧静态渲染层(灰度/开发)。
+// 主窗口加载 Vite 构建产物(renderer/dist),构建前需先运行 npm run build:renderer。
 function loadRenderer(win) {
-  const dist = path.join(__dirname, '..', '..', 'renderer', 'dist', 'index.html');
-  if (fs.existsSync(dist)) win.loadFile(dist);
-  else win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  win.loadFile(path.join(__dirname, '..', '..', 'renderer', 'dist', 'index.html'));
 }
 
 const gotTheLock = app.requestSingleInstanceLock();

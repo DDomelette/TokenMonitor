@@ -6,8 +6,8 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
+    "build:win": "npm run build:renderer && electron-builder --win",
+    "build:mac": "npm run build:renderer && electron-builder --mac",
     "build:renderer": "npm --prefix renderer run build",
     "dev:renderer": "npm --prefix renderer run dev"
   },

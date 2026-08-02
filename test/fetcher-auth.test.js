@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const https = require('node:https');
 
-const { fetchUsageCost } = require('../src/main/fetcher');
-const { fetchBalance } = require('../src/main/balance');
+const { UsageFetcher } = require('../src/main/providers/deepseek/usage');
+const { fetchBalance } = require('../src/main/providers/deepseek/balance');
 
 function mockHttpsResponse(statusCode, body) {
   const original = https.request;
@@ -32,7 +32,7 @@ test('fetcher rejects with an unauthorized error on HTTP 401', async () => {
   const restore = mockHttpsResponse(401, '<html>Unauthorized</html>');
   try {
     await assert.rejects(
-      fetchUsageCost('expired-token', 7, 2026),
+      new UsageFetcher().fetchUsageCost('expired-token', 7, 2026),
       /unauthoriz|401/i
     );
   } finally {
@@ -44,7 +44,7 @@ test('fetcher rejects with an unauthorized error on HTTP 403', async () => {
   const restore = mockHttpsResponse(403, '{"error":"forbidden"}');
   try {
     await assert.rejects(
-      fetchUsageCost('expired-token', 7, 2026),
+      new UsageFetcher().fetchUsageCost('expired-token', 7, 2026),
       /unauthoriz|403|forbidden/i
     );
   } finally {

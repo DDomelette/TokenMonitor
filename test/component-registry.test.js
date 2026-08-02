@@ -1,10 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const registry = require('../src/renderer/js/layout/component-registry');
-
-const root = path.resolve(__dirname, '..');
+const registry = require('../renderer/src/grid/components.js');
 
 test('component ids and settings keys are unique', () => {
   const items = registry.list();
@@ -64,21 +60,4 @@ test('chart presets include a card-sized minimum plus readable larger sizes', ()
 
 test('unknown components are rejected', () => {
   assert.equal(registry.get('missing-component'), null);
-});
-
-test('renderer windows load registry-driven settings definitions', () => {
-  ['index.html', 'settings-window.html'].forEach((name) => {
-    const html = fs.readFileSync(path.join(root, 'src/renderer', name), 'utf8');
-    const registryIndex = html.indexOf('js/layout/component-registry.js');
-    const settingsIndex = html.indexOf('js/settings-definitions.js');
-    assert.ok(registryIndex >= 0, name + ' registry script');
-    assert.ok(settingsIndex > registryIndex, name + ' script order');
-  });
-
-  const definitions = fs.readFileSync(
-    path.join(root, 'src/renderer/js/settings-definitions.js'),
-    'utf8'
-  );
-  assert.match(definitions, /ComponentRegistry\.list\(\)/);
-  assert.doesNotMatch(definitions, /components\.feeCards/);
 });

@@ -3,7 +3,6 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const https = require('node:https');
 
-const { fetchUsageWithFallback } = require('../src/main/fetcher');
 const { UsageFetcher } = require('../src/main/providers/deepseek/usage');
 const { fetchBalance } = require('../src/main/providers/deepseek/balance');
 
@@ -95,18 +94,21 @@ function makeCtx(sessionToken) {
   };
 }
 
-test('deepseek adapter fetchUsage matches legacy fetchUsageWithFallback output', async () => {
+test('deepseek adapter fetchUsage normalizes legacy usage payload', async () => {
   const body = responseBody();
   const mock = mockHttpsSequence([body, body]);
   try {
-    const legacy = await fetchUsageWithFallback('token', 8, 2026);
     const adapter = await new UsageFetcher().fetchUsageWithFallback('token', 8, 2026);
-    assert.deepEqual(adapter.cost.aggregate, legacy.cost.aggregate);
-    assert.deepEqual(adapter.amount.aggregate, legacy.amount.aggregate);
-    assert.deepEqual(adapter.cost.dailyData, legacy.cost.dailyData);
-    assert.deepEqual(adapter.amount.dailyData, legacy.amount.dailyData);
-    assert.equal(adapter.fellBack, legacy.fellBack);
-    assert.equal(adapter.month, legacy.month);
+    assert.equal(adapter.cost.aggregate.totalCost, 660);
+    assert.equal(adapter.cost.aggregate.todayCost, 6);
+    assert.equal(adapter.amount.aggregate.totalTokens, 660);
+    assert.equal(adapter.amount.aggregate.todayTokens, 6);
+    assert.equal(adapter.amount.aggregate.cacheHit, 110);
+    assert.equal(adapter.amount.aggregate.cacheMiss, 220);
+    assert.equal(adapter.cost.dailyData.length, 2);
+    assert.equal(adapter.amount.dailyData.length, 2);
+    assert.equal(adapter.fellBack, false);
+    assert.equal(adapter.month, 8);
   } finally {
     mock.restore();
   }
