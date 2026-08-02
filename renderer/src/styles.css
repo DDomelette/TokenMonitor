@@ -286,4 +286,103 @@ html.is-window-resizing #app {
   overflow: hidden;
 }
 
+/* ======== 订阅制额度卡片 ======== */
+.quota-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.quota-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 8px 10px;
+  font-size: 11px;
+}
+
+.quota-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.quota-card-plan {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.quota-window {
+  margin-bottom: 8px;
+}
+
+.quota-window-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.quota-window-kind {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.quota-window-used {
+  color: var(--text-secondary);
+}
+
+.quota-bar {
+  height: 6px;
+  background: rgba(116, 184, 252, 0.12);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.quota-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 300ms ease-out;
+}
+
+.quota-bar-fill.low { background: var(--success); }
+.quota-bar-fill.mid { background: var(--warning); }
+.quota-bar-fill.high { background: var(--error); }
+
+.quota-window-reset {
+  margin-top: 4px;
+  color: var(--text-secondary);
+}
+
+.quota-card-cycle {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.quota-empty-text {
+  color: var(--text-secondary);
+}
+
+.quota-expired .quota-reauth-btn {
+  width: 100%;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-btn);
+  background: var(--primary);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.quota-reauth-hint {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+
 

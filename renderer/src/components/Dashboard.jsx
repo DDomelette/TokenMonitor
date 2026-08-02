@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { GridStack } from 'gridstack';
 import 'gridstack/dist/gridstack.min.css';
 import { getSettings, send } from '../api.js';
-import { useDashboard } from '../store.js';
+import { useDashboard, useProviders } from '../store.js';
 import {
   validateState,
   breakpointForWidth,
@@ -12,6 +12,7 @@ import {
 } from '../grid/policy.js';
 import FeeCard from './FeeCard.jsx';
 import ChartWidget from './ChartWidget.jsx';
+import QuotaCard from './QuotaCard.jsx';
 
 const LABELS = {
   'balance-card': '余额',
@@ -39,6 +40,8 @@ export default function Dashboard({ editing }) {
   const [ready, setReady] = useState(false);
   const [rebuildKey, setRebuildKey] = useState(0);
   const bpRef = useRef(breakpointForWidth(window.innerWidth));
+  const providers = useProviders();
+  const quotaProviders = providers.filter((p) => p.capabilities && p.capabilities.quota);
 
   useEffect(() => {
     getSettings().then((settings) => {
@@ -144,6 +147,19 @@ export default function Dashboard({ editing }) {
 
   return (
     <div className="content">
+      {quotaProviders.length > 0 ? (
+        <div className="quota-strip">
+          {quotaProviders.map((p) => (
+            <QuotaCard
+              key={p.id}
+              provider={p}
+              quotaState={p.quota}
+              authStatus={p.authStatus}
+              onReauthorize={() => send('refresh:dashboard')}
+            />
+          ))}
+        </div>
+      ) : null}
       <div className="grid-stack" ref={hostRef}>
         {gridChildren}
       </div>
