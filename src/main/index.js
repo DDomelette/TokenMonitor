@@ -1,8 +1,16 @@
 const { app, BrowserWindow, Tray, Menu, nativeTheme, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const store = require('./store');
 const { fetchBalance } = require('./balance');
 const { fetchUsageWithFallback, localTodayStr } = require('./fetcher');
+
+// 优先加载 Vite 构建产物(renderer/dist), 否则回退旧静态渲染层(灰度/开发)。
+function loadRenderer(win) {
+  const dist = path.join(__dirname, '..', '..', 'renderer', 'dist', 'index.html');
+  if (fs.existsSync(dist)) win.loadFile(dist);
+  else win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+}
 
 let mainWindow = null;
 let loginWindow = null;
@@ -87,7 +95,7 @@ function createMainWindow() {
   });
 
   mainWindow.setOpacity(store.get('window.opacity') / 100);
-  mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  loadRenderer(mainWindow);
 
   mainWindow.webContents.on('did-finish-load', function () {
     mainWindow.webContents.setZoomFactor(store.get('window.zoomFactor') || 1);
