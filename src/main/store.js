@@ -20,7 +20,13 @@ function getEncryptionKey() {
 }
 
 const defaults = {
-  apiKey: '',
+  providers: {
+    deepseek: {
+      apiKey: '',
+      sessionToken: ''
+    },
+    proxyUrl: 'http://127.0.0.1:7890'
+  },
   window: {
     x: undefined,
     y: undefined,
@@ -56,4 +62,24 @@ const store = new Store({
   clearInvalidConfig: true
 });
 
+// 旧键 → provider 命名空间键的一次性迁移。storeLike 可为真实 electron-store 或纯对象(fake store 便于单测)。
+// 旧值保留校验:仅在新键缺失时复制旧值,随后删除旧键。
+function migrateLegacyKeys(storeLike) {
+  let migrated = false;
+  const oldSession = storeLike.get('sessionToken');
+  if (oldSession && !storeLike.get('providers.deepseek.sessionToken')) {
+    storeLike.set('providers.deepseek.sessionToken', oldSession);
+    migrated = true;
+  }
+  const oldApiKey = storeLike.get('apiKey');
+  if (oldApiKey && !storeLike.get('providers.deepseek.apiKey')) {
+    storeLike.set('providers.deepseek.apiKey', oldApiKey);
+    migrated = true;
+  }
+  if (storeLike.get('providers.deepseek.sessionToken')) storeLike.delete('sessionToken');
+  if (storeLike.get('providers.deepseek.apiKey')) storeLike.delete('apiKey');
+  return migrated;
+}
+
 module.exports = store;
+module.exports.migrateLegacyKeys = migrateLegacyKeys;

@@ -8,7 +8,8 @@ contextBridge.exposeInMainWorld('api', {
       'open:settings',
       'theme:changed',
       'window:bounds-changed',
-      'session:changed'
+      'session:changed',
+      'providers:changed'
     ];
     if (validChannels.includes(channel)) {
       const listener = (event, ...args) => callback(...args);
@@ -42,6 +43,7 @@ contextBridge.exposeInMainWorld('api', {
     const validChannels = [
       'get:settings',
       'get:dashboard',
+      'get:providers',
       'get:bounds',
       'get:session-state',
       'window:commit'

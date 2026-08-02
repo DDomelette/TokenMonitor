@@ -138,10 +138,10 @@ test('native window resize updates grid sizing and chart repaints during resize'
 
 test('ctrl wheel zooms the whole page through the main process', () => {
   const app = fs.readFileSync(path.join(root, 'src/renderer/js/app.js'), 'utf8');
-  const main = fs.readFileSync(path.join(root, 'src/main/index.js'), 'utf8');
+  const ipc = fs.readFileSync(path.join(root, 'src/main/ipc.js'), 'utf8');
 
   assert.doesNotMatch(app, /adjustFontScale|--ui-font-scale/);
   assert.match(app, /window\.api\.send\('zoom:change'/);
-  assert.match(main, /ipcMain\.on\('zoom:change'/);
-  assert.match(main, /webContents\.setZoomFactor\(next\)/);
+  assert.match(ipc, /ipcMain\.on\('zoom:change'/);
+  assert.match(ipc, /webContents\.setZoomFactor\(next\)/);
 });

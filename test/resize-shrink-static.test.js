@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const main = fs.readFileSync(path.join(root, 'src/main/index.js'), 'utf8');
+const main = fs.readFileSync(path.join(root, 'src/main/ipc.js'), 'utf8');
 const preload = fs.readFileSync(path.join(root, 'src/preload/preload.js'), 'utf8');
 const appJs = fs.readFileSync(path.join(root, 'src/renderer/js/app.js'), 'utf8');
 const mainCss = fs.readFileSync(path.join(root, 'src/renderer/css/main.css'), 'utf8');

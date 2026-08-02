@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const main = fs.readFileSync(path.join(root, 'src/main/index.js'), 'utf8');
+const ipc = fs.readFileSync(path.join(root, 'src/main/ipc.js'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'src/renderer/js/app.js'), 'utf8');
 const controller = fs.readFileSync(
   path.join(root, 'src/renderer/js/layout/layout-controller.js'),
@@ -14,7 +15,7 @@ const html = fs.readFileSync(path.join(root, 'src/renderer/index.html'), 'utf8')
 
 test('accepted settings updates are broadcast to live windows', () => {
   assert.match(main, /function broadcastSettings\(/);
-  const updateHandler = main.match(/ipcMain\.on\('settings:update'[\s\S]*?\n  \}\);/);
+  const updateHandler = ipc.match(/ipcMain\.on\('settings:update'[\s\S]*?\n  \}\);/);
   assert.ok(updateHandler);
   assert.match(updateHandler[0], /broadcastSettings\(\)/);
 });

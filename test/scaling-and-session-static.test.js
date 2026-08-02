@@ -5,6 +5,8 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const main = fs.readFileSync(path.join(root, 'src/main/index.js'), 'utf8');
+const ipc = fs.readFileSync(path.join(root, 'src/main/ipc.js'), 'utf8');
+const scheduler = fs.readFileSync(path.join(root, 'src/main/core/scheduler.js'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'src/renderer/js/app.js'), 'utf8');
 const preload = fs.readFileSync(path.join(root, 'src/preload/preload.js'), 'utf8');
 const controller = fs.readFileSync(
@@ -14,28 +16,25 @@ const controller = fs.readFileSync(
 const mainCss = fs.readFileSync(path.join(root, 'src/renderer/css/main.css'), 'utf8');
 const componentsCss = fs.readFileSync(path.join(root, 'src/renderer/css/components.css'), 'utf8');
 
-test('expired session automatically reopens the platform login window', () => {
-  const handler = main.match(/async function fetchAndStoreUsage\(\) \{[\s\S]*?\n\}/);
-  assert.ok(handler);
-  assert.match(handler[0], /catch \(e\) \{[\s\S]*createSessionWindow\(\)/);
+test('expired session marks authStatus expired and surfaces the relogin error', () => {
+  assert.match(scheduler, /setAuth\(provider\.id, 'expired'\)/);
+  assert.match(main, /会话已过期，请重新登录/);
 });
 
 test('session expiry detection matches real unauthorized errors', () => {
-  const handler = main.match(/async function fetchAndStoreUsage\(\) \{[\s\S]*?\n\}/);
-  assert.ok(handler);
-  assert.match(handler[0], /unauthoriz|401|403|expired/i);
-  assert.doesNotMatch(handler[0], /includes\('Authorization'\)/);
+  assert.match(scheduler, /unauthoriz|401|403|expired/i);
 });
 
-test('expiry auto-reopen is guarded against repeated popups', () => {
-  assert.match(main, /sessionReopenPending/);
+test('expiry is not auto-reopened; it drives the provider auth status', () => {
+  assert.match(scheduler, /authStatus === 'expired'/);
+  assert.doesNotMatch(main, /sessionReopenPending/);
 });
 
 test('ctrl wheel zoom goes through the main process zoom factor', () => {
   assert.match(app, /zoom:change/);
   assert.doesNotMatch(app, /FONT_SCALE_KEY|--ui-font-scale/);
   assert.match(preload, /zoom:change/);
-  const zoomHandler = main.match(/ipcMain\.on\('zoom:change'[\s\S]*?\n  \}\);/);
+  const zoomHandler = ipc.match(/ipcMain\.on\('zoom:change'[\s\S]*?\n  \}\);/);
   assert.ok(zoomHandler);
   assert.match(zoomHandler[0], /setZoomFactor/);
 });

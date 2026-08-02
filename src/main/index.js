@@ -1,9 +1,29 @@
-const { app, BrowserWindow, Tray, Menu, nativeTheme, ipcMain } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const store = require('./store');
-const { fetchBalance } = require('./balance');
-const { fetchUsageWithFallback, localTodayStr } = require('./fetcher');
+const { migrateLegacyKeys } = store;
+const registry = require('./providers/registry');
+const deepseekProvider = require('./providers/deepseek');
+const { startScheduler } = require('./core/scheduler');
+const setupIPC = require('./ipc');
+const { captureSession } = require('./providers/deepseek/session');
+
+let mainWindow = null;
+let loginWindow = null;
+let sessionWindow = null;
+let settingsWindow = null;
+let tray = null;
+let scheduler = null;
+let moveDebounce = null;
+
+const runtime = {
+  sessionToken: null,
+  proxyStatus: { running: false, port: 0, error: '未获取数据' }
+};
+
+// 缩放状态机运行标记(状态本体在 ipc.js,这里只消费布尔值)
+const resizeState = { main: false, settings: false };
 
 // 优先加载 Vite 构建产物(renderer/dist), 否则回退旧静态渲染层(灰度/开发)。
 function loadRenderer(win) {
@@ -11,23 +31,6 @@ function loadRenderer(win) {
   if (fs.existsSync(dist)) win.loadFile(dist);
   else win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 }
-
-let mainWindow = null;
-let loginWindow = null;
-let sessionWindow = null;
-let settingsWindow = null;
-let tray = null;
-let balanceTimer = null;
-let usageTimer = null;
-let resizeDebounce = null;
-let moveDebounce = null;
-let sessionToken = null;
-let sessionReopenPending = false;
-let lastUsageStats = null;
-let lastBalance = null;
-let proxyStatus = { running: false, port: 0, error: '未获取数据' };
-let mainResizeState = null;
-let settingsResizeState = null;
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -56,23 +59,24 @@ function getWinBounds() {
 function sendMainWindowBounds() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.webContents.isDestroyed()) return;
-  if (mainResizeState) return;
+  if (resizeState.main) return;
   mainWindow.webContents.send('window:bounds-changed', mainWindow.getBounds());
 }
 
-function broadcastSettings() {
+function broadcastToWindows(channel, payload) {
   [mainWindow, settingsWindow].forEach(function (win) {
     if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
-    win.webContents.send('settings:loaded', store.store);
+    win.webContents.send(channel, payload);
   });
 }
 
+function broadcastSettings() {
+  broadcastToWindows('settings:loaded', store.store);
+}
+
 function broadcastSessionState() {
-  var payload = { loggedIn: !!sessionToken, error: proxyStatus.error || null };
-  [mainWindow, settingsWindow].forEach(function (win) {
-    if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
-    win.webContents.send('session:changed', payload);
-  });
+  var payload = { loggedIn: !!runtime.sessionToken, error: runtime.proxyStatus.error || null };
+  broadcastToWindows('session:changed', payload);
 }
 
 function createMainWindow() {
@@ -109,7 +113,7 @@ function createMainWindow() {
   });
 
   mainWindow.on('move', function () {
-    if (mainResizeState) return;
+    if (resizeState.main) return;
     sendMainWindowBounds();
     clearTimeout(moveDebounce);
     moveDebounce = setTimeout(function () {
@@ -151,58 +155,51 @@ function createLoginWindow() {
   });
 }
 
+// 复用 DeepSeek 平台会话窗口:嗅探 /api/v0/usage/ 的非 sk- Bearer token。
 function createSessionWindow() {
-  console.log('[session] createSessionWindow called, sessionToken:', sessionToken ? 'present' : 'none');
+  console.log('[session] createSessionWindow called, sessionToken:', runtime.sessionToken ? 'present' : 'none');
   if (sessionWindow) {
     try { sessionWindow.close(); } catch (e) {}
     sessionWindow = null;
   }
 
-  sessionWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
-    show: true,
-    center: true,
-    title: '登录 DeepSeek 平台',
-    webPreferences: {
-      partition: 'persist:deepseek-platform',
-      contextIsolation: true,
-      nodeIntegration: false
-    }
-  });
-
-  const ses = sessionWindow.webContents.session;
-
-  ses.webRequest.onBeforeSendHeaders((details, callback) => {
-    if (details.url.includes('/api/v0/usage/') && details.requestHeaders['authorization']) {
-      const auth = details.requestHeaders['authorization'];
-      if (auth.startsWith('Bearer ') && !auth.includes('sk-')) {
-        sessionToken = auth.replace('Bearer ', '');
-        sessionReopenPending = false;
-        store.set('sessionToken', sessionToken);
-        broadcastSessionState();
-        proxyStatus = { running: true, port: 0, activeSince: Date.now() };
-
-        if (sessionWindow) {
-          try { sessionWindow.close(); } catch (e) {}
-          sessionWindow = null;
+  captureSession({
+    logger: console,
+    createSessionWindow: () => {
+      sessionWindow = new BrowserWindow({
+        width: 800,
+        height: 600,
+        show: true,
+        center: true,
+        title: '登录 DeepSeek 平台',
+        webPreferences: {
+          partition: 'persist:deepseek-platform',
+          contextIsolation: true,
+          nodeIntegration: false
         }
-
-        startUsageTimer();
-      }
+      });
+      sessionWindow.on('closed', () => {
+        sessionWindow = null;
+        if (!runtime.sessionToken) {
+          runtime.proxyStatus = { running: false, port: 0, error: '未登录 DeepSeek 平台' };
+        }
+        broadcastSessionState();
+      });
+      return sessionWindow;
     }
-    callback({ requestHeaders: details.requestHeaders });
-  });
-
-  sessionWindow.loadURL('https://platform.deepseek.com/usage');
-
-  sessionWindow.on('closed', () => {
-    sessionWindow = null;
-    if (!sessionToken) {
-      proxyStatus = { running: false, port: 0, error: '未登录 DeepSeek 平台' };
-    }
-    broadcastSessionState();
-  });
+  })
+    .then((token) => {
+      runtime.sessionToken = token;
+      store.set('providers.deepseek.sessionToken', token);
+      runtime.proxyStatus = { running: true, port: 0, activeSince: Date.now() };
+      broadcastSessionState();
+      updateTrayMenu();
+      if (scheduler) scheduler.poll('deepseek', 'usage');
+    })
+    .catch((err) => {
+      runtime.proxyStatus = { running: false, port: 0, error: err.message || '未登录 DeepSeek 平台' };
+      broadcastSessionState();
+    });
 }
 
 function createTray() {
@@ -228,7 +225,7 @@ function createTray() {
 
 function updateTrayMenu() {
   if (!tray) return;
-  const loggedIn = !!sessionToken;
+  const loggedIn = !!runtime.sessionToken;
   const contextMenu = Menu.buildFromTemplate([
     {
       label: '显示/隐藏悬浮窗',
@@ -263,101 +260,10 @@ function updateTrayMenu() {
   tray.setContextMenu(contextMenu);
 }
 
-function startBalanceTimer() {
-  if (balanceTimer) clearInterval(balanceTimer);
-  const apiKey = store.get('apiKey');
-  if (!apiKey) return;
-
-  fetchAndStoreBalance();
-  balanceTimer = setInterval(fetchAndStoreBalance, 60 * 1000);
-}
-
-async function fetchAndStoreBalance() {
-  const apiKey = store.get('apiKey');
-  if (!apiKey) return;
-  try {
-    const info = await fetchBalance(apiKey);
-    if (info) lastBalance = info;
-  } catch (e) {}
-}
-
-function debugDumpUsageRaw() {
-  if (!sessionToken) return;
-  const https = require('https');
-  [7, 8].forEach(function (month) {
-    var req = https.request({
-      hostname: 'platform.deepseek.com',
-      path: '/api/v0/usage/cost?month=' + month + '&year=2026',
-      method: 'GET',
-      headers: {
-        'Authorization': 'Bearer ' + sessionToken,
-        'Accept': 'application/json',
-        'x-app-version': '1.0.0'
-      }
-    }, function (res) {
-      var body = '';
-      res.on('data', function (c) { body += c; });
-      res.on('end', function () {
-        console.log('[raw] month=' + month + ' status=' + res.statusCode + ' body[:600]=' + body.slice(0, 600));
-      });
-    });
-    req.on('error', function (e) { console.error('[raw] month=' + month + ' error: ' + e.message); });
-    req.setTimeout(15000, function () { req.destroy(); });
-    req.end();
-  });
-}
-
-function startUsageTimer() {
-  if (usageTimer) clearInterval(usageTimer);
-  fetchAndStoreUsage();
-  debugDumpUsageRaw();
-  usageTimer = setInterval(fetchAndStoreUsage, 60 * 1000);
-}
-
-async function fetchAndStoreUsage() {
-  if (!sessionToken) return;
-
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const year = now.getFullYear();
-
-  try {
-    var usageResult = await fetchUsageWithFallback(sessionToken, month, year);
-    var costData = usageResult.cost;
-    var amountData = usageResult.amount;
-    if (usageResult.fellBack) {
-      console.log('[usage] current month (' + month + '/' + year + ') empty, showing ' + usageResult.month + '/' + usageResult.year);
-    }
-    console.log('[usage] cost total=' + costData.aggregate.totalCost +
-      ' token total=' + amountData.aggregate.totalTokens +
-      ' today=' + localTodayStr());
-    console.log('[usage] last cost days: ' + JSON.stringify(costData.dailyData.slice(-3).map(function (d) { return { date: d.date, total: d.total }; })));
-    console.log('[usage] last token days: ' + JSON.stringify(amountData.dailyData.slice(-3).map(function (d) { return { date: d.date, total: d.total }; })));
-    lastUsageStats = {
-      cost: costData.aggregate,
-      token: amountData.aggregate,
-      costDaily: costData.dailyData,
-      tokenDaily: amountData.dailyData
-    };
-  } catch (e) {
-    console.error('[usage] fetch failed:', e && e.message);
-    if (e.message && /unauthoriz|authorization|401|403|登录|expired|invalid token/i.test(e.message)) {
-      sessionToken = null;
-      store.delete('sessionToken');
-      lastUsageStats = null;
-      proxyStatus = { running: false, port: 0, error: '会话已过期，请重新登录' };
-      updateTrayMenu();
-      broadcastSessionState();
-      if (!sessionReopenPending) {
-        sessionReopenPending = true;
-        console.log('[session] expired, reopening platform login window');
-        createSessionWindow();
-      }
-    }
-  }
-}
+/* ======== 曲线点构建(旧逻辑原样保留) ======== */
 
 function buildCurvePoints(stats) {
+  const { localTodayStr } = require('./providers/deepseek/usage');
   var tokenPoints = [];
   var costPoints = [];
   var todayStr = localTodayStr();
@@ -382,6 +288,8 @@ function buildCurvePoints(stats) {
 
   return { token: tokenPoints, cost: costPoints };
 }
+
+/* ======== 窗口几何辅助 ======== */
 
 function persistMainWindowBounds() {
   if (!mainWindow || mainWindow.isDestroyed()) return null;
@@ -436,260 +344,40 @@ function normalizeMainBounds(bounds) {
   };
 }
 
-function setupIPC() {
-  ipcMain.on('login:submit', async (event, { apiKey }) => {
-    try {
-      await fetchBalance(apiKey);
-      store.set('apiKey', apiKey);
-      if (loginWindow) loginWindow.close();
-      if (!mainWindow) createMainWindow();
-      else mainWindow.show();
-      mainWindow.webContents.on('did-finish-load', () => {
-        mainWindow.webContents.send('settings:loaded', store.store);
-        startBalanceTimer();
-        createSessionWindow();
-      });
-    } catch (e) {
-      if (loginWindow && !loginWindow.isDestroyed()) {
-        event.sender.send('login:error', 'API Key 验证失败: ' + e.message);
-      }
-    }
-  });
+/* ======== 设置窗口 ======== */
 
-  ipcMain.handle('get:dashboard', () => {
-    const curves = buildCurvePoints(lastUsageStats);
-    return {
-      balance: lastBalance,
-      stats: lastUsageStats,
-      proxyStatus: proxyStatus,
-      curveToken: curves.token,
-      curveCost: curves.cost
-    };
-  });
-
-  ipcMain.on('settings:update', (event, { key, value }) => {
-    store.set(key, value);
-    applySetting(key, value);
-    broadcastSettings();
-  });
-
-  ipcMain.handle('get:settings', () => {
-    return store.store;
-  });
-
-  ipcMain.on('settings:reset', () => {
-    store.clear();
-    if (mainWindow) {
-      mainWindow.setOpacity(0.92);
-      mainWindow.setAlwaysOnTop(true);
-    }
-    broadcastSettings();
-  });
-
-  ipcMain.handle('get:bounds', () => {
-    if (!mainWindow) return null;
-    return mainWindow.getBounds();
-  });
-
-  ipcMain.handle('window:commit', (event, bounds) => {
-    if (!mainWindow) return null;
-    var next = normalizeMainBounds(bounds);
-    var current = mainWindow.getBounds();
-    var sameSize = current.width === next.width && current.height === next.height;
-
-    if (sameSize) {
-      return persistMainWindowBounds();
-    }
-
-    mainWindow.setBounds(next);
-    return persistMainWindowBounds();
-  });
-
-  ipcMain.on('window:set-bounds', (event, bounds) => {
-    var win = BrowserWindow.fromWebContents(event.sender);
-    if (!win || win !== mainWindow || win.isDestroyed()) return;
-    var next = normalizeMainBounds(bounds);
-    var current = win.getBounds();
-    if (current.x === next.x && current.y === next.y
-        && current.width === next.width && current.height === next.height) {
-      return;
-    }
-    win.setBounds(next, false);
-  });
-
-  ipcMain.on('window:minimize', () => {
-    if (mainWindow) mainWindow.hide();
-  });
-
-  ipcMain.on('zoom:change', (event, { delta }) => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    var current = mainWindow.webContents.getZoomFactor();
-    var next = Math.min(1.6, Math.max(0.7, Math.round((current + delta) * 100) / 100));
-    mainWindow.webContents.setZoomFactor(next);
-    store.set('window.zoomFactor', next);
-  });
-
-  ipcMain.on('session:relogin', () => {
-    createSessionWindow();
-  });
-
-  ipcMain.handle('get:session-state', () => {
-    return { loggedIn: !!sessionToken, error: proxyStatus.error || null };
-  });
-
-  ipcMain.on('window:close', () => {
-    if (loginWindow) loginWindow.close();
-  });
-
-  ipcMain.on('window:close-settings', () => {
-    if (settingsWindow && !settingsWindow.isDestroyed()) {
-      settingsWindow.close();
-    }
-  });
-
-  ipcMain.on('refresh:dashboard', async () => {
-    fetchAndStoreBalance();
-    if (sessionToken) {
-      fetchAndStoreUsage();
-    }
-  });
-
-  var originalSettingsBtn = true;
-  ipcMain.on('open:settings', (event) => {
-    if (settingsWindow && !settingsWindow.isDestroyed()) {
-      settingsWindow.focus();
-      return;
-    }
-    settingsWindow = new BrowserWindow({
-      width: 370,
-      height: 520,
-      minWidth: 340,
-      minHeight: 440,
-      parent: mainWindow,
-      modal: false,
-      frame: false,
-      transparent: true,
-      backgroundColor: '#00000000',
-      resizable: false,
-      minimizable: false,
-      maximizable: false,
-      alwaysOnTop: true,
-      useContentSize: true,
-      webPreferences: {
-        preload: path.join(__dirname, '..', 'preload', 'preload.js'),
-        contextIsolation: true,
-        nodeIntegration: false
-      }
-    });
-    settingsWindow.setMenu(null);
-    settingsWindow.loadFile(path.join(__dirname, '..', 'renderer', 'settings-window.html'));
-    settingsWindow.on('closed', () => { settingsWindow = null; });
-  });
-
-  function getResizeState(win) {
-    if (win === mainWindow) return mainResizeState;
-    if (win === settingsWindow) return settingsResizeState;
-    return null;
+function createSettingsWindow() {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.focus();
+    return;
   }
-
-  function setResizeState(win, state) {
-    if (win === mainWindow) mainResizeState = state;
-    else if (win === settingsWindow) settingsResizeState = state;
-  }
-
-  function applyResizeBounds(win, state) {
-    if (!state || !state.pendingBounds || !win || win.isDestroyed()) return;
-    var next = state.pendingBounds;
-    state.pendingBounds = null;
-    var current = win.getBounds();
-    if (current.x !== next.x || current.y !== next.y
-        || current.width !== next.width || current.height !== next.height) {
-      win.setBounds(next, false);
-    }
-  }
-
-  function scheduleResizeFrame(win, state) {
-    if (state.timer) return;
-    state.timer = setTimeout(function () {
-      state.timer = null;
-      if (getResizeState(win) !== state) return;
-      applyResizeBounds(win, state);
-    }, 16);
-  }
-
-  function flushResizeFrame(win, state) {
-    if (!state) return;
-    if (state.timer) {
-      clearTimeout(state.timer);
-      state.timer = null;
-    }
-    applyResizeBounds(win, state);
-  }
-
-  ipcMain.on('resize:start', (event, { edge, screenX, screenY }) => {
-    var win = BrowserWindow.fromWebContents(event.sender);
-    if (!win) return;
-    var bounds = win.getBounds();
-    setResizeState(win, {
-      edge: edge,
-      startBounds: bounds,
-      startScreenX: screenX,
-      startScreenY: screenY,
-      pendingBounds: null,
-      timer: null
-    });
-  });
-
-  ipcMain.on('resize:move', (event, { screenX, screenY }) => {
-    var win = BrowserWindow.fromWebContents(event.sender);
-    if (!win) return;
-    var state = getResizeState(win);
-    if (!state) return;
-
-    var dx = screenX - state.startScreenX;
-    var dy = screenY - state.startScreenY;
-    var newBounds = { x: state.startBounds.x, y: state.startBounds.y, width: state.startBounds.width, height: state.startBounds.height };
-    var edge = state.edge;
-    var isSettings = win === settingsWindow;
-    var minW = isSettings ? 340 : 380;
-    var minH = isSettings ? 440 : 200;
-    var maxW = isSettings ? 1600 : 2400;
-    var maxH = isSettings ? 1200 : 1600;
-
-    if (edge.indexOf('e') !== -1) {
-      newBounds.width = Math.min(maxW, Math.max(minW, state.startBounds.width + dx));
-    }
-    if (edge.indexOf('w') !== -1) {
-      var proposedW = Math.min(maxW, Math.max(minW, state.startBounds.width - dx));
-      newBounds.x = state.startBounds.x + state.startBounds.width - proposedW;
-      newBounds.width = proposedW;
-    }
-    if (edge.indexOf('s') !== -1) {
-      newBounds.height = Math.min(maxH, Math.max(minH, state.startBounds.height + dy));
-    }
-    if (edge.indexOf('n') !== -1) {
-      var proposedH = Math.min(maxH, Math.max(minH, state.startBounds.height - dy));
-      newBounds.y = state.startBounds.y + state.startBounds.height - proposedH;
-      newBounds.height = proposedH;
-    }
-
-    state.pendingBounds = newBounds;
-    scheduleResizeFrame(win, state);
-  });
-
-  ipcMain.on('resize:end', (event) => {
-    var win = BrowserWindow.fromWebContents(event.sender);
-    if (!win) return;
-    var state = getResizeState(win);
-    flushResizeFrame(win, state);
-    setResizeState(win, null);
-
-    if (win === mainWindow) {
-      persistMainWindowBounds();
-      sendMainWindowBounds();
+  settingsWindow = new BrowserWindow({
+    width: 370,
+    height: 520,
+    minWidth: 340,
+    minHeight: 440,
+    parent: mainWindow,
+    modal: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    alwaysOnTop: true,
+    useContentSize: true,
+    webPreferences: {
+      preload: path.join(__dirname, '..', 'preload', 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
     }
   });
+  settingsWindow.setMenu(null);
+  settingsWindow.loadFile(path.join(__dirname, '..', 'renderer', 'settings-window.html'));
+  settingsWindow.on('closed', () => { settingsWindow = null; });
 }
+
+/* ======== 设置应用 ======== */
 
 function applySetting(key, value) {
   if (!mainWindow) return;
@@ -727,26 +415,71 @@ function applyTheme() {
   }
 }
 
+/* ======== 调度器 ======== */
+
+function startSchedulerRuntime() {
+  scheduler = startScheduler({
+    registry,
+    store,
+    broadcast: (channel, payload) => broadcastToWindows(channel, payload),
+    onStateChange: (providerId, state) => {
+      if (providerId !== 'deepseek' || !state) return;
+      if (state.authStatus === 'expired' && state.lastError) {
+        runtime.proxyStatus = { running: false, port: 0, error: '会话已过期，请重新登录' };
+        updateTrayMenu();
+        broadcastSessionState();
+      }
+    }
+  });
+}
+
+/* ======== App 生命周期 ======== */
+
 app.whenReady().then(() => {
-  setupIPC();
+  migrateLegacyKeys(store);
+  registry.register(deepseekProvider);
+  startSchedulerRuntime();
+
+  setupIPC({
+    store,
+    registry,
+    scheduler,
+    runtime,
+    resizeState,
+    getMainWindow: () => mainWindow,
+    getSettingsWindow: () => settingsWindow,
+    getLoginWindow: () => loginWindow,
+    createMainWindow,
+    createLoginWindow,
+    createSessionWindow,
+    createSettingsWindow,
+    broadcastSettings,
+    broadcastSessionState,
+    applySetting,
+    persistMainWindowBounds,
+    normalizeMainBounds,
+    sendMainWindowBounds,
+    buildCurvePoints
+  });
+
   createTray();
   app.setLoginItemSettings({ openAtLogin: store.get('window.autoLaunch') });
 
-  const apiKey = store.get('apiKey');
+  const apiKey = store.get('providers.deepseek.apiKey');
   if (apiKey) {
     createMainWindow();
     mainWindow.webContents.on('did-finish-load', () => {
       mainWindow.webContents.send('settings:loaded', store.store);
-      startBalanceTimer();
+      scheduler.poll('deepseek', 'balance');
 
-      sessionToken = store.get('sessionToken');
-      if (sessionToken) {
+      runtime.sessionToken = store.get('providers.deepseek.sessionToken') || null;
+      if (runtime.sessionToken) {
         console.log('[session] startup with stored token, starting usage timer');
-        startUsageTimer();
-        proxyStatus = { running: true, port: 0, activeSince: Date.now() };
+        scheduler.poll('deepseek', 'usage');
+        runtime.proxyStatus = { running: true, port: 0, activeSince: Date.now() };
       } else {
         console.log('[session] startup without token, opening platform login window');
-        proxyStatus = { running: false, port: 0, error: '请登录平台获取用量' };
+        runtime.proxyStatus = { running: false, port: 0, error: '请登录平台获取用量' };
         createSessionWindow();
       }
     });
@@ -761,8 +494,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   app.isQuitting = true;
-  if (balanceTimer) clearInterval(balanceTimer);
-  if (usageTimer) clearInterval(usageTimer);
+  if (scheduler) scheduler.stop();
   if (tray) { tray.destroy(); tray = null; }
 });
 

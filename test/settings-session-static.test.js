@@ -5,6 +5,8 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const main = fs.readFileSync(path.join(root, 'src/main/index.js'), 'utf8');
+const ipc = fs.readFileSync(path.join(root, 'src/main/ipc.js'), 'utf8');
+const sessionJs = fs.readFileSync(path.join(root, 'src/main/providers/deepseek/session.js'), 'utf8');
 const preload = fs.readFileSync(path.join(root, 'src/preload/preload.js'), 'utf8');
 const settingsJs = fs.readFileSync(path.join(root, 'src/renderer/js/settings-window.js'), 'utf8');
 const settingsHtml = fs.readFileSync(path.join(root, 'src/renderer/settings-window.html'), 'utf8');
@@ -16,27 +18,29 @@ test('preload exposes session login channels', () => {
 });
 
 test('main handles session:relogin by opening the platform login window', () => {
-  const handler = main.match(/ipcMain\.on\('session:relogin'[\s\S]*?\n  \}\);/);
+  const handler = ipc.match(/ipcMain\.on\('session:relogin'[\s\S]*?\n  \}\);/);
   assert.ok(handler);
   assert.match(handler[0], /createSessionWindow\(\)/);
 });
 
 test('main exposes get:session-state with login flag and error', () => {
-  const handler = main.match(/ipcMain\.handle\('get:session-state'[\s\S]*?\n  \}\);/);
+  const handler = ipc.match(/ipcMain\.handle\('get:session-state'[\s\S]*?\n  \}\);/);
   assert.ok(handler);
   assert.match(handler[0], /loggedIn/);
   assert.match(handler[0], /error/);
 });
 
+test('session capture intercepts the platform usage token', () => {
+  const capture = sessionJs.match(/\/api\/v0\/usage\/[\s\S]*?resolve\(token\)/);
+  assert.ok(capture);
+  assert.match(capture[0], /startsWith\('Bearer '\)/);
+  assert.match(capture[0], /includes\('sk-'\)/);
+});
+
 test('session state is broadcast on capture, expiry and aborted login', () => {
   assert.match(main, /function broadcastSessionState\(/);
-  const capture = main.match(/sessionToken = auth\.replace[\s\S]*?startUsageTimer\(\);/);
-  assert.ok(capture);
-  assert.match(capture[0], /broadcastSessionState\(\)/);
-  const expiry = main.match(/会话已过期，请重新登录[\s\S]*?\n    \}/);
-  assert.ok(expiry);
-  assert.match(expiry[0], /broadcastSessionState\(\)/);
-  const closed = main.match(/sessionWindow\.on\('closed'[\s\S]*?\n  \}\);/);
+  assert.match(main, /会话已过期，请重新登录[\s\S]*?broadcastSessionState\(\)/);
+  const closed = main.match(/sessionWindow\.on\('closed'[\s\S]*?\n    \}\)/);
   assert.ok(closed);
   assert.match(closed[0], /broadcastSessionState\(\)/);
 });
