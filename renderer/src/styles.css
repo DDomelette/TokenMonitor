@@ -84,6 +84,31 @@ body,
   padding: 12px;
 }
 
+/* 细滚动条,覆盖原生样式以去掉两端的箭头按钮 */
+.content::-webkit-scrollbar {
+  width: 8px;
+}
+.content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.content::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.16);
+  border-radius: 4px;
+}
+.content::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.28);
+}
+.content::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* 拖拽换位时的占位块:与卡片同样的圆角 */
+.grid-stack > .grid-stack-placeholder > .placeholder-content {
+  border-radius: var(--radius-card);
+}
+
 .placeholder {
   height: 100%;
   display: flex;
