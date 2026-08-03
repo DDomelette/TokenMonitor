@@ -579,8 +579,21 @@ html.is-window-resizing #app {
 .heatmap-month-cell {
   font-size: 10px;
   color: var(--text-secondary);
+  position: relative;
+  height: 14px;
+}
+
+/* 标签宽度与列宽解耦,自由溢出到相邻空列;最后一列右对齐,避免"月"被卡片右缘裁掉 */
+.heatmap-month-text {
+  position: absolute;
+  left: 0;
+  top: 0;
   white-space: nowrap;
-  overflow: hidden;
+}
+
+.heatmap-month-text.last {
+  left: auto;
+  right: 0;
 }
 
 .heatmap-legend {
@@ -615,9 +628,23 @@ html.is-window-resizing #app {
   transition: left 0.12s ease-out, top 0.12s ease-out;
 }
 
+.heatmap-tooltip-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 2px;
+}
+
 .heatmap-tooltip-date {
   font-weight: 600;
-  margin-bottom: 2px;
+}
+
+/* 头部右侧总消耗量 */
+.heatmap-tooltip-total {
+  font-weight: 600;
+  color: #9fd0fd;
+  white-space: nowrap;
 }
 
 .heatmap-tooltip.below {

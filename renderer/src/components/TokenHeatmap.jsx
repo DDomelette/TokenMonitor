@@ -252,14 +252,22 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
     <div className="heatmap-months">
       {visibleWeeks.map((col, i) => {
         const c = start + i;
+        const label = monthLabels[c];
         return (
           <div key={c} className="heatmap-month-cell" style={{ width: CELL + (mode === 'daily' ? GAP : GAP + 6) }}>
-            {monthLabels[c] || ''}
+            {label ? <span className={'heatmap-month-text' + (i === visibleWeeks.length - 1 ? ' last' : '')}>{label}</span> : ''}
           </div>
         );
       })}
     </div>
   );
+
+  // 浮层头部右侧的总量:每日=当日合计;每周=该 ISO 周合计;累计=年初至该日累计
+  function tipTotal(date) {
+    if (mode === 'weekly') return weekTotals[isoWeekKey(new Date(date + 'T00:00:00'))] || 0;
+    if (mode === 'cumulative') return cumByDate[date] || 0;
+    return Number(days[date]) || 0;
+  }
 
   return (
     <div className="heatmap-widget" ref={rootRef}>
@@ -298,7 +306,10 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
       </div>
       {tip ? (
         <div ref={tipRef} className={'heatmap-tooltip' + (tip.below ? ' below' : '')} style={{ left: tip.x, top: tip.y }}>
-          <div className="heatmap-tooltip-date">{dateLabel(tip.date)}</div>
+          <div className="heatmap-tooltip-head">
+            <span className="heatmap-tooltip-date">{dateLabel(tip.date)}</span>
+            <span className="heatmap-tooltip-total">{formatToken(tipTotal(tip.date))} Token</span>
+          </div>
           {(tip.overrideLines || tipLines(tip.date)).map((l, i) => (
             <div key={i} className="heatmap-tooltip-row">
               <span className="heatmap-tooltip-label">{l.label}</span>
