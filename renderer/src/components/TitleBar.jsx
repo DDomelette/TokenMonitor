@@ -21,7 +21,7 @@ export default function TitleBar({ editing, onToggleLayoutEdit }) {
     <div className="titlebar">
       <div className="titlebar-left">
         <span className="titlebar-logo" />
-        <span className="titlebar-text">DeepSeek Monitor</span>
+        <span className="titlebar-text">Token Monitor</span>
       </div>
       <div className="titlebar-actions">
         <button
