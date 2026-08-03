@@ -18,6 +18,7 @@ test('normalizeWhamUsage maps the synthetic fixture into QuotaState', () => {
 
   const weekly = quota.windows.find((w) => w.kind === 'weekly');
   assert.ok(weekly, 'weekly window must exist');
+  // used_percent 语义:已用百分比(remaining = 100 - used_percent)
   assert.equal(weekly.used, 37);
   assert.equal(weekly.limit, 100);
   assert.equal(weekly.remaining, 63);
@@ -37,6 +38,8 @@ test('normalizeWhamUsage maps the synthetic fixture into QuotaState', () => {
   assert.ok(quota.fetchedAt > 0);
 });
 
+// 语义锚点:used_percent 是"已用百分比",remaining = 100 - used_percent。
+// 此断言钉住该锚点,防止 remaining/used 被对调。
 test('used_percent=44 means 44 used, 56 remaining (semantic anchor)', () => {
   const anchored = JSON.parse(JSON.stringify(fixture));
   anchored.rate_limit.primary_window.used_percent = 44;

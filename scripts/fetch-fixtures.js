@@ -59,11 +59,19 @@ function request(url, opts) {
   });
 }
 
-// 打码疑似敏感字段(token/jwt/含 '.' 的长串)
+// 脱敏:身份/凭据/套餐/时间戳字段一律替换为固定测试值(白名单思路),
+// 避免真实账户信息(邮箱/用户 ID/套餐/精确时间)被写进 fixture。
 function maskSensitive(obj) {
   return JSON.parse(JSON.stringify(obj, (key, value) => {
-    if (typeof value === 'string' && /token|secret|jwt/i.test(key)) return '***REDACTED***';
-    if (typeof value === 'string' && value.length > 40 && /[.\-]/.test(value)) return '***REDACTED***';
+    if (typeof value === 'string') {
+      if (/token|secret|jwt/i.test(key)) return '***REDACTED***';
+      if (/email/i.test(key)) return 'user@example.com';
+      if (/^(user_?id|account_?id|org_?id|organization|user)$/i.test(key)) return 'user-ExampleUserId0000000000';
+      if (/^plan_?type$/i.test(key)) return 'pro';
+      if (value.length > 40 && /[.\-]/.test(value)) return '***REDACTED***';
+      return value;
+    }
+    if (typeof value === 'number' && /reset|expire|time|_at$/i.test(key)) return 1786000000;
     return value;
   }));
 }
@@ -85,7 +93,7 @@ async function fetchCodex() {
     fs.writeFileSync('test/fixtures/codex-wham-usage.json', JSON.stringify(masked, null, 2));
     console.log('saved test/fixtures/codex-wham-usage.json');
   } else {
-    console.log(res.body.slice(0, 300));
+    console.log('request failed, status', res.status);
   }
 }
 
@@ -102,7 +110,7 @@ async function fetchKimi() {
     fs.writeFileSync('test/fixtures/kimi-usages.json', JSON.stringify(masked, null, 2));
     console.log('saved test/fixtures/kimi-usages.json');
   } else {
-    console.log(res.body.slice(0, 300));
+    console.log('request failed, status', res.status);
   }
 }
 
