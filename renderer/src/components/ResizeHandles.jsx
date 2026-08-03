@@ -22,13 +22,27 @@ export default function ResizeHandles() {
   const targetBoundsRef = useRef(null);
   const pendingRestoreRef = useRef(null);
   const restoreFallbackTimerRef = useRef(null);
+  const boundsRafRef = useRef(null);
 
   function setWindowResizingClass(active) {
     document.documentElement.classList.toggle('is-window-resizing', active);
   }
 
+  // 每帧最多提交一次 setBounds, 高频 mousemove 只保留最新目标, 避免 IPC 洪峰
   function requestBounds(bounds) {
-    send('window:set-bounds', bounds);
+    targetBoundsRef.current = bounds;
+    if (boundsRafRef.current !== null) return;
+    boundsRafRef.current = requestAnimationFrame(function () {
+      boundsRafRef.current = null;
+      if (targetBoundsRef.current) send('window:set-bounds', targetBoundsRef.current);
+    });
+  }
+
+  function flushPendingBounds() {
+    if (boundsRafRef.current === null) return;
+    cancelAnimationFrame(boundsRafRef.current);
+    boundsRafRef.current = null;
+    if (targetBoundsRef.current) send('window:set-bounds', targetBoundsRef.current);
   }
 
   function scheduleRoundedRestore(target) {
@@ -90,7 +104,6 @@ export default function ResizeHandles() {
       const target = { x: newX, y: newY, width: newW, height: newH };
       ws.targetX = newX; ws.targetY = newY;
       ws.targetWidth = newW; ws.targetHeight = newH;
-      targetBoundsRef.current = target;
       requestBounds(target);
     };
 
@@ -101,7 +114,7 @@ export default function ResizeHandles() {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
       if (targetBoundsRef.current) {
-        requestBounds(targetBoundsRef.current);
+        flushPendingBounds();
         // 等原生窗口落到最终尺寸后再恢复圆角与透明
         scheduleRoundedRestore(targetBoundsRef.current);
         maybeRestoreRounded();
@@ -131,6 +144,10 @@ export default function ResizeHandles() {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('resize', onWindowResize);
+      if (boundsRafRef.current !== null) {
+        cancelAnimationFrame(boundsRafRef.current);
+        boundsRafRef.current = null;
+      }
     };
   }, []);
 
