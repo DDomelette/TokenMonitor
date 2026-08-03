@@ -138,6 +138,94 @@
   .select-input:focus {
     box-shadow: 0 0 0 2px rgba(116, 184, 252, 0.15);
   }
+  .custom-select {
+    position: relative;
+  }
+  .custom-select-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 116px;
+    font-size: 13px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    outline: none;
+    cursor: pointer;
+    font-family: inherit;
+    transition: border-color 200ms ease-out, box-shadow 200ms ease-out;
+  }
+  .custom-select-trigger:hover,
+  .custom-select.open .custom-select-trigger {
+    border-color: var(--primary);
+  }
+  .custom-select.open .custom-select-trigger {
+    box-shadow: 0 0 0 2px rgba(116, 184, 252, 0.15);
+  }
+  .custom-select-trigger svg {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .custom-select.open .custom-select-trigger svg {
+    transform: rotate(180deg);
+  }
+  .custom-select-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    box-shadow: 0 6px 20px rgba(31, 41, 55, 0.12);
+    z-index: 100;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(-6px) scaleY(0.86);
+    transform-origin: top center;
+    pointer-events: none;
+    /* 收回:较慢的阻尼感 */
+    transition:
+      opacity 240ms cubic-bezier(0.55, 0, 0.55, 0.2),
+      transform 300ms cubic-bezier(0.55, 0, 0.55, 0.2);
+  }
+  .custom-select.open .custom-select-menu {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+    pointer-events: auto;
+    /* 展开:较快、带轻微回弹的阻尼感 */
+    transition:
+      opacity 160ms ease-out,
+      transform 230ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .custom-select-option {
+    padding: 7px 10px;
+    font-size: 13px;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background 120ms ease-out;
+  }
+  .custom-select-option:hover {
+    background: rgba(116, 184, 252, 0.12);
+  }
+  .custom-select-option.selected {
+    color: var(--primary);
+    font-weight: 500;
+  }
+  /* 向上展开(空间不足时):从触发器上缘划出 */
+  .custom-select.drop-up .custom-select-menu {
+    top: auto;
+    bottom: calc(100% + 4px);
+    transform: translateY(6px) scaleY(0.86);
+    transform-origin: bottom center;
+  }
+  .custom-select.drop-up.open .custom-select-menu {
+    transform: translateY(0) scaleY(1);
+  }
   .text-input {
     font-size: 13px;
     padding: 6px 10px;
@@ -200,7 +288,7 @@
       </div>
       <div class="titlebar-actions">
         <button class="titlebar-btn" id="settingsCloseBtn" title="关闭">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="#5b6372"><path d="M3.22 3.22a.75.75 0 0 1 1.06 0L8 6.94l3.72-3.72a.75.75 0 1 1-1.06 1.06L9.06 8l3.72 3.72a.75.75 0 1 1-1.06 1.06L8 9.06l-3.72 3.72a.75.75 0 1 1-1.06-1.06L6.94 8 3.22 4.28a.75.75 0 0 1 0-1.06z"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
         </button>
       </div>
     </div>

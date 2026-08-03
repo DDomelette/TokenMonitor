@@ -13,6 +13,13 @@ function planBadgeLabel(planName) {
   return planName;
 }
 
+// Kimi 套餐名是音乐术语(andante/moderato/allegretto/allegro),首字母大写原样展示
+function kimiPlanLabel(planName) {
+  const p = (planName || '').trim();
+  if (!p) return null;
+  return p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
+}
+
 export default function QuotaCard({ provider, quotaState, authStatus, onReauthorize }) {
   if (authStatus === 'expired') {
     return (
@@ -37,14 +44,17 @@ export default function QuotaCard({ provider, quotaState, authStatus, onReauthor
 
   const windows = quotaState.windows || [];
   const title = (provider && provider.displayName) || quotaState.planName || '';
-  const badge = quotaState.planName && quotaState.planName !== title
+  const isKimi = !!(provider && provider.id === 'kimi');
+  const badge = !isKimi && quotaState.planName && quotaState.planName !== title
     ? planBadgeLabel(quotaState.planName)
     : null;
+  const kimiPlan = isKimi ? kimiPlanLabel(quotaState.planName) : null;
   return (
     <div className="quota-card">
       <div className="quota-card-head">
         <span className="quota-card-plan">{title}</span>
         {badge ? <span className="quota-card-plan-badge">{badge}</span> : null}
+        {kimiPlan ? <span className="quota-card-plan-kimi">{kimiPlan}</span> : null}
       </div>
       {windows.map((w) => (
         <WindowBar key={(w.name || '') + w.kind} kind={w.kind} name={w.name} used={w.used} limit={w.limit} remaining={w.remaining} resetsAt={w.resetsAt} />

@@ -36,8 +36,23 @@
         return '<label class="toggle-switch"><input type="checkbox" data-key="' + def.key + '" ' + (v ? 'checked' : '') + '><span class="toggle-slider"></span></label>';
       case 'slider':
         return '<div style="display:flex;align-items:center;flex:1;"><input type="range" class="slider-input" data-key="' + def.key + '" min="' + def.min + '" max="' + def.max + '" value="' + v + '" style="flex:1;"><span class="slider-value">' + v + (def.unit || '') + '</span></div>';
-      case 'select':
-        return '<select class="select-input" data-key="' + def.key + '">' + def.options.map(function (o) { return '<option value="' + o.value + '" ' + (String(v) === String(o.value) ? 'selected' : '') + '>' + o.label + '</option>'; }).join('') + '</select>';
+      case 'select': {
+        var current = null;
+        for (var i = 0; i < def.options.length; i++) {
+          if (String(v) === String(def.options[i].value)) { current = def.options[i]; break; }
+        }
+        return '<div class="custom-select" data-key="' + def.key + '">' +
+          '<button type="button" class="custom-select-trigger">' +
+            '<span class="custom-select-label">' + (current ? current.label : String(v)) + '</span>' +
+            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>' +
+          '</button>' +
+          '<div class="custom-select-menu">' +
+            def.options.map(function (o) {
+              return '<div class="custom-select-option' + (String(v) === String(o.value) ? ' selected' : '') + '" data-value="' + o.value + '">' + o.label + '</div>';
+            }).join('') +
+          '</div>' +
+        '</div>';
+      }
       case 'password':
         return '<input type="password" class="text-input" data-key="' + def.key + '" value="' + v + '"' + (placeholder ? ' placeholder="' + placeholder + '"' : '') + '>';
       default:
@@ -78,12 +93,52 @@
       reloginBtn.addEventListener('click', function () { window.api.send('session:relogin'); });
     }
 
-    document.querySelectorAll('input[data-key], select[data-key]').forEach(function (el) {
+    document.querySelectorAll('input[data-key]').forEach(function (el) {
       el.addEventListener('input', function () { handleChange(el); });
       if (el.type === 'checkbox') {
         el.addEventListener('change', function () { handleChange(el); });
       }
     });
+
+    document.querySelectorAll('.custom-select').forEach(function (sel) {
+      var trigger = sel.querySelector('.custom-select-trigger');
+      trigger.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var wasOpen = sel.classList.contains('open');
+        closeAllSelects();
+        if (!wasOpen) {
+          // 可视空间不足时向上展开,避免被 settings-body 的滚动边界裁切
+          var body = document.querySelector('.settings-body');
+          var spaceBelow = body.getBoundingClientRect().bottom - trigger.getBoundingClientRect().bottom;
+          var menuHeight = sel.querySelectorAll('.custom-select-option').length * 34 + 12;
+          sel.classList.toggle('drop-up', spaceBelow < menuHeight);
+          sel.classList.add('open');
+        }
+      });
+      sel.querySelectorAll('.custom-select-option').forEach(function (opt) {
+        opt.addEventListener('click', function (e) {
+          e.stopPropagation();
+          sel.querySelectorAll('.custom-select-option').forEach(function (o) { o.classList.remove('selected'); });
+          opt.classList.add('selected');
+          sel.querySelector('.custom-select-label').textContent = opt.textContent;
+          sel.classList.remove('open');
+          handleSelectChange(sel.dataset.key, opt.dataset.value);
+        });
+      });
+    });
+  }
+
+  function closeAllSelects() {
+    document.querySelectorAll('.custom-select.open').forEach(function (sel) {
+      sel.classList.remove('open');
+    });
+  }
+
+  function handleSelectChange(key, value) {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function () {
+      window.api.send('settings:update', { key: key, value: value });
+    }, 300);
   }
 
   function handleChange(el) {
@@ -198,4 +253,9 @@
   });
   document.addEventListener('mousemove', onResizeMove);
   document.addEventListener('mouseup', onResizeEnd);
+
+  document.addEventListener('click', closeAllSelects);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeAllSelects();
+  });
 })();

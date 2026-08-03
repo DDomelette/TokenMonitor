@@ -399,6 +399,16 @@ html.is-window-resizing #app {
   white-space: nowrap;
 }
 
+/* Kimi 套餐名:仿 Kimi 官网定价页的衬线字体(Playfair Display 风格),不加胶囊框 */
+.quota-card-plan-kimi {
+  font-family: 'Playfair Display', 'Noto Serif', Georgia, 'Times New Roman', serif;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
 .quota-window {
   margin-bottom: 8px;
 }
