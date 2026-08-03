@@ -27,6 +27,9 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
   const [tip, setTip] = useState(null);
   const rootRef = useRef(null);
   const tipRef = useRef(null);
+  const tipTimers = useRef({ settle: null, hide: null, fade: null });
+  const pendingTip = useRef(null);
+  const lastTipX = useRef(0);
 
   useEffect(() => {
     getHeatmap({ provider: selProvider, year: year }).then(setData).catch(() => {});
@@ -114,23 +117,57 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
   // 自定义悬停提示(原生 title 在透明窗口不显示;内容:日期 + 平台/模型明细)
   // 初始位置用估计半宽钳制,渲染后由 useLayoutEffect 按实测宽度二次校正(向窗口中间靠拢)
   const clampTipX = (x) => Math.max(104, Math.min(window.innerWidth - 104, x));
+  // GitHub 贡献图式悬停意图:鼠标在格子上停稳 SHOW_DELAY 后才加载浮层;
+  // 快速划过时定时器不断被取消,浮层不会出现,信息不闪烁。
+  const SHOW_DELAY = 220;
+  const HIDE_DELAY = 120;
+  const FADE_OUT = 320;
+  const clearTimer = (k) => {
+    if (tipTimers.current[k]) {
+      clearTimeout(tipTimers.current[k]);
+      tipTimers.current[k] = null;
+    }
+  };
+  const cancelTipHide = () => ['hide', 'fade'].forEach(clearTimer);
   const showTip = (e, date, overrideLines) => {
     if (!date) return;
+    ['settle', 'hide', 'fade'].forEach(clearTimer);
+    lastTipX.current = e.clientX;
     const r = e.currentTarget.getBoundingClientRect();
     const below = r.top < 140;
-    setTip({
+    pendingTip.current = {
       x: clampTipX(r.left + r.width / 2),
       y: below ? r.bottom + 6 : r.top - 6,
       below: below,
       date: date,
       overrideLines: overrideLines || null
-    });
+    };
+    // 换格子时旧浮层立即开始淡出(内容不原地替换),新内容停稳后才淡入
+    setTip((prev) => (prev && !prev.fading ? Object.assign({}, prev, { fading: true }) : prev));
+    tipTimers.current.settle = setTimeout(() => {
+      tipTimers.current.settle = null;
+      if (!pendingTip.current) return;
+      setTip(Object.assign({}, pendingTip.current, { x: clampTipX(lastTipX.current) }));
+    }, SHOW_DELAY);
   };
   // 格子内跟随鼠标横移,配合 CSS transition 在格子间平滑滑动
   const moveTip = (e) => {
-    setTip((prev) => (prev ? Object.assign({}, prev, { x: clampTipX(e.clientX) }) : prev));
+    lastTipX.current = e.clientX;
+    setTip((prev) => (prev && !prev.fading ? Object.assign({}, prev, { x: clampTipX(e.clientX) }) : prev));
   };
-  const hideTip = () => setTip(null);
+  const hideTip = () => {
+    pendingTip.current = null;
+    clearTimer('settle');
+    cancelTipHide();
+    tipTimers.current.hide = setTimeout(() => {
+      tipTimers.current.hide = null;
+      setTip((prev) => (prev ? Object.assign({}, prev, { fading: true }) : prev));
+      tipTimers.current.fade = setTimeout(() => {
+        tipTimers.current.fade = null;
+        setTip(null);
+      }, FADE_OUT);
+    }, HIDE_DELAY);
+  };
 
   // 实测浮层宽度:内容(缓存明细)会把浮层撑到 260px+,估计值钳不紧,
   // 这里按 offsetWidth 把中心点夹回窗口内,与 echarts confine 行为一致
@@ -305,7 +342,7 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
         <span>多</span>
       </div>
       {tip ? (
-        <div ref={tipRef} className={'heatmap-tooltip' + (tip.below ? ' below' : '')} style={{ left: tip.x, top: tip.y }}>
+        <div ref={tipRef} className={'heatmap-tooltip' + (tip.below ? ' below' : '') + (tip.fading ? ' fading' : '')} style={{ left: tip.x, top: tip.y }}>
           <div className="heatmap-tooltip-head">
             <span className="heatmap-tooltip-date">{dateLabel(tip.date)}</span>
             <span className="heatmap-tooltip-total">{formatToken(tipTotal(tip.date))} Token</span>

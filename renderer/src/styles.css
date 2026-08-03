@@ -671,7 +671,18 @@ html.is-window-resizing #app {
   z-index: 10000;
   white-space: nowrap;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-  transition: left 0.12s ease-out, top 0.12s ease-out;
+  transition: left 0.12s ease-out, top 0.12s ease-out, opacity 0.26s ease-out;
+  animation: heatmap-tip-in 260ms ease-out;
+}
+
+@keyframes heatmap-tip-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.heatmap-tooltip.fading {
+  opacity: 0;
+  transition: left 0.12s ease-out, top 0.12s ease-out, opacity 0.32s ease-in-out;
 }
 
 .heatmap-tooltip-head {

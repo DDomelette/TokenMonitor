@@ -156,6 +156,23 @@ function formatToken(n) {
   return n.toString();
 }
 
+// 悬浮层挂 body,不受模块 overflow 裁切;位置回调把浮层钳制在窗口内,被遮挡时向窗口中间靠拢。
+// pos 是图表容器坐标:换算成页面坐标钳制后再减回容器偏移(echarts 挂 body 时会再做一次容器→页面换算)。
+function windowClampedPosition(dom) {
+  return (pos, params, tipEl, rect, size) => {
+    const chartRect = dom ? dom.getBoundingClientRect() : { left: 0, top: 0 };
+    const cw = size.contentSize[0];
+    const ch = size.contentSize[1];
+    let px = chartRect.left + pos[0] + 14;
+    let py = chartRect.top + pos[1] + 14;
+    if (px + cw > window.innerWidth - 8) px = chartRect.left + pos[0] - cw - 14;
+    if (py + ch > window.innerHeight - 8) py = chartRect.top + pos[1] - ch - 14;
+    px = Math.max(8, Math.min(window.innerWidth - cw - 8, px));
+    py = Math.max(8, Math.min(window.innerHeight - ch - 8, py));
+    return [px - chartRect.left, py - chartRect.top];
+  };
+}
+
 function buildDailyOption(dom, dailyData) {
   const isDark = document.body.classList.contains('dark');
   const t = getBarTheme(isDark);
@@ -181,8 +198,9 @@ function buildDailyOption(dom, dailyData) {
     grid: density.grid,
     tooltip: {
       trigger: 'axis',
+      // 挂 body 避免被模块 overflow 裁切;位置钳制在窗口内,被遮挡时向中间靠拢
       appendToBody: true,
-      confine: false,
+      position: windowClampedPosition(dom),
       axisPointer: { type: 'shadow' },
       textStyle: { fontSize: 11 },
       formatter: (params) => {
@@ -230,18 +248,18 @@ function buildCurveOption(dom, points, config) {
     // theme.xAxis 自带 data:[],必须把真实日期放在最后合并,否则覆盖为空导致 axis 触发失效、无 x 轴标签
     xAxis: Object.assign({ type: 'category' }, density.xAxis, { data: dates }),
     yAxis: Object.assign({ type: 'value' }, density.yAxis),
-    tooltip: config.tooltip(theme),
+    tooltip: config.tooltip(theme, dom),
     animation: false,
     series: config.series(isDark, totalData, deltaData)
   };
 }
 
 // 与 model-bar 一致的悬浮窗:加粗日期头 + 圆点行;axisPointer 竖线跟随
-function curveTooltip(theme, formatValue) {
+function curveTooltip(theme, formatValue, dom) {
   return {
     trigger: 'axis',
     appendToBody: true,
-    confine: false,
+    position: windowClampedPosition(dom),
     axisPointer: { type: 'line' },
     backgroundColor: theme.tooltip.backgroundColor,
     borderColor: theme.tooltip.borderColor,
@@ -259,7 +277,7 @@ const CURVE_CONFIGS = {
   'token-line': {
     totalField: 'totalTokens',
     deltaField: 'deltaTokens',
-    tooltip: (theme) => curveTooltip(theme, formatToken),
+    tooltip: (theme, dom) => curveTooltip(theme, formatToken, dom),
     series: (isDark, totalData, deltaData) => [
       {
         name: '累计 Token', type: 'line', smooth: true, showSymbol: false,
@@ -282,7 +300,7 @@ const CURVE_CONFIGS = {
   'cost-line': {
     totalField: 'totalCost',
     deltaField: 'deltaCost',
-    tooltip: (theme) => curveTooltip(theme, (v) => '¥' + v.toFixed(2)),
+    tooltip: (theme, dom) => curveTooltip(theme, (v) => '¥' + v.toFixed(2), dom),
     series: (isDark, totalData, deltaData) => [
       {
         name: '累计费用', type: 'line', smooth: true, showSymbol: false,
