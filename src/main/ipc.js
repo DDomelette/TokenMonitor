@@ -89,10 +89,12 @@ module.exports = function setupIPC(deps) {
 
   ipcMain.handle('get:heatmap', (event, arg) => {
     const { provider, year } = arg || {};
-    // codex/kimi:store 键 'usageDaily' 的扁平聚合 { '<provider>:<date>': { ..., total } }
+    // 全部 provider 的日数据统一来自 store 键 'usageDaily' { '<provider>:<date>': { total, cached, models? } }:
+    // codex/kimi 由本地日志增量聚合;deepseek 由 fetchUsage 按月抓取时持久化(含历史回填)。
     const usageDaily = deps.store.get('usageDaily') || {};
     const byProvider = {};
     const cachedByProvider = {};
+    const deepseekModels = {};
     Object.keys(usageDaily).forEach((key) => {
       const idx = key.indexOf(':');
       if (idx <= 0) return;
@@ -107,31 +109,13 @@ module.exports = function setupIPC(deps) {
         cachedByProvider[pid] = cachedByProvider[pid] || {};
         cachedByProvider[pid][date] = (cachedByProvider[pid][date] || 0) + cached;
       }
+      // deepseek 悬停明细:当日模型分布(fetchUsage 持久化时写入)
+      const models = usageDaily[key] && usageDaily[key].models;
+      if (pid === 'deepseek' && Array.isArray(models) && models.length) {
+        deepseekModels[date] = models.map((m) => ({ model: m.model, tokens: m.tokens }));
+      }
     });
-    // deepseek:日数据来自 webUsage dailyData(total 字段)
-    const ds = deps.scheduler.getState('deepseek');
-    if (ds && ds.usage && ds.usage.amount && Array.isArray(ds.usage.amount.dailyData)) {
-      byProvider.deepseek = byProvider.deepseek || {};
-      ds.usage.amount.dailyData.forEach((d) => {
-        if (!d || !d.date) return;
-        const total = Number(d.total) || 0;
-        if (total > 0) byProvider.deepseek[d.date] = (byProvider.deepseek[d.date] || 0) + total;
-        const cached = Number(d.cacheHit) || 0;
-        if (cached > 0) {
-          cachedByProvider.deepseek = cachedByProvider.deepseek || {};
-          cachedByProvider.deepseek[d.date] = (cachedByProvider.deepseek[d.date] || 0) + cached;
-        }
-      });
-    }
     const result = buildHeatmap(byProvider, provider || 'all', year || new Date().getFullYear());
-    // 悬停明细:各平台当日总量与缓存占比 + deepseek 当日模型分布(dailyData[].models 由 usage 解析器产出)
-    const deepseekModels = {};
-    if (ds && ds.usage && ds.usage.amount && Array.isArray(ds.usage.amount.dailyData)) {
-      ds.usage.amount.dailyData.forEach((d) => {
-        if (!d || !d.date || !Array.isArray(d.models) || !d.models.length) return;
-        deepseekModels[d.date] = d.models.map((m) => ({ model: m.model, tokens: m.tokens }));
-      });
-    }
     result.details = { byProvider: byProvider, cachedByProvider: cachedByProvider, deepseekModels: deepseekModels };
     return result;
   });

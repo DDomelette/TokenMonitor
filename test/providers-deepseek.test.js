@@ -5,6 +5,7 @@ const https = require('node:https');
 
 const { UsageFetcher } = require('../src/main/providers/deepseek/usage');
 const { fetchBalance } = require('../src/main/providers/deepseek/balance');
+const deepseekAdapter = require('../src/main/providers/deepseek');
 
 function mockHttpsSequence(bodies) {
   const original = https.request;
@@ -93,6 +94,58 @@ function makeCtx(sessionToken) {
     getProxyUrl: () => null
   };
 }
+
+test('deepseek adapter fetchUsage persists daily tokens and backfills previous months', async () => {
+  const body = responseBody();
+  const mock = mockHttpsSequence([body]);
+  const data = {};
+  const ctx = {
+    store: {
+      get: (k) => (k === 'providers.deepseek.sessionToken' ? 'tok' : data[k]),
+      set: (k, v) => { data[k] = v; }
+    }
+  };
+  try {
+    await deepseekAdapter.fetchUsage(ctx, { month: 8, year: 2026 });
+    // 当前月日数据持久化到 usageDaily(total/cached/models)
+    const daily = data['usageDaily'];
+    assert.equal(daily['deepseek:' + TODAY].total, 6);
+    assert.equal(daily['deepseek:' + TODAY].cached, 1);
+    assert.equal(daily['deepseek:' + YESTERDAY].total, 60);
+    assert.equal(daily['deepseek:' + YESTERDAY].cached, 10);
+    assert.ok(Array.isArray(daily['deepseek:' + TODAY].models));
+    assert.equal(daily['deepseek:' + TODAY].models[0].model, 'deepseek-chat');
+    // 回填:向前 6 个月各请求一次 amount,并记录已抓取标记
+    const fetched = data['providers.deepseek.fetchedMonths'];
+    ['2026-07', '2026-06', '2026-05', '2026-04', '2026-03', '2026-02'].forEach((mk) => {
+      assert.ok(fetched.includes(mk), 'fetchedMonths 应含 ' + mk);
+    });
+    assert.ok(mock.paths().some((p) => p.includes('/api/v0/usage/amount?month=7&year=2026')));
+  } finally {
+    mock.restore();
+  }
+});
+
+test('deepseek adapter fetchUsage skips months already marked fetched', async () => {
+  const body = responseBody();
+  const mock = mockHttpsSequence([body]);
+  const data = {
+    'providers.deepseek.fetchedMonths': ['2026-07', '2026-06', '2026-05', '2026-04', '2026-03', '2026-02']
+  };
+  const ctx = {
+    store: {
+      get: (k) => (k === 'providers.deepseek.sessionToken' ? 'tok' : data[k]),
+      set: (k, v) => { data[k] = v; }
+    }
+  };
+  try {
+    await deepseekAdapter.fetchUsage(ctx, { month: 8, year: 2026 });
+    // 全部历史月份已标记 → 只有当月 cost+amount 两个请求,无回填请求
+    assert.equal(mock.paths().length, 2);
+  } finally {
+    mock.restore();
+  }
+});
 
 test('deepseek adapter fetchUsage normalizes legacy usage payload', async () => {
   const body = responseBody();
