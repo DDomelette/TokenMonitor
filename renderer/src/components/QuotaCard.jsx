@@ -1,7 +1,17 @@
 // 订阅制额度卡片:由 windows 数组驱动(不写死两条);subscription 模式不显示任何金额;
 // authStatus==='expired' 时替换为重新授权按钮。
+// 套餐徽标:prolite→5x Pro / pro→20x Pro / plus→Plus 套餐;未检测到(API 用户)不显示。
 import React from 'react';
 import WindowBar from './WindowBar.jsx';
+
+function planBadgeLabel(planName) {
+  const p = (planName || '').trim().toLowerCase();
+  if (!p) return null;
+  if (p === 'prolite') return '5x Pro';
+  if (p === 'pro') return '20x Pro';
+  if (p === 'plus') return 'Plus 套餐';
+  return planName;
+}
 
 export default function QuotaCard({ provider, quotaState, authStatus, onReauthorize }) {
   if (authStatus === 'expired') {
@@ -27,12 +37,14 @@ export default function QuotaCard({ provider, quotaState, authStatus, onReauthor
 
   const windows = quotaState.windows || [];
   const title = (provider && provider.displayName) || quotaState.planName || '';
-  const planSub = quotaState.planName && quotaState.planName !== title ? quotaState.planName : null;
+  const badge = quotaState.planName && quotaState.planName !== title
+    ? planBadgeLabel(quotaState.planName)
+    : null;
   return (
     <div className="quota-card">
       <div className="quota-card-head">
         <span className="quota-card-plan">{title}</span>
-        {planSub ? <span className="quota-card-plan-sub">{planSub}</span> : null}
+        {badge ? <span className="quota-card-plan-badge">{badge}</span> : null}
       </div>
       {windows.map((w) => (
         <WindowBar key={(w.name || '') + w.kind} kind={w.kind} name={w.name} used={w.used} limit={w.limit} remaining={w.remaining} resetsAt={w.resetsAt} />

@@ -1,7 +1,7 @@
 // 单个额度窗口进度条:条长=剩余额度占比(剩余越少条越短),按剩余百分比着色
 // (>40% 绿 / 20~40% 黄 / ≤20% 红);剩余为 0 时整条斜纹填满。resetsAt 倒计时每分钟重渲染。
 import React, { useEffect, useState } from 'react';
-import { formatReset, formatTokenCount } from '../lib/format.js';
+import { formatReset } from '../lib/format.js';
 
 function remainingClass(percent) {
   if (percent > 40) return 'low';
@@ -27,10 +27,7 @@ export default function WindowBar({ kind, name, used, limit, remaining, resetsAt
     <div className="quota-window">
       <div className="quota-window-head">
         <span className="quota-window-kind">{name || (kind === '5h' ? '5 小时窗口' : '本周额度')}</span>
-        <span className="quota-window-used">
-          已用 {formatTokenCount(used)} / {formatTokenCount(limitNum)}
-          {remaining !== undefined && remaining !== null ? `(剩余 ${formatTokenCount(remaining)})` : ''}
-        </span>
+        <span className="quota-window-used">{Math.round(percent)}%</span>
       </div>
       <div className="quota-bar">
         <div

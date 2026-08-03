@@ -386,6 +386,19 @@ html.is-window-resizing #app {
   color: var(--text-secondary);
 }
 
+/* 套餐徽标:仿 Codex 原版 Pro 小胶囊 */
+.quota-card-plan-badge {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  background: var(--bg-card);
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
 .quota-window {
   margin-bottom: 8px;
 }

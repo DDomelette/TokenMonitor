@@ -9,9 +9,13 @@ function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
+// 紧凑模式按实际容器尺寸判定,而不是 data-layout-preset 属性:
+// 该属性随布局 memo 冻结,用户在编辑模式自由缩放后不同步,会导致宽图误判为 card 隐藏全部标签。
+// 宽且矮的图(如 312x92)仍保留标签——宽屏矮图丢光标签正是用户感知的"信息全没了";
+// 只有两个维度都很小(卡片形态)才隐藏坐标轴。
 function isCardMode(dom) {
-  const item = dom && dom.closest('[data-layout-preset="card"]');
-  return Boolean(item);
+  if (!dom) return false;
+  return dom.clientWidth < 200 && dom.clientHeight < 130;
 }
 
 function dateLabelInterval(count, width) {
