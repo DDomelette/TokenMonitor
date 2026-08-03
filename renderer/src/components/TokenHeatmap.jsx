@@ -1,6 +1,6 @@
 // GitHub 风格 Token 活动热力图:每日(53×7)/每周(53 列 1 行)/累计(高度条)三模式。
 // 颜色用主题 primary(#74B8FC)的 5 档透明度;hover tooltip 显示日期与用量。
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getHeatmap } from '../api.js';
 import { buildWeeks, colorLevel, formatToken, isoWeekKey } from '../lib/heatmap.js';
 
@@ -26,6 +26,7 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
   const [boxWidth, setBoxWidth] = useState(0);
   const [tip, setTip] = useState(null);
   const rootRef = useRef(null);
+  const tipRef = useRef(null);
 
   useEffect(() => {
     getHeatmap({ provider: selProvider, year: year }).then(setData).catch(() => {});
@@ -111,13 +112,13 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
   }
 
   // 自定义悬停提示(原生 title 在透明窗口不显示;内容:日期 + 平台/模型明细)
+  // 初始位置用估计半宽钳制,渲染后由 useLayoutEffect 按实测宽度二次校正(向窗口中间靠拢)
   const clampTipX = (x) => Math.max(104, Math.min(window.innerWidth - 104, x));
   const showTip = (e, date, overrideLines) => {
     if (!date) return;
     const r = e.currentTarget.getBoundingClientRect();
     const below = r.top < 140;
     setTip({
-      // 浮层最宽约 200px:钳制中心点,防止右/左边缘被窗口裁掉
       x: clampTipX(r.left + r.width / 2),
       y: below ? r.bottom + 6 : r.top - 6,
       below: below,
@@ -130,6 +131,16 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
     setTip((prev) => (prev ? Object.assign({}, prev, { x: clampTipX(e.clientX) }) : prev));
   };
   const hideTip = () => setTip(null);
+
+  // 实测浮层宽度:内容(缓存明细)会把浮层撑到 260px+,估计值钳不紧,
+  // 这里按 offsetWidth 把中心点夹回窗口内,与 echarts confine 行为一致
+  useLayoutEffect(() => {
+    const el = tipRef.current;
+    if (!el || !tip) return;
+    const half = el.offsetWidth / 2 + 8;
+    const x = Math.max(half, Math.min(window.innerWidth - half, tip.x));
+    if (Math.abs(x - tip.x) > 0.5) el.style.left = x + 'px';
+  }, [tip]);
 
   function tipLines(date) {
     const det = data.details || {};
@@ -286,7 +297,7 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
         <span>多</span>
       </div>
       {tip ? (
-        <div className={'heatmap-tooltip' + (tip.below ? ' below' : '')} style={{ left: tip.x, top: tip.y }}>
+        <div ref={tipRef} className={'heatmap-tooltip' + (tip.below ? ' below' : '')} style={{ left: tip.x, top: tip.y }}>
           <div className="heatmap-tooltip-date">{dateLabel(tip.date)}</div>
           {(tip.overrideLines || tipLines(tip.date)).map((l, i) => (
             <div key={i} className="heatmap-tooltip-row">

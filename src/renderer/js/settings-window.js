@@ -132,21 +132,15 @@
     updateSessionSection();
   }).catch(function () {});
 
-  function applyInitialTheme(settings) {
-    var isDark = false;
-    var dm = settings.window && settings.window.darkMode;
-    if (dm === 'dark') {
-      isDark = true;
-    } else if (dm === 'light') {
-      isDark = false;
-    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      isDark = true;
-    }
-    if (isDark) document.body.classList.add('dark');
+  // 主题与主窗口保持一致:React 主窗口目前只有浅色一套样式(无 body.dark 处理),
+  // 设置窗口若跟随系统变暗会与主窗口割裂。在主窗口支持暗色前,设置窗口固定浅色,
+  // 忽略系统暗色与 theme:changed。
+  function applyInitialTheme() {
+    document.body.classList.remove('dark');
   }
 
-  window.api.on('theme:changed', function (mode) {
-    document.body.classList.toggle('dark', mode === 'dark');
+  window.api.on('theme:changed', function () {
+    document.body.classList.remove('dark');
   });
 
   var resizeState = null;

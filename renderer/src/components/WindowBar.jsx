@@ -9,7 +9,7 @@ function remainingClass(percent) {
   return 'high';
 }
 
-export default function WindowBar({ kind, used, limit, remaining, resetsAt }) {
+export default function WindowBar({ kind, name, used, limit, remaining, resetsAt }) {
   const [, setTick] = useState(0);
   useEffect(() => {
     const timer = setInterval(() => setTick((k) => k + 1), 60000);
@@ -26,7 +26,7 @@ export default function WindowBar({ kind, used, limit, remaining, resetsAt }) {
   return (
     <div className="quota-window">
       <div className="quota-window-head">
-        <span className="quota-window-kind">{kind === '5h' ? '5 小时窗口' : '本周额度'}</span>
+        <span className="quota-window-kind">{name || (kind === '5h' ? '5 小时窗口' : '本周额度')}</span>
         <span className="quota-window-used">
           已用 {formatTokenCount(used)} / {formatTokenCount(limitNum)}
           {remaining !== undefined && remaining !== null ? `(剩余 ${formatTokenCount(remaining)})` : ''}

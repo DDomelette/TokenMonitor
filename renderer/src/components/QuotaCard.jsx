@@ -35,7 +35,7 @@ export default function QuotaCard({ provider, quotaState, authStatus, onReauthor
         {planSub ? <span className="quota-card-plan-sub">{planSub}</span> : null}
       </div>
       {windows.map((w) => (
-        <WindowBar key={w.kind} kind={w.kind} used={w.used} limit={w.limit} remaining={w.remaining} resetsAt={w.resetsAt} />
+        <WindowBar key={(w.name || '') + w.kind} kind={w.kind} name={w.name} used={w.used} limit={w.limit} remaining={w.remaining} resetsAt={w.resetsAt} />
       ))}
       {quotaState.billingMode === 'subscription' && quotaState.billingCycleEnd ? (
         <div className="quota-card-cycle">订阅续费日:{quotaState.billingCycleEnd}</div>

@@ -108,23 +108,56 @@ body,
   justify-content: center;
   border: none;
   background: transparent;
-  border-radius: 6px;
+  border-radius: 8px;
   color: #5b6372;
   cursor: pointer;
   padding: 0;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease, box-shadow 0.2s ease;
+}
+
+.titlebar-btn svg {
+  display: block;
 }
 
 .titlebar-btn:hover {
   background: rgba(0, 0, 0, 0.06);
+  color: #1f2329;
 }
 
-.titlebar-btn.active {
-  background: rgba(116, 184, 252, 0.22);
-  color: var(--primary-dark);
+/* 按压回弹 */
+.titlebar-btn:active {
+  transform: scale(0.85);
 }
 
-.titlebar-btn:hover svg {
-  stroke: #1f2329;
+/* 布局编辑激活态:实心主题色 + 白图标,明确区分"编排中" */
+.titlebar-btn-layout.active {
+  background: var(--primary, #74b8fc);
+  color: #fff;
+  box-shadow: 0 1px 6px rgba(116, 184, 252, 0.55);
+}
+
+.titlebar-btn-layout.active:hover {
+  background: var(--primary-dark, #5a9fe0);
+  color: #fff;
+}
+
+/* 点击小动画:刷新转一整圈,设置齿轮轻转回弹 */
+.titlebar-btn.spin-refresh svg {
+  animation: tb-spin 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.titlebar-btn.spin-gear svg {
+  animation: tb-gear 0.4s ease;
+}
+
+@keyframes tb-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes tb-gear {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .layout-edit-icon {

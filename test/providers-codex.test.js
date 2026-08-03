@@ -18,10 +18,9 @@ test('normalizeWhamUsage maps the synthetic fixture into QuotaState', () => {
 
   const weekly = quota.windows.find((w) => w.kind === 'weekly');
   assert.ok(weekly, 'weekly window must exist');
-  // 用户核实语义: used_percent 即"剩余百分比"
-  assert.equal(weekly.remaining, 46);
+  assert.equal(weekly.used, 37);
   assert.equal(weekly.limit, 100);
-  assert.equal(weekly.used, 54);
+  assert.equal(weekly.remaining, 63);
   assert.equal(weekly.resetsAt, fixture.rate_limit.primary_window.reset_at * 1000);
   assert.ok(weekly.resetsAt > 0);
 
@@ -38,15 +37,13 @@ test('normalizeWhamUsage maps the synthetic fixture into QuotaState', () => {
   assert.ok(quota.fetchedAt > 0);
 });
 
-// 语义锚点(用户 2026-08-02 在真实账户上核实):端点返回 used_percent=44 时,
-// CLI 显示的是"剩余 44%"。此断言钉住该锚点,防止 remaining/used 被对调。
-test('used_percent=44 means 44 remaining, 56 used (semantic anchor)', () => {
+test('used_percent=44 means 44 used, 56 remaining (semantic anchor)', () => {
   const anchored = JSON.parse(JSON.stringify(fixture));
   anchored.rate_limit.primary_window.used_percent = 44;
   const quota = normalizeWhamUsage(anchored);
   const weekly = quota.windows.find((w) => w.kind === 'weekly' && w.name === null);
-  assert.equal(weekly.remaining, 44);
-  assert.equal(weekly.used, 56);
+  assert.equal(weekly.used, 44);
+  assert.equal(weekly.remaining, 56);
 });
 
 test('normalizeWhamUsage maps credits into balance when has_credits', () => {

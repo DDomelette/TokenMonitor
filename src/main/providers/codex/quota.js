@@ -9,10 +9,12 @@ function windowKind(seconds) {
   return 'limit';
 }
 
-// used_percent 语义(用户已核实):即"剩余百分比"。limit 归一为 100。
+// used_percent 语义:即"已用百分比"。
+// limit 归一为 100,剩余 = 100 - used_percent。
+// (曾按"剩余"理解,会导致未使用的窗口被误显示为耗尽斜纹条)
 // name 保留限额名称(如 additional_rate_limits 的 "GPT-5.3-Codex-Spark"),主窗口为 null。
 function mapWindow(w, name) {
-  const remaining = Number(w.used_percent) || 0;
+  const used = Math.min(100, Math.max(0, Number(w.used_percent) || 0));
   const limit = 100;
   let resetsAt = null;
   if (w.reset_at) resetsAt = Number(w.reset_at) * 1000;
@@ -21,9 +23,9 @@ function mapWindow(w, name) {
   return {
     kind: windowKind(Number(w.limit_window_seconds)),
     name: name || null,
-    used: Math.max(0, limit - remaining),
+    used: used,
     limit: limit,
-    remaining: remaining,
+    remaining: limit - used,
     resetsAt: resetsAt
   };
 }
