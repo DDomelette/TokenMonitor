@@ -130,7 +130,7 @@ function isFree(item, placed) {
   });
 }
 
-function nearestFreePosition(item, placed, columns) {
+export function nearestFreePosition(item, placed, columns) {
   if (isFree(item, placed)) return item;
 
   const originX = item.x;

@@ -49,6 +49,8 @@ function curveAxisOptions(dom, dataPointCount) {
   const width = dom ? dom.clientWidth : 320;
   const height = dom ? dom.clientHeight : 180;
   const axisFontSize = Math.round(clamp(Math.min(width / 38, height / 16), 8, 12));
+  // y 轴刻度按可用高度分级:模块被压矮时只留 2~3 档,避免标签挤成一团失去意义
+  const yTicks = Math.round(clamp(Math.floor(height / 44), 2, 5));
   return {
     grid: {
       top: Math.round(clamp(height * 0.06, 10, 16)),
@@ -66,6 +68,7 @@ function curveAxisOptions(dom, dataPointCount) {
       }
     },
     yAxis: {
+      splitNumber: yTicks,
       axisLabel: {
         show: true,
         hideOverlap: true,
@@ -90,6 +93,7 @@ function curveDensity(theme, dom, compact, dataPointCount) {
       })
     }),
     yAxis: Object.assign({}, theme.yAxis, {
+      splitNumber: adaptive.yAxis.splitNumber,
       axisLabel: Object.assign({ show: true }, theme.yAxis.axisLabel, {
         show: true,
         hideOverlap: true,
@@ -124,6 +128,8 @@ export function barDensity(theme, dom, compact) {
   const width = dom ? dom.clientWidth : 320;
   const height = dom ? dom.clientHeight : 180;
   const axisFontSize = Math.round(clamp(Math.min(width / 38, height / 16), 8, 12));
+  // y 轴刻度按可用高度分级:模块被压矮时只留 2~3 档,避免标签挤成一团失去意义
+  const yTicks = Math.round(clamp(Math.floor(height / 44), 2, 5));
   return {
     grid: {
       left: Math.round(clamp(width * 0.13, 40, 52)),
@@ -139,7 +145,8 @@ export function barDensity(theme, dom, compact) {
     yAxis: {
       name: 'tokens',
       nameTextStyle: { fontSize: axisFontSize },
-      axisLabel: { show: true, fontSize: axisFontSize },
+      splitNumber: yTicks,
+      axisLabel: { show: true, fontSize: axisFontSize, hideOverlap: true },
       splitLine: { show: true, lineStyle: { color: theme.gridColor } }
     },
     series: [

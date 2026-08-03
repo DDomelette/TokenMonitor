@@ -9,7 +9,9 @@ import {
   validateState,
   validateLayout,
   breakpointForWidth,
-  nearestPreset
+  nearestPreset,
+  presetAfterResize,
+  nearestFreePosition
 } from '../grid/policy.js';
 import FeeCard from './FeeCard.jsx';
 import ChartWidget from './ChartWidget.jsx';
@@ -44,7 +46,7 @@ const MIN_SIZES = {
   'provider-bar': { w: 4, h: 4 },
   'token-line': { w: 4, h: 4 },
   'cost-line': { w: 4, h: 4 },
-  'token-heatmap': { w: 6, h: 6 }
+  'token-heatmap': { w: 6, h: 10 }
 };
 
 function WidgetBody({ id, onContentChange }) {
@@ -198,6 +200,60 @@ export default function Dashboard({ editing }) {
       send('settings:update', { key: 'layout', value: next });
     };
     grid.on('change', onChange);
+
+    /* ---- 缩放手势:合法尺寸吸附 + 其他模块位置锁定 ----
+       缩小时 gridstack 重力会让下方模块上浮换位,且自由尺寸会落在坐标轴被压扁的
+       "bug 尺寸"。这里在手势期间切 float 禁止连带推动,松手时把被缩放模块吸附到
+       最近的合法预设(presetAfterResize 按拖动方向进一档,避免小幅拖动弹回),
+       其余模块一律还原到手势前的最近空位——相对位置永不因缩放而改变。 */
+    let resizeSnapshot = null;
+    grid.on('resizestart', () => {
+      resizeSnapshot = {};
+      host.querySelectorAll('.grid-stack-item').forEach((it) => {
+        const n = it.gridstackNode;
+        if (n) resizeSnapshot[n.id] = { x: n.x, y: n.y, w: n.w, h: n.h };
+      });
+      grid.float(true);
+    });
+    grid.on('resizestop', (event, el) => {
+      const snapshot = resizeSnapshot;
+      resizeSnapshot = null;
+      const node = el.gridstackNode;
+      if (!node) { grid.float(false); return; }
+      const start = snapshot && snapshot[node.id];
+      const snap = presetAfterResize(node.id, bp, start, { w: node.w, h: node.h })
+        || nearestPreset(node.id, bp, node.w, node.h);
+      const box = snap
+        ? { x: Math.min(node.x, layout.columns - snap.w), y: node.y, w: snap.w, h: snap.h }
+        : { x: node.x, y: node.y, w: node.w, h: node.h };
+      grid.batchUpdate();
+      grid.update(el, box);
+      const placed = [Object.assign({ id: node.id }, box)];
+      const others = [];
+      host.querySelectorAll('.grid-stack-item').forEach((it) => {
+        if (it === el) return;
+        const n = it.gridstackNode;
+        const orig = snapshot && n && snapshot[n.id];
+        if (n && orig) others.push({ el: it, node: n, orig: orig });
+      });
+      others.sort((a, b) => (a.orig.y - b.orig.y) || (a.orig.x - b.orig.x));
+      others.forEach((entry) => {
+        const candidate = {
+          id: entry.node.id,
+          x: entry.orig.x,
+          y: entry.orig.y,
+          w: entry.node.w,
+          h: entry.node.h
+        };
+        const pos = nearestFreePosition(candidate, placed, layout.columns);
+        if (pos.x !== entry.node.x || pos.y !== entry.node.y) {
+          grid.update(entry.el, { x: pos.x, y: pos.y });
+        }
+        placed.push(pos);
+      });
+      grid.batchUpdate(false);
+      grid.float(false);
+    });
 
     return () => {
       grid.off('change');
