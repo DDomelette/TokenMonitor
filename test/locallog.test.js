@@ -187,8 +187,9 @@ test('readLocalLog merges incremental daily rollup into store usageDaily', () =>
   };
   try {
     store.set('providers.codex.localLogRoot', dir);
-    const line1 = '{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":50,"output_tokens":10,"total_tokens":160}}},"timestamp":"2026-08-02T10:00:00.000Z"}\n';
-    const line2 = '{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":200,"cached_input_tokens":100,"output_tokens":20,"total_tokens":320}}},"timestamp":"2026-08-02T10:05:00.000Z"}\n';
+    const day = new Date(Date.now()).toISOString().slice(0, 10);
+    const line1 = '{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":50,"output_tokens":10,"total_tokens":160}}},"timestamp":"' + day + 'T10:00:00.000Z"}\n';
+    const line2 = '{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":200,"cached_input_tokens":100,"output_tokens":20,"total_tokens":320}}},"timestamp":"' + day + 'T10:05:00.000Z"}\n';
     fs.writeFileSync(file, line1);
     const { readLocalLog } = require('../src/main/providers/codex/locallog');
     const first = readLocalLog({ store });
@@ -197,7 +198,6 @@ test('readLocalLog merges incremental daily rollup into store usageDaily', () =>
     fs.appendFileSync(file, line2);
     const second = readLocalLog({ store });
     assert.equal(second.length, 1);
-    const day = new Date(Date.now()).toISOString().slice(0, 10);
     const key = 'codex:' + day;
     const agg = store.get('usageDaily')[key];
     assert.deepEqual(agg, { input: 300, cached: 150, output: 30, total: 480 });
