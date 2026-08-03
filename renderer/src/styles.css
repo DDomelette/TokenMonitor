@@ -337,7 +337,9 @@ html.is-window-resizing #app {
   background: transparent;
 }
 
-.grid-stack-item-content {
+/* 优先级须压过 gridstack.min.css 的 .grid-stack-item > .grid-stack-item-content{overflow-y:auto}:
+   溢出由 Dashboard 的自动撑高处理,瞬时溢出宁可裁切也不显示滚动条 */
+.grid-stack > .grid-stack-item > .grid-stack-item-content {
   overflow: hidden;
 }
 
