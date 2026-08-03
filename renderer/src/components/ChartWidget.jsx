@@ -13,7 +13,7 @@ function clamp(value, minimum, maximum) {
 // 该属性随布局 memo 冻结,用户在编辑模式自由缩放后不同步,会导致宽图误判为 card 隐藏全部标签。
 // 宽且矮的图(如 312x92)仍保留标签——宽屏矮图丢光标签正是用户感知的"信息全没了";
 // 只有两个维度都很小(卡片形态)才隐藏坐标轴。
-function isCardMode(dom) {
+export function isCardMode(dom) {
   if (!dom) return false;
   return dom.clientWidth < 200 && dom.clientHeight < 130;
 }
@@ -100,7 +100,7 @@ function curveDensity(theme, dom, compact, dataPointCount) {
   };
 }
 
-function barDensity(theme, dom, compact) {
+export function barDensity(theme, dom, compact) {
   if (compact) {
     return {
       grid: { left: 8, right: 8, top: 6, bottom: 6 },
@@ -150,7 +150,7 @@ function barDensity(theme, dom, compact) {
   };
 }
 
-function formatToken(n) {
+export function formatToken(n) {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
   if (n >= 1000) return (n / 1000).toFixed(0) + 'K';
   return n.toString();
@@ -158,7 +158,7 @@ function formatToken(n) {
 
 // 悬浮层挂 body,不受模块 overflow 裁切;位置回调把浮层钳制在窗口内,被遮挡时向窗口中间靠拢。
 // pos 是图表容器坐标:换算成页面坐标钳制后再减回容器偏移(echarts 挂 body 时会再做一次容器→页面换算)。
-function windowClampedPosition(dom) {
+export function windowClampedPosition(dom) {
   return (pos, params, tipEl, rect, size) => {
     const chartRect = dom ? dom.getBoundingClientRect() : { left: 0, top: 0 };
     const cw = size.contentSize[0];

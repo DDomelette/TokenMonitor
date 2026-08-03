@@ -43,11 +43,12 @@ const defaults = {
     todayCostCard: true,
     cacheRateCard: true,
     modelBar: true,
+    providerBar: true,
     tokenLine: true,
     costLine: true
   },
   layout: null,
-  componentOrder: ['balance-card', 'today-cost-card', 'cache-rate-card', 'model-bar', 'token-line', 'cost-line'],
+  componentOrder: ['balance-card', 'today-cost-card', 'cache-rate-card', 'model-bar', 'provider-bar', 'token-line', 'cost-line'],
   data: {
     sampleInterval: 30,
     defaultTimeRange: '1h',

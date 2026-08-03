@@ -111,7 +111,7 @@ const components = [
   },
   {
     id: 'model-bar',
-    label: '每日 Token 消耗',
+    label: 'DeepSeek 每日 Token 消耗',
     settingsKey: 'components.modelBar',
     defaultVisible: true,
     presets: {
@@ -134,6 +134,30 @@ const components = [
     }
   },
   {
+    id: 'provider-bar',
+    label: '每日 Token 消耗',
+    settingsKey: 'components.providerBar',
+    defaultVisible: true,
+    presets: {
+      compact: [
+        { name: 'card', w: 4, h: 4 },
+        { name: 'half', w: 6, h: 6 },
+        { name: 'full', w: 12, h: 6 },
+        { name: 'tall', w: 12, h: 8 }
+      ],
+      wide: [
+        { name: 'card', w: 4, h: 4 },
+        { name: 'half', w: 6, h: 6 },
+        { name: 'full', w: 12, h: 6 },
+        { name: 'tall', w: 12, h: 8 }
+      ]
+    },
+    defaultPlacement: {
+      compact: { x: 0, y: 24, w: 12, h: 6, preset: 'full' },
+      wide: { x: 0, y: 24, w: 12, h: 6, preset: 'full' }
+    }
+  },
+  {
     id: 'token-line',
     label: 'Token 消耗趋势',
     settingsKey: 'components.tokenLine',
@@ -153,8 +177,8 @@ const components = [
       ]
     },
     defaultPlacement: {
-      compact: { x: 0, y: 24, w: 12, h: 6, preset: 'full' },
-      wide: { x: 0, y: 24, w: 12, h: 6, preset: 'full' }
+      compact: { x: 0, y: 30, w: 12, h: 6, preset: 'full' },
+      wide: { x: 0, y: 30, w: 12, h: 6, preset: 'full' }
     }
   },
   {
@@ -177,8 +201,8 @@ const components = [
       ]
     },
     defaultPlacement: {
-      compact: { x: 0, y: 30, w: 12, h: 6, preset: 'full' },
-      wide: { x: 0, y: 30, w: 12, h: 6, preset: 'full' }
+      compact: { x: 0, y: 36, w: 12, h: 6, preset: 'full' },
+      wide: { x: 0, y: 36, w: 12, h: 6, preset: 'full' }
     }
   },
   {
@@ -199,8 +223,8 @@ const components = [
       ]
     },
     defaultPlacement: {
-      compact: { x: 0, y: 36, w: 12, h: 10, preset: 'full' },
-      wide: { x: 0, y: 36, w: 12, h: 10, preset: 'full' }
+      compact: { x: 0, y: 42, w: 12, h: 10, preset: 'full' },
+      wide: { x: 0, y: 42, w: 12, h: 10, preset: 'full' }
     }
   }
 ];

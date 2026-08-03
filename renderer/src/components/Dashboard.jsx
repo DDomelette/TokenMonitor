@@ -15,12 +15,14 @@ import FeeCard from './FeeCard.jsx';
 import ChartWidget from './ChartWidget.jsx';
 import QuotaCard from './QuotaCard.jsx';
 import TokenHeatmap from './TokenHeatmap.jsx';
+import ProviderBar from './ProviderBar.jsx';
 
 const LABELS = {
   'balance-card': '余额',
   'today-cost-card': '今日消耗',
   'cache-rate-card': '缓存命中率',
-  'model-bar': '每日 Token 消耗',
+  'model-bar': 'DeepSeek 每日 Token 消耗',
+  'provider-bar': '每日 Token 消耗',
   'token-line': 'Token 消耗',
   'cost-line': '费用增长趋势'
 };
@@ -30,7 +32,7 @@ const FEE_IDS = ['balance-card', 'today-cost-card', 'cache-rate-card'];
 const QUOTA_IDS = ['quota-codex', 'quota-kimi'];
 const EMBED_IDS = QUOTA_IDS.concat(['token-heatmap']);
 // 图表(echarts flex 填满可用高度,永不溢出)不参与自动撑高
-const CHART_IDS = ['model-bar', 'token-line', 'cost-line'];
+const CHART_IDS = ['model-bar', 'provider-bar', 'token-line', 'cost-line'];
 // 各模块最小尺寸(grid 单位),防止编辑模式下压到不可用时手柄再也抓不到
 const MIN_SIZES = {
   'quota-codex': { w: 6, h: 5 },
@@ -39,6 +41,7 @@ const MIN_SIZES = {
   'today-cost-card': { w: 4, h: 3 },
   'cache-rate-card': { w: 4, h: 3 },
   'model-bar': { w: 4, h: 4 },
+  'provider-bar': { w: 4, h: 4 },
   'token-line': { w: 4, h: 4 },
   'cost-line': { w: 4, h: 4 },
   'token-heatmap': { w: 6, h: 6 }
@@ -67,6 +70,9 @@ function WidgetBody({ id, onContentChange }) {
   }
   if (id === 'token-heatmap') {
     return <TokenHeatmap />;
+  }
+  if (id === 'provider-bar') {
+    return <ProviderBar />;
   }
   return <ChartWidget id={id} dashboard={dashboard} />;
 }
