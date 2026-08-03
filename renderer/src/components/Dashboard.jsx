@@ -31,6 +31,18 @@ const QUOTA_IDS = ['quota-codex', 'quota-kimi'];
 const EMBED_IDS = QUOTA_IDS.concat(['token-heatmap']);
 // 图表(echarts flex 填满可用高度,永不溢出)不参与自动撑高
 const CHART_IDS = ['model-bar', 'token-line', 'cost-line'];
+// 各模块最小尺寸(grid 单位),防止编辑模式下压到不可用时手柄再也抓不到
+const MIN_SIZES = {
+  'quota-codex': { w: 6, h: 5 },
+  'quota-kimi': { w: 6, h: 5 },
+  'balance-card': { w: 4, h: 3 },
+  'today-cost-card': { w: 4, h: 3 },
+  'cache-rate-card': { w: 4, h: 3 },
+  'model-bar': { w: 4, h: 4 },
+  'token-line': { w: 4, h: 4 },
+  'cost-line': { w: 4, h: 4 },
+  'token-heatmap': { w: 6, h: 6 }
+};
 
 function WidgetBody({ id, onContentChange }) {
   const dashboard = useDashboard('deepseek');
@@ -70,6 +82,10 @@ export default function Dashboard({ editing }) {
   const providers = useProviders();
   const quotaSig = providers.map((p) => p.id).join(',');
   const quotaSigRef = useRef(quotaSig);
+  // 编辑模式镜像:自动撑高在编辑模式下必须停摆,否则 grid.update 会在
+  // gridstack 拖拽缩放手势进行中改尺寸,破坏其内部拖拽状态导致"黏住鼠标"
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
 
   // quota 数据源上线/下线时重建 grid,让对应板块出现/隐藏
   useEffect(() => {
@@ -123,6 +139,7 @@ export default function Dashboard({ editing }) {
     let fitRaf = 0;
     const fitItems = () => {
       fitRaf = 0;
+      if (editingRef.current) return; // 编辑模式下由用户手动定尺寸,绝不介入
       const cell = grid.getCellHeight(true);
       if (!cell) return;
       host.querySelectorAll('.grid-stack-item').forEach((itemEl) => {
@@ -189,6 +206,8 @@ export default function Dashboard({ editing }) {
   // 编辑模式:直接切换 staticGrid,不重建
   useEffect(() => {
     if (gridRef.current) gridRef.current.setStatic(!editing);
+    // 退出编辑模式时补一次撑高:编辑中被手动压小的模块在此恢复合身尺寸
+    if (!editing && fitRef.current) fitRef.current();
   }, [editing]);
 
   // 布局冻结:仅随 ready/rebuildKey 重建,避免 React 重渲染与 gridstack DOM 冲突
@@ -209,6 +228,8 @@ export default function Dashboard({ editing }) {
           gs-y={item.y}
           gs-w={item.w}
           gs-h={item.h}
+          gs-min-w={MIN_SIZES[item.id] ? MIN_SIZES[item.id].w : undefined}
+          gs-min-h={MIN_SIZES[item.id] ? MIN_SIZES[item.id].h : undefined}
         >
           <div className={'grid-stack-item-content component-surface' + (FEE_IDS.includes(item.id) ? ' fee-card-surface' : '') + (EMBED_IDS.includes(item.id) ? ' embed-surface' : '')}>
             {EMBED_IDS.includes(item.id) ? null : <div className="component-title">{LABELS[item.id] || item.id}</div>}
