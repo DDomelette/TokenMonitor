@@ -337,6 +337,52 @@ html.is-window-resizing #app {
   background: transparent;
 }
 
+/* 编辑模式拖拽柄:移动模块的唯一抓手,避免抓边框缩放时误触发移动 */
+.module-drag-handle {
+  display: none;
+}
+
+.grid-stack.editing .module-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 56px;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(116, 184, 252, 0.18);
+  border: 1px solid rgba(116, 184, 252, 0.45);
+  cursor: grab;
+  /* 必须压过 gridstack 缩放手柄的 z-index:100,否则拖拽柄被 n 手柄盖住点不到 */
+  z-index: 110;
+}
+
+.module-drag-handle::before {
+  content: '•••';
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--primary);
+  line-height: 1;
+}
+
+.grid-stack.editing .module-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* 编辑模式下加大缩放手柄的命中区域,更好抓 */
+.grid-stack.editing .grid-stack-item > .ui-resizable-n,
+.grid-stack.editing .grid-stack-item > .ui-resizable-s {
+  height: 10px;
+}
+
+.grid-stack.editing .grid-stack-item > .ui-resizable-e,
+.grid-stack.editing .grid-stack-item > .ui-resizable-w {
+  width: 10px;
+}
+
 /* 优先级须压过 gridstack.min.css 的 .grid-stack-item > .grid-stack-item-content{overflow-y:auto}:
    溢出由 Dashboard 的自动撑高处理,瞬时溢出宁可裁切也不显示滚动条 */
 .grid-stack > .grid-stack-item > .grid-stack-item-content {

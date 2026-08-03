@@ -129,6 +129,8 @@ export default function Dashboard({ editing }) {
       float: false,
       animate: true,
       staticGrid: !editing,
+      // 移动只认顶部拖拽柄:整个模块不再都是拖动区,抓边框缩放不会误触发移动
+      draggable: { handle: '.module-drag-handle' },
       resizable: { handles: 'e, se, s, sw, w, nw, n, ne' }
     }, host);
     gridRef.current = grid;
@@ -203,9 +205,13 @@ export default function Dashboard({ editing }) {
     };
   }, [ready, rebuildKey]);
 
-  // 编辑模式:直接切换 staticGrid,不重建
+  // 编辑模式:直接切换 staticGrid,不重建;编辑模式下关掉位移动画,
+  // 否则缩放时下方模块的跟随动画持续改变容器高度,页面滚动条会乱跳
   useEffect(() => {
-    if (gridRef.current) gridRef.current.setStatic(!editing);
+    if (gridRef.current) {
+      gridRef.current.setStatic(!editing);
+      gridRef.current.setAnimation(!editing);
+    }
     // 退出编辑模式时补一次撑高:编辑中被手动压小的模块在此恢复合身尺寸
     if (!editing && fitRef.current) fitRef.current();
   }, [editing]);
@@ -231,6 +237,7 @@ export default function Dashboard({ editing }) {
           gs-min-w={MIN_SIZES[item.id] ? MIN_SIZES[item.id].w : undefined}
           gs-min-h={MIN_SIZES[item.id] ? MIN_SIZES[item.id].h : undefined}
         >
+          <div className="module-drag-handle" aria-hidden="true" />
           <div className={'grid-stack-item-content component-surface' + (FEE_IDS.includes(item.id) ? ' fee-card-surface' : '') + (EMBED_IDS.includes(item.id) ? ' embed-surface' : '')}>
             {EMBED_IDS.includes(item.id) ? null : <div className="component-title">{LABELS[item.id] || item.id}</div>}
             <WidgetBody id={item.id} onContentChange={() => { if (fitRef.current) fitRef.current(); }} />
@@ -245,7 +252,7 @@ export default function Dashboard({ editing }) {
 
   return (
     <div className="content">
-      <div className="grid-stack" ref={hostRef}>
+      <div className={'grid-stack' + (editing ? ' editing' : '')} ref={hostRef}>
         {gridChildren}
       </div>
     </div>
