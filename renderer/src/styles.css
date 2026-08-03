@@ -45,7 +45,6 @@ body,
   flex-direction: column;
   background: rgba(246, 247, 249, 0.96);
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
   overflow: hidden;
 }
 
