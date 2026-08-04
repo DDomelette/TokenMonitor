@@ -19,3 +19,27 @@ export function visibleComponentIds(settings) {
     .filter((component) => isComponentVisible(component, settings))
     .map((component) => component.id);
 }
+
+// GridStack 只会保存当前渲染的节点。把这些新几何合并回完整布局，
+// 保留因设置关闭或 provider 暂不可用而未渲染模块的原位置与尺寸。
+export function mergeLayoutItems(existingItems, savedItems) {
+  const existing = Array.isArray(existingItems) ? existingItems : [];
+  const saved = Array.isArray(savedItems) ? savedItems : [];
+  const savedById = new Map(
+    saved.filter((item) => item && item.id).map((item) => [item.id, item])
+  );
+  const knownIds = new Set();
+  const merged = existing
+    .filter((item) => item && item.id)
+    .map((item) => {
+      knownIds.add(item.id);
+      return Object.assign({}, savedById.get(item.id) || item);
+    });
+
+  saved.forEach((item) => {
+    if (item && item.id && !knownIds.has(item.id)) {
+      merged.push(Object.assign({}, item));
+    }
+  });
+  return merged;
+}
