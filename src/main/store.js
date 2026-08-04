@@ -1,22 +1,11 @@
 const Store = require('electron-store');
-const crypto = require('crypto');
-const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
+const { loadOrCreateEncryptionKey } = require('./core/encryption-key');
 
 function getEncryptionKey() {
   const keyPath = path.join(app.getPath('userData'), '.key');
-  try {
-    const raw = fs.readFileSync(keyPath, 'utf-8').trim();
-    if (/^[0-9a-f]{64}$/i.test(raw)) return raw;
-    throw new Error('invalid key');
-  } catch (e) {
-    const dir = path.dirname(keyPath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const key = crypto.randomBytes(32).toString('hex');
-    fs.writeFileSync(keyPath, key, { mode: 0o600 });
-    return key;
-  }
+  return loadOrCreateEncryptionKey(keyPath);
 }
 
 const defaults = {
