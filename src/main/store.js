@@ -1,12 +1,5 @@
-const Store = require('electron-store');
-const path = require('path');
-const { app } = require('electron');
-const { loadOrCreateEncryptionKey } = require('./core/encryption-key');
-
-function getEncryptionKey() {
-  const keyPath = path.join(app.getPath('userData'), '.key');
-  return loadOrCreateEncryptionKey(keyPath);
-}
+const { initializeStore } = require('./core/store-recovery');
+const settingsSecurity = require('./core/settings-security');
 
 const defaults = {
   providers: {
@@ -37,7 +30,15 @@ const defaults = {
     costLine: true
   },
   layout: null,
-  componentOrder: ['balance-card', 'today-cost-card', 'cache-rate-card', 'model-bar', 'provider-bar', 'token-line', 'cost-line'],
+  componentOrder: [
+    'balance-card',
+    'today-cost-card',
+    'cache-rate-card',
+    'model-bar',
+    'provider-bar',
+    'token-line',
+    'cost-line'
+  ],
   data: {
     sampleInterval: 30,
     defaultTimeRange: '1h',
@@ -46,14 +47,34 @@ const defaults = {
   }
 };
 
-const store = new Store({
-  defaults,
-  encryptionKey: getEncryptionKey(),
-  clearInvalidConfig: true
-});
+let storeInstance = null;
 
-// 旧键 → provider 命名空间键的一次性迁移。storeLike 可为真实 electron-store 或纯对象(fake store 便于单测)。
-// 旧值保留校验:仅在新键缺失时复制旧值,随后删除旧键。
+function createStore(options = {}) {
+  const StoreClass = options.StoreClass || require('electron-store');
+  return initializeStore({
+    StoreClass,
+    userDataDir: options.userDataDir,
+    defaults: options.defaults || defaults,
+    fsImpl: options.fsImpl,
+    cryptoImpl: options.cryptoImpl,
+    now: options.now
+  });
+}
+
+function initialize(options = {}) {
+  if (storeInstance) return storeInstance;
+  storeInstance = createStore(options);
+  return storeInstance;
+}
+
+function requireStoreInstance() {
+  if (storeInstance) return storeInstance;
+  const error = new Error('Store has not been initialized.');
+  error.code = 'STORE_NOT_INITIALIZED';
+  throw error;
+}
+
+// 旧键 → provider 命名空间键的一次性迁移。storeLike 可为真实 electron-store 或纯对象。
 function migrateLegacyKeys(storeLike) {
   let migrated = false;
   const oldSession = storeLike.get('sessionToken');
@@ -71,7 +92,32 @@ function migrateLegacyKeys(storeLike) {
   return migrated;
 }
 
-module.exports = store;
-module.exports.migrateLegacyKeys = migrateLegacyKeys;
-// 安全边界函数实现于 core/settings-security.js(无 electron 依赖,便于单测),此处透传
-Object.assign(module.exports, require('./core/settings-security'));
+const facade = {
+  createStore,
+  defaults,
+  initialize,
+  migrateLegacyKeys,
+  ...settingsSecurity
+};
+
+module.exports = new Proxy(facade, {
+  get(target, property, receiver) {
+    if (Object.prototype.hasOwnProperty.call(target, property)) {
+      return Reflect.get(target, property, receiver);
+    }
+    const instance = requireStoreInstance();
+    const value = Reflect.get(instance, property, instance);
+    return typeof value === 'function' ? value.bind(instance) : value;
+  },
+  set(target, property, value, receiver) {
+    if (Object.prototype.hasOwnProperty.call(target, property)) {
+      return Reflect.set(target, property, value, receiver);
+    }
+    const instance = requireStoreInstance();
+    return Reflect.set(instance, property, value, instance);
+  },
+  has(target, property) {
+    return Object.prototype.hasOwnProperty.call(target, property)
+      || (storeInstance ? Reflect.has(storeInstance, property) : false);
+  }
+});

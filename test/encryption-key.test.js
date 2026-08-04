@@ -65,15 +65,9 @@ test('non-ENOENT read failures abort without creating or overwriting a key', (t)
   let mkdirCalls = 0;
   let writeCalls = 0;
   const fsStub = {
-    readFileSync() {
-      throw accessError;
-    },
-    mkdirSync() {
-      mkdirCalls += 1;
-    },
-    writeFileSync() {
-      writeCalls += 1;
-    }
+    readFileSync() { throw accessError; },
+    mkdirSync() { mkdirCalls += 1; },
+    writeFileSync() { writeCalls += 1; }
   };
 
   let error;
@@ -111,16 +105,9 @@ test('key creation uses an exclusive write and accepts a valid race winner', () 
       throw exists;
     }
   };
-  const cryptoStub = {
-    randomBytes() {
-      return Buffer.alloc(32, 0xcd);
-    }
-  };
+  const cryptoStub = { randomBytes() { return Buffer.alloc(32, 0xcd); } };
 
-  const result = loadOrCreateEncryptionKey(keyPath, {
-    fs: fsStub,
-    crypto: cryptoStub
-  });
+  const result = loadOrCreateEncryptionKey(keyPath, { fs: fsStub, crypto: cryptoStub });
 
   assert.equal(result, winningKey);
   assert.equal(reads, 2);
@@ -128,16 +115,24 @@ test('key creation uses an exclusive write and accepts a valid race winner', () 
   assert.equal(writeOptions.mode, 0o600);
 });
 
-test('store initialization delegates key handling to the hardened helper', () => {
-  const source = fs.readFileSync(
+test('store recovery remains the only integration path to the hardened key helper', () => {
+  const recoverySource = fs.readFileSync(
+    path.resolve(__dirname, '../src/main/core/store-recovery.js'),
+    'utf8'
+  );
+  const storeSource = fs.readFileSync(
     path.resolve(__dirname, '../src/main/store.js'),
     'utf8'
   );
 
   assert.match(
-    source,
-    /const\s*\{\s*loadOrCreateEncryptionKey\s*\}\s*=\s*require\('\.\/core\/encryption-key'\)/
+    recoverySource,
+    /const\s*\{\s*loadOrCreateEncryptionKey\s*\}\s*=\s*require\('\.\/encryption-key'\)/
   );
-  assert.match(source, /return loadOrCreateEncryptionKey\(keyPath\)/);
-  assert.doesNotMatch(source, /crypto\.randomBytes|fs\.writeFileSync\(keyPath/);
+  assert.match(recoverySource, /loadOrCreateEncryptionKey\(keyPath,/);
+  assert.match(storeSource, /initializeStore/);
+  assert.doesNotMatch(
+    recoverySource + '\n' + storeSource,
+    /crypto\.randomBytes\(32\)|writeFileSync\(keyPath/
+  );
 });
