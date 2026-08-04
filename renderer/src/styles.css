@@ -44,7 +44,8 @@ body,
   display: flex;
   flex-direction: column;
   background: rgba(246, 247, 249, 0.96);
-  border-radius: 12px;
+  /* 圆角由 DWM 合成层统一裁剪, CSS 不再画圆角 */
+  border-radius: 0;
   overflow: hidden;
 }
 
@@ -212,16 +213,7 @@ body,
   background: #ef4444;
 }
 
-/* ======== 拖动缩放期间:实心直角渲染(掩盖透明窗口帧竞态) ======== */
-html.is-window-resizing body {
-  background: #FFFFFF;
-  border-radius: 0;
-}
-
-html.is-window-resizing #app {
-  border-radius: 0;
-  box-shadow: none;
-}
+/* ======== 透明窗口时代遗留:非透明窗口 + DWM 圆角后不再需要在拖动时切直角 ======== */
 
 /* ======== CSS 变量(从旧 main.css 平移) ======== */
 :root {

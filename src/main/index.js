@@ -84,8 +84,10 @@ function createMainWindow() {
   mainWindow = new BrowserWindow({
     ...bounds,
     frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
+    // 非透明窗口:缩放无分层窗口帧竞态;圆角交给 Win11 DWM 合成层裁剪(与 VSCode 同一方案)
+    transparent: false,
+    backgroundColor: '#F6F7F9',
+    roundedCorners: true,
     alwaysOnTop: store.get('window.alwaysOnTop'),
     resizable: false,
     minWidth: 380,
@@ -358,8 +360,9 @@ function normalizeMainBounds(bounds) {
 /* ======== 设置窗口 ======== */
 
 function createSettingsWindow() {
+  // 开关语义:设置已打开时再次点击齿轮 = 关闭(避免 focus 重合成造成的闪烁)
   if (settingsWindow && !settingsWindow.isDestroyed()) {
-    settingsWindow.focus();
+    settingsWindow.close();
     return;
   }
   settingsWindow = new BrowserWindow({

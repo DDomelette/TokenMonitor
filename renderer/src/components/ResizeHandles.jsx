@@ -1,6 +1,6 @@
 // 8 个缩放手柄 + 完整移植旧 app.js 的缩放逻辑(行为逐行等价)。
-// 拖动期间通过 window:set-bounds 即时提交;is-window-resizing 类让窗口实心直角渲染,
-// 掩盖透明窗口快速缩放时的帧竞态;松手后等原生窗口落定最终尺寸再恢复圆角与透明。
+// 拖动期间通过 window:set-bounds 即时提交。窗口为非透明 + DWM 圆角,
+// 尺寸与圆角由合成器同帧绘制,无需拖动期间切直角的兼容逻辑。
 import React, { useEffect, useRef } from 'react';
 import { send, getBounds, onBoundsChanged } from '../api.js';
 
@@ -18,15 +18,8 @@ export default function ResizeHandles() {
     minWidth: MIN_W, minHeight: MIN_H, maxWidth: MAX_W, maxHeight: MAX_H
   });
   const startRef = useRef({ screenX: 0, screenY: 0, x: 0, y: 0, w: 0, h: 0 });
-  const cssScaleRef = useRef(1);
   const targetBoundsRef = useRef(null);
-  const pendingRestoreRef = useRef(null);
-  const restoreFallbackTimerRef = useRef(null);
   const boundsRafRef = useRef(null);
-
-  function setWindowResizingClass(active) {
-    document.documentElement.classList.toggle('is-window-resizing', active);
-  }
 
   // 每帧最多提交一次 setBounds, 高频 mousemove 只保留最新目标, 避免 IPC 洪峰
   function requestBounds(bounds) {
@@ -43,29 +36,6 @@ export default function ResizeHandles() {
     cancelAnimationFrame(boundsRafRef.current);
     boundsRafRef.current = null;
     if (targetBoundsRef.current) send('window:set-bounds', targetBoundsRef.current);
-  }
-
-  function scheduleRoundedRestore(target) {
-    pendingRestoreRef.current = target;
-    if (restoreFallbackTimerRef.current) clearTimeout(restoreFallbackTimerRef.current);
-    restoreFallbackTimerRef.current = setTimeout(function () {
-      restoreFallbackTimerRef.current = null;
-      pendingRestoreRef.current = null;
-      setWindowResizingClass(false);
-    }, 500);
-  }
-
-  function maybeRestoreRounded() {
-    if (!pendingRestoreRef.current) return;
-    if (window.innerWidth === Math.round(pendingRestoreRef.current.width * cssScaleRef.current)
-        && window.innerHeight === Math.round(pendingRestoreRef.current.height * cssScaleRef.current)) {
-      pendingRestoreRef.current = null;
-      if (restoreFallbackTimerRef.current) {
-        clearTimeout(restoreFallbackTimerRef.current);
-        restoreFallbackTimerRef.current = null;
-      }
-      setWindowResizingClass(false);
-    }
   }
 
   function handleBoundsChanged(bounds) {
@@ -115,22 +85,14 @@ export default function ResizeHandles() {
       document.body.style.userSelect = '';
       if (targetBoundsRef.current) {
         flushPendingBounds();
-        // 等原生窗口落到最终尺寸后再恢复圆角与透明
-        scheduleRoundedRestore(targetBoundsRef.current);
-        maybeRestoreRounded();
-      } else {
-        setWindowResizingClass(false);
       }
       targetBoundsRef.current = null;
       send('resize:end');
       window.dispatchEvent(new Event('resize'));
     };
 
-    const onWindowResize = () => maybeRestoreRounded();
-
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-    window.addEventListener('resize', onWindowResize);
     onBoundsChanged(handleBoundsChanged);
 
     getBounds().then((bounds) => {
@@ -143,7 +105,6 @@ export default function ResizeHandles() {
     return () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      window.removeEventListener('resize', onWindowResize);
       if (boundsRafRef.current !== null) {
         cancelAnimationFrame(boundsRafRef.current);
         boundsRafRef.current = null;
@@ -165,10 +126,7 @@ export default function ResizeHandles() {
     startRef.current.h = ws.height;
     ws.targetX = ws.x; ws.targetY = ws.y;
     ws.targetWidth = ws.width; ws.targetHeight = ws.height;
-    cssScaleRef.current = window.innerWidth > 0 && ws.width > 0 ? window.innerWidth / ws.width : 1;
     targetBoundsRef.current = null;
-    pendingRestoreRef.current = null;
-    setWindowResizingClass(true);
     const cursor = getComputedStyle(document.querySelector('.resize-' + edge)).cursor;
     document.body.style.cursor = cursor;
     document.body.style.userSelect = 'none';

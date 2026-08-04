@@ -27,24 +27,15 @@ test('ResizeHandles does not route drag resizes through the throttled resize:mov
   assert.doesNotMatch(resizeHandles, /resize:move/);
 });
 
-test('ResizeHandles toggles is-window-resizing class for the whole drag', () => {
-  assert.match(resizeHandles, /is-window-resizing/);
-  assert.match(resizeHandles, /classList\.toggle\('is-window-resizing', active\)/);
-  assert.match(resizeHandles, /setWindowResizingClass\(true\)/);
-  // 松手后等原生窗口落定再恢复(scheduleRoundedRestore / maybeRestoreRounded)
-  assert.match(resizeHandles, /scheduleRoundedRestore/);
-  assert.match(resizeHandles, /maybeRestoreRounded/);
+test('ResizeHandles has no square-corner workaround (DWM 圆角后不再需要)', () => {
+  // 非透明窗口 + DWM 合成层圆角:尺寸与圆角同帧绘制,拖动期切直角的兼容逻辑已移除
+  assert.doesNotMatch(resizeHandles, /is-window-resizing/);
+  assert.doesNotMatch(resizeHandles, /scheduleRoundedRestore/);
+  assert.doesNotMatch(resizeHandles, /maybeRestoreRounded/);
 });
 
-test('styles.css keeps the opaque square-cornered rules during drag resize', () => {
-  const bodyRule = stylesCss.match(/html\.is-window-resizing body \{[\s\S]*?\}/);
-  assert.ok(bodyRule);
-  assert.match(bodyRule[0], /background:\s*#FFFFFF/);
-  assert.match(bodyRule[0], /border-radius:\s*0/);
-  const appRule = stylesCss.match(/html\.is-window-resizing #app \{[\s\S]*?\}/);
-  assert.ok(appRule);
-  assert.match(appRule[0], /border-radius:\s*0/);
-  assert.match(appRule[0], /box-shadow:\s*none/);
+test('styles.css has no square-corner rules for drag resize', () => {
+  assert.doesNotMatch(stylesCss, /html\.is-window-resizing/);
 });
 
 test('TitleBar wires refresh / settings / minimize buttons to their IPC channels', () => {
