@@ -1,7 +1,7 @@
 window.App = window.App || {};
 
 var windowDefinitions = [
-  { group: '窗口', key: 'window.opacity', type: 'slider', label: '透明度', min: 20, max: 100, default: 92, unit: '%' },
+  // 透明度滑块已移除:整窗 setOpacity 的分层机制导致缩放露黑边,透视感由 DWM acrylic 提供
   { group: '窗口', key: 'window.alwaysOnTop', type: 'toggle', label: '始终置顶', default: true },
   { group: '窗口', key: 'window.autoLaunch', type: 'toggle', label: '开机自启', default: false },
   { group: '窗口', key: 'window.followSystemTheme', type: 'toggle', label: '跟随系统主题', default: true },

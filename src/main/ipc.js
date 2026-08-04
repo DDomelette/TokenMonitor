@@ -153,7 +153,6 @@ module.exports = function setupIPC(deps) {
     });
     console.log('[settings] reset done (credentials preserved)');
     if (getMain()) {
-      getMain().setOpacity(0.92);
       getMain().setAlwaysOnTop(true);
     }
     deps.broadcastSettings();

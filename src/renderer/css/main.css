@@ -44,15 +44,17 @@ body {
   user-select: none;
   margin: 0;
   height: 100%;
-  border-radius: 18px;
+  /* 圆角由 DWM 裁剪(设置窗口为 acrylic 非透明窗口) */
+  border-radius: 0;
 }
 
 #app {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--bg-window);
-  border-radius: 18px;
+  /* 半透明白底透出少量 DWM acrylic 磨砂 */
+  background: rgba(255, 255, 255, 0.93);
+  border-radius: 0;
   box-shadow: var(--shadow-window), 0 0 0 1px var(--border);
   overflow: hidden;
   container-type: inline-size;

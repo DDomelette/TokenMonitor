@@ -86,8 +86,10 @@ function createMainWindow() {
     frame: false,
     // 非透明窗口:缩放无分层窗口帧竞态;圆角交给 Win11 DWM 合成层裁剪(与 VSCode 同一方案)
     transparent: false,
-    backgroundColor: '#F6F7F9',
+    backgroundColor: '#00000000',
     roundedCorners: true,
+    // DWM 磨砂透明:替代整窗 setOpacity(分层窗口缩放会露黑边)
+    backgroundMaterial: 'acrylic',
     alwaysOnTop: store.get('window.alwaysOnTop'),
     // 原生缩放:Chromium 在系统缩放循环中拉伸旧帧,不会露出黑色欠采样区(同 VSCode)
     resizable: true,
@@ -103,7 +105,9 @@ function createMainWindow() {
     }
   });
 
-  mainWindow.setOpacity(store.get('window.opacity') / 100);
+  // 整窗透明度已由 backgroundMaterial:'acrylic' 的 DWM 磨砂取代。
+  // 禁用 setOpacity:它会加 WS_EX_LAYERED,分层窗口缩放时新区域被清成透明黑,
+  // 整窗统一 alpha 混合后显示为黑边。
   loadRenderer(mainWindow);
 
   // 渲染进程异常诊断:加载失败/进程崩溃时写入日志
@@ -160,7 +164,10 @@ function createLoginWindow() {
     width: 400,
     height: 340,
     frame: false,
-    transparent: true,
+    transparent: false,
+    backgroundColor: '#00000000',
+    roundedCorners: true,
+    backgroundMaterial: 'acrylic',
     resizable: false,
     alwaysOnTop: true,
     center: true,
@@ -381,8 +388,10 @@ function createSettingsWindow() {
     parent: mainWindow,
     modal: false,
     frame: false,
-    transparent: true,
+    transparent: false,
     backgroundColor: '#00000000',
+    roundedCorners: true,
+    backgroundMaterial: 'acrylic',
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -404,9 +413,8 @@ function createSettingsWindow() {
 function applySetting(key, value) {
   if (!mainWindow) return;
   switch (key) {
-    case 'window.opacity':
-      mainWindow.setOpacity(value / 100);
-      break;
+    // window.opacity 不再应用:setOpacity 的分层窗口机制会导致缩放露黑边,
+    // 透视感已由 DWM acrylic 磨砂提供(key 保留在可写白名单,避免旧配置报错)
     case 'window.alwaysOnTop':
       mainWindow.setAlwaysOnTop(value);
       break;

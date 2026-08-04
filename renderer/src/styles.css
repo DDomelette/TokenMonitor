@@ -10,8 +10,8 @@ body,
   width: 100%;
   height: 100%;
   overflow: hidden;
-  /* 实色底色:非透明窗口下,缩放欠采样区由合成器用视口底色填充,透明会露黑 */
-  background: #F6F7F9;
+  /* 透明页面背景:透出 DWM acrylic 磨砂(非分层窗口,缩放不会露黑) */
+  background: transparent;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   color: #1f2329;
   user-select: none;
@@ -44,7 +44,8 @@ body,
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: rgba(246, 247, 249, 0.96);
+  /* 半透明白底:透出少量 acrylic 磨砂,同时保证画面明亮不偏灰 */
+  background: rgba(246, 247, 249, 0.93);
   /* 圆角由 DWM 合成层统一裁剪, CSS 不再画圆角 */
   border-radius: 0;
   overflow: hidden;
@@ -269,7 +270,8 @@ body,
 }
 
 .fee-card-surface {
-  background: linear-gradient(135deg, rgba(116, 184, 252, 0.04), rgba(149, 202, 255, 0.02));
+  /* 渐变叠加在实色卡片底上,避免窗口半透明时透出底色、与其他卡片风格不一致 */
+  background: linear-gradient(135deg, rgba(116, 184, 252, 0.04), rgba(149, 202, 255, 0.02)), var(--bg-card);
   transition: all 200ms ease-out;
   cursor: default;
 }
@@ -277,7 +279,7 @@ body,
 .fee-card-surface:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-card);
-  background: linear-gradient(135deg, rgba(116, 184, 252, 0.08), rgba(149, 202, 255, 0.04));
+  background: linear-gradient(135deg, rgba(116, 184, 252, 0.08), rgba(149, 202, 255, 0.04)), var(--bg-card);
 }
 
 .fee-card-content {
