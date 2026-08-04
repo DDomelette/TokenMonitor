@@ -114,3 +114,19 @@ test('reset does not broaden Issue #8 into Kimi cursor or migration policy', () 
   assert.equal(store.get('localLogCursors.kimi'), undefined);
   assert.equal(store.get('localLogMigrations.kimiTotalIncludesCached'), undefined);
 });
+
+test('settings reset IPC delegates to the tested reset policy', () => {
+  const ipcSource = fs.readFileSync(
+    path.resolve(__dirname, '../src/main/ipc.js'),
+    'utf8'
+  );
+
+  assert.match(
+    ipcSource,
+    /const \{ resetSettingsStore \} = require\('\.\/core\/settings-reset'\);/
+  );
+  assert.match(
+    ipcSource,
+    /ipcMain\.on\('settings:reset', \(\) => \{\s*resetSettingsStore\(deps\.store\);/
+  );
+});
