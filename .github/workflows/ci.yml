@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            renderer/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install renderer dependencies
+        run: npm --prefix renderer ci
+
+      - name: Run automated tests
+        run: npm test
+
+      - name: Build renderer
+        run: npm run build:renderer
+
+      - name: Install Electron runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0 libnss3 libxss1 libgbm1 libasound2t64
+
+      - name: Run Electron visibility smoke test
+        run: xvfb-run -a ./node_modules/.bin/electron scripts/ci/component-visibility-smoke.js
+
+      - name: Upload visibility screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: component-visibility-screenshots
+          path: artifacts/component-visibility/*.png
+          if-no-files-found: warn
