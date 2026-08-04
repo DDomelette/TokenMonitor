@@ -1,7 +1,7 @@
 // GitHub 风格 Token 活动热力图:每日(53×7)/每周(53 列 1 行)/累计(高度条)三模式。
 // 颜色用主题 primary(#74B8FC)的 5 档透明度;hover tooltip 显示日期与用量。
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { getHeatmap } from '../api.js';
+import { getHeatmap, onProvidersChanged } from '../api.js';
 import { buildWeeks, colorLevel, formatToken, isoWeekKey } from '../lib/heatmap.js';
 
 const CELL = 12;
@@ -33,6 +33,13 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
 
   useEffect(() => {
     getHeatmap({ provider: selProvider, year: year }).then(setData).catch(() => {});
+  }, [selProvider, year]);
+
+  // 手动刷新/定时轮询成功后重取,保持与状态栏"刷新时间"同步
+  useEffect(() => {
+    return onProvidersChanged(() => {
+      getHeatmap({ provider: selProvider, year: year }).then(setData).catch(() => {});
+    });
   }, [selProvider, year]);
 
   // 以容器宽度为准(grid 内板块可被拖窄),而不是窗口宽度

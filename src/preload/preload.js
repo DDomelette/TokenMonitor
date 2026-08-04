@@ -14,7 +14,9 @@ contextBridge.exposeInMainWorld('api', {
     if (validChannels.includes(channel)) {
       const listener = (event, ...args) => callback(...args);
       ipcRenderer.on(channel, listener);
+      return () => ipcRenderer.removeListener(channel, listener);
     }
+    return () => {};
   },
 
   send: (channel, data) => {

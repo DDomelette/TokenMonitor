@@ -2,7 +2,7 @@
 // 最近 31 天零填充;堆叠自下而上 Codex → Kimi → DeepSeek;悬浮窗仿 model-bar(加粗日期 + 圆点行 + 缓存后缀 + 合计)。
 import React, { useEffect, useRef, useState } from 'react';
 import useECharts from '../hooks/useECharts.js';
-import { getHeatmap } from '../api.js';
+import { getHeatmap, onProvidersChanged } from '../api.js';
 import { getBarTheme } from '../lib/chartTheme.js';
 import { formatToken as formatWan } from '../lib/heatmap.js';
 import { barDensity, isCardMode, formatToken, windowClampedPosition } from './ChartWidget.jsx';
@@ -89,6 +89,15 @@ export default function ProviderBar() {
     getHeatmap({ provider: 'all', year: year })
       .then((data) => setDetails(data ? data.details : null))
       .catch(() => {});
+  }, [year]);
+
+  // 手动刷新/定时轮询成功后重取,与热力图保持同源同步
+  useEffect(() => {
+    return onProvidersChanged(() => {
+      getHeatmap({ provider: 'all', year: year })
+        .then((data) => setDetails(data ? data.details : null))
+        .catch(() => {});
+    });
   }, [year]);
 
   useECharts(domRef, () => buildOption(domRef.current, details, dates), [details]);

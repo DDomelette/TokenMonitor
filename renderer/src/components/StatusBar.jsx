@@ -10,11 +10,13 @@ function hasData(snapshot) {
 export default function StatusBar() {
   const [status, setStatus] = useState({ running: false, error: null });
   const [refreshText, setRefreshText] = useState('--');
-  const [lastRefresh] = useState(Date.now());
+  // 最近一次拿到数据的时间:随 providers:changed 广播(手动刷新/定时轮询成功)重置
+  const [lastRefresh, setLastRefresh] = useState(Date.now());
 
   useEffect(() => {
-    onProvidersChanged((snapshot) => {
+    return onProvidersChanged((snapshot) => {
       setStatus({ running: hasData(snapshot), error: null });
+      setLastRefresh(Date.now());
     });
   }, []);
 

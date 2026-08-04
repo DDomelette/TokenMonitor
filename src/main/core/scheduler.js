@@ -185,6 +185,10 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange }
       if (provider.capabilities.quota && typeof provider.fetchQuota === 'function') {
         await runOnce(provider.id, 'quota', () => pollQuota(provider));
       }
+      // 手动刷新也补一遍本地日志合并,热力图/全平台柱状图(usageDaily)立即拿到最新数据
+      if (provider.capabilities.localLog && typeof provider.readLocalLog === 'function') {
+        await runOnce(provider.id, 'localLog', () => pollLocalLog(provider));
+      }
     }
   }
 
