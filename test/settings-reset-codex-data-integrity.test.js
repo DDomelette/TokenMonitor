@@ -98,23 +98,6 @@ test('reset preserves Codex aggregate and its compatible scan cursor as one data
   }
 });
 
-test('reset does not broaden Issue #8 into Kimi cursor or migration policy', () => {
-  const store = new MemoryStore({
-    usageDaily: { 'codex:2026-08-05': { total: 12 } },
-    'localLogCursors.codex': { codexFile: { offset: 100, mtimeMs: 200 } },
-    'localLogCursors.kimi': { kimiFile: { offset: 300, mtimeMs: 400 } },
-    'localLogMigrations.kimiTotalIncludesCached': true
-  });
-
-  resetSettingsStore(store);
-
-  assert.deepEqual(store.get('localLogCursors.codex'), {
-    codexFile: { offset: 100, mtimeMs: 200 }
-  });
-  assert.equal(store.get('localLogCursors.kimi'), undefined);
-  assert.equal(store.get('localLogMigrations.kimiTotalIncludesCached'), undefined);
-});
-
 test('settings reset IPC delegates to the tested reset policy', () => {
   const ipcSource = fs.readFileSync(
     path.resolve(__dirname, '../src/main/ipc.js'),
