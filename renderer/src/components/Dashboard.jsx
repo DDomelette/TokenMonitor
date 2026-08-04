@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { GridStack } from 'gridstack';
 import 'gridstack/dist/gridstack.min.css';
-import { getSettings, send } from '../api.js';
+import { getSettings, on, send } from '../api.js';
 import { useDashboard, useProviders } from '../store.js';
 import {
   validateState,
@@ -13,6 +13,7 @@ import {
   presetAfterResize,
   nearestFreePosition
 } from '../grid/policy.js';
+import { mergeLayoutItems, visibleComponentIds } from '../grid/visibility.js';
 import FeeCard from './FeeCard.jsx';
 import ChartWidget from './ChartWidget.jsx';
 import QuotaCard from './QuotaCard.jsx';
@@ -86,10 +87,17 @@ export default function Dashboard({ editing }) {
   const fitRef = useRef(null);
   const [ready, setReady] = useState(false);
   const [rebuildKey, setRebuildKey] = useState(0);
+  const [settings, setSettings] = useState(null);
   const bpRef = useRef(breakpointForWidth(window.innerWidth));
   const providers = useProviders();
   const quotaSig = providers.map((p) => p.id).join(',');
   const quotaSigRef = useRef(quotaSig);
+  const visibleIds = useMemo(
+    () => new Set(visibleComponentIds(settings || {})),
+    [settings]
+  );
+  const visibilitySignature = Array.from(visibleIds).sort().join(',');
+  const visibilitySignatureRef = useRef(visibilitySignature);
   // 编辑模式镜像:自动撑高在编辑模式下必须停摆,否则 grid.update 会在
   // gridstack 拖拽缩放手势进行中改尺寸,破坏其内部拖拽状态导致"黏住鼠标"
   const editingRef = useRef(editing);
@@ -104,11 +112,25 @@ export default function Dashboard({ editing }) {
   }, [quotaSig]);
 
   useEffect(() => {
-    getSettings().then((settings) => {
-      layoutRef.current = validateState(settings.layout, settings);
+    getSettings().then((nextSettings) => {
+      const normalizedSettings = nextSettings || {};
+      layoutRef.current = validateState(normalizedSettings.layout, normalizedSettings);
+      visibilitySignatureRef.current = visibleComponentIds(normalizedSettings).sort().join(',');
+      setSettings(normalizedSettings);
       setReady(true);
     }).catch(() => {});
   }, []);
+
+  // 主进程在任意设置写入后广播 settings:loaded。只有可见 ID 集合变化时才重建 grid。
+  useEffect(() => on('settings:loaded', (nextSettings) => {
+    setSettings(nextSettings || {});
+  }), []);
+
+  useEffect(() => {
+    if (!ready || visibilitySignatureRef.current === visibilitySignature) return;
+    visibilitySignatureRef.current = visibilitySignature;
+    setRebuildKey((k) => k + 1);
+  }, [ready, visibilitySignature]);
 
   // 窗口宽度跨过断点(640)时重建 grid
   useEffect(() => {
@@ -193,8 +215,9 @@ export default function Dashboard({ editing }) {
           preset: preset && preset.name
         };
       });
+      const mergedItems = mergeLayoutItems(layout.items, items);
       const next = Object.assign({}, layoutRef.current, {
-        [bp]: validateLayout(bp, { columns: layout.columns, items: items })
+        [bp]: validateLayout(bp, { columns: layout.columns, items: mergedItems })
       });
       layoutRef.current = next;
       send('settings:update', { key: 'layout', value: next });
@@ -279,11 +302,12 @@ export default function Dashboard({ editing }) {
   }, [editing]);
 
   // 布局冻结:仅随 ready/rebuildKey 重建,避免 React 重渲染与 gridstack DOM 冲突
-  // quota 板块只在其数据源存在时渲染 DOM(布局记录仍保留,数据源上线后重建恢复)
+  // 设置关闭或 quota 数据源缺失的板块不渲染 DOM,但完整布局记录始终保留。
   const gridChildren = useMemo(() => {
     if (!ready) return null;
     const layout = layoutRef.current[bpRef.current];
     return layout.items
+      .filter((item) => visibleIds.has(item.id))
       .filter((item) => !QUOTA_IDS.includes(item.id) || providers.some((p) => 'quota-' + p.id === item.id))
       .map((item) => (
         <section
@@ -314,7 +338,7 @@ export default function Dashboard({ editing }) {
 
   return (
     <div className="content">
-      <div className={'grid-stack' + (editing ? ' editing' : '')} ref={hostRef}>
+      <div key={rebuildKey} className={'grid-stack' + (editing ? ' editing' : '')} ref={hostRef}>
         {gridChildren}
       </div>
     </div>
