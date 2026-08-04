@@ -65,10 +65,8 @@ body,
 }
 
 .titlebar-logo {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  background: linear-gradient(135deg, #4d6bfe, #22c55e);
+  width: 14px;
+  height: 16px;
   display: inline-block;
 }
 

@@ -20,7 +20,15 @@ export default function TitleBar({ editing, onToggleLayoutEdit }) {
   return (
     <div className="titlebar">
       <div className="titlebar-left">
-        <span className="titlebar-logo" />
+        <span className="titlebar-logo" aria-hidden="true">
+          <svg viewBox="0 0 108 120" width="100%" height="100%">
+            <rect x="0" y="0" width="32" height="32" rx="7" fill="#C3E2F9" />
+            <rect x="38" y="0" width="32" height="32" rx="7" fill="#8FC6F3" />
+            <rect x="76" y="0" width="32" height="32" rx="7" fill="#61ABEC" />
+            <rect x="38" y="38" width="32" height="38" rx="7" fill="#79B9F0" />
+            <rect x="38" y="82" width="32" height="38" rx="7" fill="#6DB3EE" />
+          </svg>
+        </span>
         <span className="titlebar-text">Token Monitor</span>
       </div>
       <div className="titlebar-actions">
