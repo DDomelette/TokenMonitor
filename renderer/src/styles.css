@@ -184,11 +184,6 @@ body,
   to { transform: rotate(360deg); }
 }
 
-.layout-edit-icon {
-  font-size: 15px;
-  line-height: 1;
-}
-
 /* ======== 状态栏 ======== */
 .statusbar {
   display: flex;
