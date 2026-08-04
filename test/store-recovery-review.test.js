@@ -181,3 +181,19 @@ test('store startup has one canonical recovery implementation and tests exercise
   assert.match(behaviorTests, /require\('\.\.\/src\/main\/core\/store-recovery'\)/);
   assert.doesNotMatch(storeSource + startupSource + behaviorTests, /store-recovery-safe/);
 });
+
+test('single-instance lock is acquired before store recovery can touch user data', () => {
+  const bootstrapSource = fs.readFileSync(
+    path.resolve(__dirname, '../src/main/bootstrap.js'),
+    'utf8'
+  );
+  const lockIndex = bootstrapSource.indexOf('app.requestSingleInstanceLock()');
+  const readyIndex = bootstrapSource.indexOf('app.whenReady()');
+  const recoveryIndex = bootstrapSource.indexOf('runStoreBootstrap({');
+
+  assert.notEqual(lockIndex, -1, 'bootstrap must acquire the lock itself');
+  assert.notEqual(readyIndex, -1);
+  assert.notEqual(recoveryIndex, -1);
+  assert.ok(lockIndex < readyIndex, 'the lock must be acquired before app readiness');
+  assert.ok(lockIndex < recoveryIndex, 'the lock must precede config backup and decryption');
+});
