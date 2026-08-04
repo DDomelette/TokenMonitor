@@ -4,377 +4,186 @@
 
 **Goal:** Preserve encrypted store inputs before initialization, stop safely on key/config failure, and provide an actionable recovery dialog without exposing sensitive data.
 
-**Architecture:** Add a pure recovery coordinator that stages raw `.key` and `config.json` bytes before invoking Issue #45's key loader or electron-store. Convert `store.js` to a lazy factory and initialize it inside `app.whenReady()`; failures are converted to a native dialog and the normal runtime is not started.
+**Architecture:** A pure recovery coordinator stages raw `.key` and `config.json` bytes before invoking Issue #45's key loader or electron-store. `store.js` becomes a lazy facade, while a new Electron bootstrap initializes it before loading the existing main process.
 
-**Tech Stack:** Node.js CommonJS, Electron, electron-store 8, `node:test`, SHA-256, synchronous filesystem operations during startup.
+**Tech Stack:** Node.js CommonJS, Electron, electron-store 8, `node:test`, SHA-256, synchronous startup filesystem operations.
 
 ## Global Constraints
 
-- Scope is Issue #46; do not reimplement Issue #45's key validation or write logic.
+- Scope is Issue #46 only; do not reimplement Issue #45's key validation or write logic.
 - `clearInvalidConfig` must be explicitly `false`.
-- Existing readable source bytes must be staged before store construction.
+- Existing readable source bytes must be staged before Store construction.
 - Existing source files must not be deleted, reset, or overwritten on failure.
 - Recovery directories use `0700`; copied files and manifests use `0600` on POSIX.
-- Repeated failure with unchanged source bytes reuses a verified backup instead of overwriting it or creating duplicates.
-- User-visible text and logs may contain safe category codes and the recovery path, but never raw exception messages, stacks, keys, tokens, sessions, or config content.
-- No normal providers, scheduler, IPC, tray, login window, settings window, or main window may start after store initialization fails.
+- Repeated failure with unchanged source bytes reuses a verified backup.
+- Corrupt or unrelated backup directories are never overwritten.
+- User-visible text and logs may contain safe category codes and the recovery path, but never raw exception messages, stacks, keys, tokens, sessions, or config contents.
+- `src/main/index.js` must not load after store initialization fails.
 
 ---
 
-### Task 1: Specify snapshot and pre-construction staging behavior
+### Task 1: Stage source bytes before Store construction
 
 **Files:**
-- Create: `test/store-recovery.test.js`
 - Create: `src/main/core/store-recovery.js`
+- Create: `test/store-recovery.test.js`
 
 **Interfaces:**
-- Consumes: `loadOrCreateEncryptionKey(keyPath, {fs, crypto})` from `src/main/core/encryption-key.js`.
-- Produces:
-  - `captureRecoverySnapshot({fsImpl, keyPath, configPath}): RecoverySnapshot`
-  - `stageRecoveryBackup({fsImpl, userDataDir, snapshot, now}): BackupHandle`
-  - `discardRecoveryBackup(handle): void`
-  - `finalizeRecoveryBackup(handle): BackupResult`
+- `captureRecoverySnapshot({fsImpl, keyPath, configPath})`
+- `stageRecoveryBackup({fsImpl, userDataDir, snapshot, now})`
+- `discardRecoveryBackup(handle, fsImpl)`
 
-- [ ] **Step 1: Write the healthy-start RED test**
+- [x] Write a failing test that creates valid `.key` and `config.json` files and asserts a private pending directory exists inside the fake Store constructor.
+- [x] Verify RED because the recovery module does not exist.
+- [x] Capture each source as `data`, `missing`, or `unreadable` and fingerprint names, states, safe codes, and readable bytes.
+- [x] Create `.pending-<fingerprint-prefix>` with mode `0700`; write source copies and manifest with mode `0600` and exclusive flags.
+- [x] Remove a newly-created pending directory only after successful Store construction.
+- [x] Verify the focused healthy-start test passes.
 
-Create valid `.key` and `config.json` source files. Use a fake Store constructor that asserts, during construction, that a private pending directory already contains byte-identical copies and a manifest. Return successfully, then assert the pending directory is removed.
-
-Run:
-
-```bash
-node --test test/store-recovery.test.js
-```
-
-Expected: FAIL because `src/main/core/store-recovery.js` does not exist.
-
-- [ ] **Step 2: Implement source capture**
-
-Represent each source as:
-
-```js
-{
-  name: '.key',
-  state: 'data', // data | missing | unreadable
-  data: Buffer.from(...),
-  causeCode: null
-}
-```
-
-Read errors other than `ENOENT` become `unreadable` with an allow-listed system code. They are not converted to `missing`.
-
-- [ ] **Step 3: Implement fingerprinted pending backup creation**
-
-Compute SHA-256 over source names, states, safe cause codes, lengths, and readable bytes. Create:
-
-```text
-<userData>/recovery-backups/.pending-<fingerprint-prefix>/
-```
-
-Write source copies using mode `0600`, then write `recovery-manifest.json` last. The directory uses mode `0700`.
-
-- [ ] **Step 4: Implement success cleanup**
-
-A newly-created pending backup is removed only after the Store constructor returns successfully. A previously finalized backup is never deleted.
-
-- [ ] **Step 5: Verify GREEN**
-
-Run the focused test and confirm the pending copy exists before construction and is absent after success.
-
----
-
-### Task 2: Finalize exact recovery bytes on config failure
+### Task 2: Finalize exact recovery material on config failure
 
 **Files:**
-- Modify: `test/store-recovery.test.js`
 - Modify: `src/main/core/store-recovery.js`
+- Modify: `test/store-recovery.test.js`
 
 **Interfaces:**
-- Produces: `StoreStartupError` with safe fields:
+- `StoreStartupError`
+- `finalizeRecoveryBackup(handle, fsImpl)`
+- `initializeStore({StoreClass, userDataDir, defaults, fsImpl, cryptoImpl, now})`
 
-```js
-{
-  code,
-  causeCode,
-  backupDir,
-  backupStatus,
-  backupErrorCode
-}
-```
+- [x] Add RED coverage where the Store constructor sees `clearInvalidConfig: false`, observes the staged copy, and throws a secret-looking `SyntaxError`.
+- [x] Atomically rename the pending directory to `backup-<fingerprint-prefix>`.
+- [x] Preserve source and copied bytes exactly.
+- [x] Map the failure to `CONFIG_READ_FAILED` and `SYNTAX_ERROR` without exposing the raw message.
+- [x] Verify directory/file modes and zero pending directories after finalization.
 
-- [ ] **Step 1: Add a failing Store regression test**
-
-Use a Store constructor that receives `clearInvalidConfig: false` and throws a `SyntaxError` containing secret-looking text. Assert:
-
-- exact source bytes remain unchanged;
-- the pending directory is atomically finalized as `backup-<fingerprint-prefix>`;
-- the final copy contains exact pre-construction bytes;
-- the thrown error is `CONFIG_READ_FAILED`;
-- no raw cause message appears in the public error.
-
-- [ ] **Step 2: Verify RED**
-
-Expected: FAIL until failure finalization and safe error mapping exist.
-
-- [ ] **Step 3: Implement Store construction and failure mapping**
-
-Construct with:
-
-```js
-new StoreClass({
-  defaults,
-  cwd: userDataDir,
-  name: 'config',
-  encryptionKey,
-  clearInvalidConfig: false
-});
-```
-
-On failure, finalize the staged backup and throw a sanitized `StoreStartupError`.
-
-- [ ] **Step 4: Verify GREEN**
-
-Confirm the exact original bytes and backup bytes match and the unsafe exception text is absent.
-
----
-
-### Task 3: Make repeated recovery idempotent and collision-safe
+### Task 3: Make backup reuse idempotent and collision-safe
 
 **Files:**
-- Modify: `test/store-recovery.test.js`
 - Modify: `src/main/core/store-recovery.js`
+- Modify: `test/store-recovery.test.js`
 
 **Interfaces:**
-- Existing backup verification checks manifest fingerprint and copied file SHA-256 values.
+- `verifyBackupDirectory(fsImpl, backupDir, snapshot)`
 
-- [ ] **Step 1: Add repeated-failure RED coverage**
+- [x] Add repeated identical failure coverage.
+- [x] Verify one final directory is reused and no duplicate remains.
+- [x] Add a corrupt colliding-manifest test.
+- [x] Verify the corrupt directory is untouched and a suffixed valid backup is created.
+- [x] Require manifest version/fingerprint/source states plus byte length and SHA-256 verification before reuse.
 
-Run `initializeStore()` twice against unchanged source bytes and the same failing Store class. Assert both errors reference the same final backup directory and only one verified `backup-*` directory exists.
-
-- [ ] **Step 2: Add invalid-existing-directory coverage**
-
-Pre-create a directory with the expected prefix but a missing or mismatched manifest. Assert the implementation does not overwrite it and safely uses a suffixed directory.
-
-- [ ] **Step 3: Implement verified reuse**
-
-Reuse a final or pending directory only when:
-
-- the manifest version is supported;
-- the full fingerprint matches;
-- every recorded readable file exists and its SHA-256 matches.
-
-Otherwise create a new suffix without modifying the existing directory.
-
-- [ ] **Step 4: Verify GREEN**
-
-Run the focused suite and confirm deterministic reuse plus non-overwriting collision handling.
-
----
-
-### Task 4: Integrate Issue #45 key semantics and missing-key protection
+### Task 4: Integrate Issue #45 key semantics
 
 **Files:**
-- Modify: `test/store-recovery.test.js`
 - Modify: `src/main/core/store-recovery.js`
+- Modify: `test/store-recovery.test.js`
+- Modify: `test/encryption-key.test.js`
 
 **Interfaces:**
-- Maps Issue #45 errors:
+- `loadOrCreateEncryptionKey(keyPath, {fs, crypto})`
+- Key error mapping:
   - `ENCRYPTION_KEY_INVALID` → `KEY_INVALID`
   - `ENCRYPTION_KEY_READ_FAILED` → `KEY_READ_FAILED`
   - `ENCRYPTION_KEY_CREATE_FAILED` → `KEY_CREATE_FAILED`
 
-- [ ] **Step 1: Add invalid-key RED coverage**
+- [x] Add invalid-key coverage and prove the Store constructor is not called.
+- [x] Add existing-config-without-key coverage and prove no replacement key is generated.
+- [x] Add unreadable key and unreadable config coverage with partial backups.
+- [x] Keep `store-recovery.js` free of a second key regex, random key generator, or `.key` write path.
+- [x] Update the #45 integration guard so the recovery coordinator is the only consumer of the hardened key helper.
 
-Write invalid `.key` bytes and existing config bytes. Assert the Store constructor is never entered, both files are backed up, originals remain unchanged, and the public code is `KEY_INVALID`.
-
-- [ ] **Step 2: Add missing-key-with-config RED coverage**
-
-Create `config.json` without `.key`. Assert no key file is generated, the config is backed up, and the public code is `KEY_MISSING_WITH_CONFIG`.
-
-- [ ] **Step 3: Add unreadable-source coverage**
-
-Inject an `fsImpl` that throws `EACCES` when reading `.key` or `config.json`. Assert the error contains only safe codes, no replacement key is written, and any readable source is preserved in a partial backup.
-
-- [ ] **Step 4: Implement key delegation and mappings**
-
-Call Issue #45's helper directly. Do not add another key regex, random key generator, or `.key` write path to `store-recovery.js`.
-
-- [ ] **Step 5: Verify GREEN**
-
-Run all focused tests and confirm the Store constructor is not invoked on precondition failures.
-
----
-
-### Task 5: Fail closed when recovery staging itself fails
+### Task 5: Fail closed when backup staging fails
 
 **Files:**
-- Modify: `test/store-recovery.test.js`
 - Modify: `src/main/core/store-recovery.js`
+- Modify: `test/store-recovery.test.js`
+
+- [x] Add recovery-root permission failure coverage.
+- [x] Add mid-copy `ENOSPC` coverage.
+- [x] Block key handling and Store construction after staging failure.
+- [x] Preserve originals and remove an incomplete pending directory on a best-effort basis.
+- [x] Expose only `BACKUP_FAILED` and an allow-listed system code.
+
+### Task 6: Add safe recovery metadata and dialog model
+
+**Files:**
+- Modify: `src/main/core/store-recovery.js`
+- Modify: `test/store-recovery.test.js`
 
 **Interfaces:**
-- Produces `BACKUP_FAILED` before key/store initialization when readable existing material cannot be staged.
+- `safeStoreStartupMetadata(error)`
+- `buildStoreRecoveryDialog(error)`
 
-- [ ] **Step 1: Add backup-directory failure test**
+- [x] Add secret-injection tests for raw messages, stacks, and causes.
+- [x] Return only category, safe cause code, backup status, backup presence, and safe backup error code for logs.
+- [x] Show stop-startup wording, category, recovery advice, and complete/partial/no-backup status.
+- [x] Offer `打开恢复副本` only when a backup path exists.
+- [x] Fall back to `STORE_STARTUP_FAILED` for unknown or malformed errors.
 
-Inject an `fsImpl` that can read the sources but throws `EACCES` when creating `recovery-backups`. Assert:
-
-- Store construction count remains zero;
-- original source bytes remain unchanged;
-- error code is `BACKUP_FAILED`;
-- only `EACCES` is exposed, not the raw error message.
-
-- [ ] **Step 2: Verify RED**
-
-Expected: FAIL until staging errors block initialization.
-
-- [ ] **Step 3: Implement fail-closed behavior**
-
-Do not invoke `loadOrCreateEncryptionKey()` or `new StoreClass()` when staging readable existing source material fails.
-
-- [ ] **Step 4: Verify GREEN**
-
-Run the focused suite and confirm zero unsafe initialization calls.
-
----
-
-### Task 6: Convert `store.js` to a lazy factory
+### Task 7: Convert the store module to a lazy facade
 
 **Files:**
 - Modify: `src/main/store.js`
-- Modify: `test/store-recovery.test.js`
+- Create: `test/store-bootstrap.test.js`
 
 **Interfaces:**
-- Produces:
-  - `createStore(overrides?): ElectronStoreLike`
-  - `defaults`
-  - existing `migrateLegacyKeys()`
-  - existing settings-security exports
+- `createStore(options)`
+- `initialize(options)`
+- existing `migrateLegacyKeys()` and settings-security functions
+- delegated Store instance methods and properties
 
-- [ ] **Step 1: Add factory wiring guards**
+- [x] Add RED coverage for lazy loading, facade method binding, defaults, and legacy migration.
+- [x] Move electron-store loading into `createStore()`.
+- [x] Create the Store only through `initializeStore()`.
+- [x] Keep existing consumers compatible with `store.get()`, `store.set()`, `store.store`, and `store.sanitizeSettings()`.
+- [x] Throw `STORE_NOT_INITIALIZED` for premature instance access.
+- [x] Prove no module-level `new Store` and no `clearInvalidConfig: true` remain.
 
-Assert `store.js` exports `createStore`, delegates to `initializeStore`, and contains no top-level `new Store(...)` or `clearInvalidConfig: true`.
-
-- [ ] **Step 2: Verify RED**
-
-Expected: FAIL against current `store.js`.
-
-- [ ] **Step 3: Implement `createStore()`**
-
-Resolve production dependencies lazily from electron-store and `app.getPath('userData')`. Attach existing settings-security helpers to the returned store instance so calls such as `store.sanitizeSettings(...)` continue to work.
-
-- [ ] **Step 4: Verify GREEN**
-
-Run focused tests and syntax checks:
-
-```bash
-node --check src/main/core/store-recovery.js
-node --check src/main/store.js
-```
-
----
-
-### Task 7: Add the early startup recovery dialog
+### Task 8: Add an early Electron bootstrap boundary
 
 **Files:**
-- Modify: `src/main/index.js`
-- Modify: `test/store-recovery.test.js`
+- Create: `src/main/core/startup-recovery.js`
+- Create: `src/main/bootstrap.js`
+- Modify: `package.json`
+- Modify: `test/store-bootstrap.test.js`
 
 **Interfaces:**
-- Consumes:
-  - `createStore()`
-  - `buildStoreRecoveryDialog(error)`
-  - `safeStoreStartupMetadata(error)`
-- Uses Electron `dialog.showMessageBox()` and `shell.openPath()`.
+- `runStoreBootstrap({app, dialog, shell, storeModule, loadMain, logger})`
 
-- [ ] **Step 1: Add safe dialog model tests**
+- [x] Add RED coverage proving `loadMain()` occurs only after store initialization succeeds.
+- [x] Add failure coverage proving the dialog may open the backup and `loadMain()` is never called.
+- [x] Add dialog/shell failure coverage and require sanitized log categories.
+- [x] Point `package.json#main` to `src/main/bootstrap.js`.
+- [x] Wait for `app.whenReady()`, run the bootstrap coordinator, and load `./index` only on success.
+- [x] Set `app.isQuitting`, quit after failure, and never log raw errors.
 
-Inject error fields containing secret-looking strings. Assert the dialog contains:
-
-- stop-startup wording;
-- safe error category;
-- backup location/status;
-- recovery advice;
-- `打开恢复副本` only when `backupDir` exists;
-- no raw exception text or stack.
-
-- [ ] **Step 2: Add `index.js` static integration guards**
-
-Assert:
-
-- the store is initialized inside `app.whenReady()`;
-- recovery is handled before provider registration, scheduler, IPC, tray, or normal windows;
-- failure calls `dialog.showMessageBox()`;
-- the open action uses `shell.openPath()`;
-- normal initialization returns early after failure.
-
-- [ ] **Step 3: Verify RED**
-
-Expected: FAIL against current eager import/initialization.
-
-- [ ] **Step 4: Implement the startup boundary**
-
-Change the Electron import to include `dialog` and `shell`, keep `let store = null`, and call `createStore()` as the first operation inside `app.whenReady()`.
-
-On failure:
-
-```js
-const recovery = buildStoreRecoveryDialog(error);
-console.error('[store:startup]', JSON.stringify(safeStoreStartupMetadata(error)));
-const result = await dialog.showMessageBox(recovery.options);
-if (recovery.backupDir && result.response === recovery.openBackupButton) {
-  await shell.openPath(recovery.backupDir);
-}
-app.isQuitting = true;
-app.quit();
-return;
-```
-
-Do not log the thrown error object or stack.
-
-- [ ] **Step 5: Verify GREEN**
-
-Run the focused suite and `node --check src/main/index.js`.
-
----
-
-### Task 8: Full verification, independent review, and Draft PR
+### Task 9: Focused verification
 
 **Files:**
-- No production changes unless verification exposes a defect.
+- No production changes unless a test reveals a defect.
 
-- [ ] **Step 1: Run focused verification**
+- [x] Run:
 
 ```bash
-node --test test/store-recovery.test.js test/encryption-key.test.js
+node --test test/encryption-key.test.js test/store-recovery.test.js test/store-bootstrap.test.js
+node --check src/main/core/encryption-key.js
 node --check src/main/core/store-recovery.js
+node --check src/main/core/startup-recovery.js
 node --check src/main/store.js
-node --check src/main/index.js
+node --check src/main/bootstrap.js
 ```
 
-Expected: all pass with zero failures.
+- [x] Confirm 25 focused tests pass with zero failures.
+- [x] Review for duplicate key handling, destructive clearing, raw error logging, backup timing, idempotence, and startup sequencing.
 
-- [ ] **Step 2: Create a Draft PR and run GitHub Actions**
+### Task 10: Draft PR, full CI, independent review, and merge
 
-Required CI gates:
+**Files:**
+- No production changes unless CI or review exposes a defect.
 
-```bash
-npm test
-npm run build:renderer
-```
-
-The existing Electron/Xvfb smoke test must also pass.
-
-- [ ] **Step 3: Independently review the final diff**
-
-Confirm:
-
-- no second key implementation exists;
-- no `clearInvalidConfig: true` remains in production;
-- no raw exception object is logged or displayed;
-- backups are staged before Store construction;
-- repeated identical failure reuses a verified backup;
-- normal startup code cannot run after initialization failure;
-- changes remain limited to Issue #46.
-
-- [ ] **Step 4: Merge only after all gates pass**
-
-Use a SHA-protected squash merge. After merge, verify Issue #46 closes, then close parent #40 only after confirming both #45 and #46 are completed.
+- [ ] Create a Draft PR titled `fix: preserve encrypted config before startup recovery` with `Fixes #46`, parent #40, root cause, scope, and RED/GREEN evidence.
+- [ ] Run complete `npm test` and record the actual pass count.
+- [ ] Run `npm run build:renderer` and retain the existing Electron/Xvfb smoke test.
+- [ ] Independently review every changed production and test file; fix all Blocking and Important findings.
+- [ ] Mark ready and perform a SHA-protected squash merge only after every gate passes.
+- [ ] Verify #46 closes, confirm #45 remains completed, then close parent #40 with links to both merged PRs.
