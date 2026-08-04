@@ -146,3 +146,38 @@ test('production store and startup modules use the hardened recovery boundary', 
   assert.match(storeSource, /require\('\.\/core\/store-recovery-safe'\)/);
   assert.match(startupSource, /require\('\.\/store-recovery-safe'\)/);
 });
+
+test('store startup has one canonical recovery implementation and tests exercise that production path', () => {
+  const coreDir = path.resolve(__dirname, '../src/main/core');
+  const recoveryFiles = fs.readdirSync(coreDir)
+    .filter((name) => /^store-recovery(?:-[a-z-]+)?\.js$/.test(name))
+    .sort();
+  const sources = recoveryFiles.map((name) => ({
+    name,
+    source: fs.readFileSync(path.join(coreDir, name), 'utf8')
+  }));
+  const initializeOwners = sources
+    .filter(({ source }) => /function\s+initializeStore\s*\(/.test(source))
+    .map(({ name }) => name);
+  const keyHelperOwners = sources
+    .filter(({ source }) => /require\('\.\/encryption-key'\)/.test(source))
+    .map(({ name }) => name);
+
+  assert.deepEqual(initializeOwners, ['store-recovery.js']);
+  assert.deepEqual(keyHelperOwners, ['store-recovery.js']);
+
+  const storeSource = fs.readFileSync(path.resolve(__dirname, '../src/main/store.js'), 'utf8');
+  const startupSource = fs.readFileSync(
+    path.resolve(__dirname, '../src/main/core/startup-recovery.js'),
+    'utf8'
+  );
+  const behaviorTests = fs.readFileSync(
+    path.resolve(__dirname, './store-recovery.test.js'),
+    'utf8'
+  );
+
+  assert.match(storeSource, /require\('\.\/core\/store-recovery'\)/);
+  assert.match(startupSource, /require\('\.\/store-recovery'\)/);
+  assert.match(behaviorTests, /require\('\.\.\/src\/main\/core\/store-recovery'\)/);
+  assert.doesNotMatch(storeSource + startupSource + behaviorTests, /store-recovery-safe/);
+});
