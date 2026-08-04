@@ -1,5 +1,6 @@
-// Codex 凭证:只读复用 ~/.codex/auth.json(零改动原则)。
+// Codex 凭证:复用 ~/.codex/auth.json;刷新时通过同目录临时文件原子替换。
 // refresh 端点来自 Task 0 Spike 验证:POST https://auth.openai.com/oauth/token(JSON,client_id app_EMoamEEZ73f0CkXaXp7hrann)。
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -41,7 +42,85 @@ function tokenExpiryMs(token) {
   }
 }
 
-// 用 refresh_token 换新 access_token 并回写 auth.json(保留其余字段)。
+function authFileMetadata(authPath) {
+  const stat = fs.statSync(authPath);
+  return {
+    mode: stat.mode & 0o777,
+    uid: Number.isInteger(stat.uid) ? stat.uid : null,
+    gid: Number.isInteger(stat.gid) ? stat.gid : null
+  };
+}
+
+function metadataError(code) {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
+
+function ownerMatches(stat, metadata) {
+  return metadata.uid === null
+    || metadata.gid === null
+    || (stat.uid === metadata.uid && stat.gid === metadata.gid);
+}
+
+function applyTempMetadata(fd, metadata) {
+  if (process.platform === 'win32') return;
+  let stat = fs.fstatSync(fd);
+  if (!ownerMatches(stat, metadata)) {
+    fs.fchownSync(fd, metadata.uid, metadata.gid);
+    stat = fs.fstatSync(fd);
+  }
+  fs.fchmodSync(fd, metadata.mode);
+  stat = fs.fstatSync(fd);
+  if ((stat.mode & 0o777) !== metadata.mode) {
+    throw metadataError('CODEX_AUTH_MODE_MISMATCH');
+  }
+  if (!ownerMatches(stat, metadata)) {
+    throw metadataError('CODEX_AUTH_OWNER_MISMATCH');
+  }
+}
+
+function verifyTargetMetadata(authPath, metadata) {
+  if (process.platform === 'win32') return;
+  let stat = fs.statSync(authPath);
+  if (!ownerMatches(stat, metadata)) {
+    fs.chownSync(authPath, metadata.uid, metadata.gid);
+    stat = fs.statSync(authPath);
+  }
+  if ((stat.mode & 0o777) !== metadata.mode) {
+    fs.chmodSync(authPath, metadata.mode);
+    stat = fs.statSync(authPath);
+  }
+  if ((stat.mode & 0o777) !== metadata.mode) {
+    throw metadataError('CODEX_AUTH_MODE_MISMATCH');
+  }
+  if (!ownerMatches(stat, metadata)) {
+    throw metadataError('CODEX_AUTH_OWNER_MISMATCH');
+  }
+}
+
+function writeAuthAtomic(authPath, raw, metadata) {
+  const tmp = authPath + '.tmp-' + process.pid + '-' + crypto.randomBytes(8).toString('hex');
+  let fd = null;
+  try {
+    fd = fs.openSync(tmp, 'wx', metadata.mode);
+    fs.writeFileSync(fd, JSON.stringify(raw, null, 2), 'utf8');
+    applyTempMetadata(fd, metadata);
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fd = null;
+
+    fs.renameSync(tmp, authPath);
+    verifyTargetMetadata(authPath, metadata);
+  } finally {
+    if (fd !== null) {
+      try { fs.closeSync(fd); } catch (e) {}
+    }
+    try { fs.rmSync(tmp, { force: true }); } catch (e) {}
+  }
+}
+
+// 用 refresh_token 换新 access_token 并原子回写 auth.json(保留其余字段)。
 async function refreshAuth(ctx, auth) {
   if (!auth || !auth.refreshToken) return null;
   const proxy = ctx && typeof ctx.getProxyUrl === 'function' ? ctx.getProxyUrl() : null;
@@ -52,12 +131,13 @@ async function refreshAuth(ctx, auth) {
   }, { 'User-Agent': 'codex_cli_rs/0.46.0' }, proxy);
   if (!data || !data.access_token) return null;
   try {
+    const metadata = authFileMetadata(auth.authPath);
     const raw = JSON.parse(fs.readFileSync(auth.authPath, 'utf8'));
     raw.tokens = raw.tokens || {};
     raw.tokens.access_token = data.access_token;
     if (data.refresh_token) raw.tokens.refresh_token = data.refresh_token;
     raw.last_refresh = new Date().toISOString();
-    fs.writeFileSync(auth.authPath, JSON.stringify(raw, null, 2));
+    writeAuthAtomic(auth.authPath, raw, metadata);
   } catch (e) {
     return null;
   }
