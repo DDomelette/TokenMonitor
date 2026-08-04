@@ -37,6 +37,8 @@ test('parseWireLine maps kimi usage fields', () => {
   assert.equal(rec.usage.input, 1326);
   assert.equal(rec.usage.cached, 160512);
   assert.equal(rec.usage.output, 576);
+  // total 含缓存读取(与 codex/deepseek 口径一致)
+  assert.equal(rec.usage.total, 1326 + 160512 + 576);
 });
 
 test('parseWireLine returns null for non usage.record / non JSON', () => {
@@ -203,6 +205,41 @@ test('readLocalLog merges incremental daily rollup into store usageDaily', () =>
     assert.deepEqual(agg, { input: 300, cached: 150, output: 30, total: 480 });
     // 无新增时返回空
     assert.equal(readLocalLog({ store }).length, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('kimi readLocalLog rebuilds stale totals with cached included exactly once', () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'wire.jsonl');
+  const data = {};
+  const store = {
+    get(k) { return data[k]; },
+    set(k, v) { data[k] = v; }
+  };
+  try {
+    store.set('providers.kimi.localLogRoot', dir);
+    const now = Date.now();
+    const { localDayStr } = require('../src/main/core/locallog');
+    const day = localDayStr(now);
+    const line = '{"type":"usage.record","model":"kimi-code/k3-256k","usage":{"inputOther":100,"output":10,"inputCacheRead":50,"inputCacheCreation":0},"usageScope":"turn","time":' + now + '}\n';
+    fs.writeFileSync(file, line);
+    // 旧口径存量(input+output 不含缓存)+ 假装已扫完的旧游标
+    const usageDaily = {};
+    usageDaily['kimi:' + day] = { input: 100, cached: 50, output: 10, total: 110 };
+    usageDaily['codex:' + day] = { input: 1, cached: 0, output: 1, total: 2 };
+    store.set('usageDaily', usageDaily);
+    store.set('localLogCursors.kimi', { [file]: { offset: Number.MAX_SAFE_INTEGER, mtimeMs: now } });
+
+    const { readLocalLog } = require('../src/main/providers/kimi/locallog');
+    readLocalLog({ store });
+    // kimi 键按新口径重建:total 含缓存;其他平台键不受影响
+    assert.deepEqual(store.get('usageDaily')['kimi:' + day], { input: 100, cached: 50, output: 10, total: 160 });
+    assert.deepEqual(store.get('usageDaily')['codex:' + day], { input: 1, cached: 0, output: 1, total: 2 });
+    // 迁移只跑一次:无新增时返回空,聚合不重复累加
+    assert.equal(readLocalLog({ store }).length, 0);
+    assert.deepEqual(store.get('usageDaily')['kimi:' + day], { input: 100, cached: 50, output: 10, total: 160 });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

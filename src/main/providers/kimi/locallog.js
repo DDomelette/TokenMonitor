@@ -8,21 +8,28 @@ const { scanFiles, rollupDaily } = require('../../core/locallog');
 const DEFAULT_ROOT = () => path.join(os.homedir(), '.kimi-code', 'sessions');
 const MATCH = /wire\.jsonl$/;
 const CURSOR_KEY = 'localLogCursors.kimi';
+// 一次性迁移标记:total 口径改为含缓存后,清掉旧口径聚合与游标,全量重建
+const MIGRATION_KEY = 'localLogMigrations.kimiTotalIncludesCached';
 
 // 解析单行:usage.record 行,input=inputOther,cached=inputCacheRead,output=output,ts 取 data.time(epoch ms)。
+// total 含缓存读取(与 codex total_tokens / deepseek 平台口径一致),历史旧口径数据由下方迁移重建。
 function parseWireLine(line) {
   if (!line) return null;
   try {
     const data = JSON.parse(line);
     if (!data || data.type !== 'usage.record' || !data.usage) return null;
     const usage = data.usage;
+    const input = usage.inputOther || 0;
+    const cached = usage.inputCacheRead || 0;
+    const output = usage.output || 0;
     return {
       ts: Number(data.time) || null,
       model: data.model || null,
       usage: {
-        input: usage.inputOther || 0,
-        cached: usage.inputCacheRead || 0,
-        output: usage.output || 0
+        input: input,
+        cached: cached,
+        output: output,
+        total: input + cached + output
       }
     };
   } catch (e) {
@@ -35,6 +42,15 @@ function parseWireLine(line) {
 function readLocalLog(ctx, opts) {
   const store = ctx && ctx.store;
   const root = (store && store.get('providers.kimi.localLogRoot')) || DEFAULT_ROOT();
+  if (store && !store.get(MIGRATION_KEY)) {
+    const usageDaily = store.get('usageDaily') || {};
+    Object.keys(usageDaily).forEach((key) => {
+      if (key.indexOf('kimi:') === 0) delete usageDaily[key];
+    });
+    store.set('usageDaily', usageDaily);
+    store.set(CURSOR_KEY, {});
+    store.set(MIGRATION_KEY, true);
+  }
   if (!fs.existsSync(root)) return [];
   const records = scanFiles({
     root: root,
