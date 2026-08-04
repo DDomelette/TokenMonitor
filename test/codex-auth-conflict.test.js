@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+const FIXED_FILE_TIME = new Date('2026-08-04T12:00:00.000Z');
+
 function tempDir(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-codex-conflict-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -39,6 +41,7 @@ function writeAuthFile(authPath, value, mode = 0o600) {
   const bytes = jsonBytes(value);
   fs.writeFileSync(authPath, bytes, { mode });
   if (process.platform !== 'win32') fs.chmodSync(authPath, mode);
+  fs.utimesSync(authPath, FIXED_FILE_TIME, FIXED_FILE_TIME);
   return bytes;
 }
 
