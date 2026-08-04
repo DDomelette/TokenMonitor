@@ -15,8 +15,8 @@ test('accepted settings updates are broadcast to live windows', () => {
   assert.match(updateHandler[0], /broadcastSettings\(\)/);
 });
 
-test('React dashboard initializes layout from settings via validateState', () => {
-  assert.match(dashboard, /validateState\(settings\.layout, settings\)/);
+test('React dashboard initializes layout from the same settings object via validateState', () => {
+  assert.match(dashboard, /validateState\(([A-Za-z_$][\w$]*)\.layout,\s*\1\)/);
 });
 
 test('React dashboard persists layout edits back through settings:update', () => {
