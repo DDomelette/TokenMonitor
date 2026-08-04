@@ -1,7 +1,7 @@
 const {
   buildStoreRecoveryDialog,
   safeStoreStartupMetadata
-} = require('./store-recovery');
+} = require('./store-recovery-safe');
 
 function safeLog(logger, label, fields) {
   if (!logger || typeof logger.error !== 'function') return;
