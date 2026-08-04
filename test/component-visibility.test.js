@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 async function loadVisibility() {
   return import('../renderer/src/grid/visibility.js');
@@ -32,4 +34,15 @@ test('missing component settings use registry defaults and false remains false',
 
   const disabled = visibleComponentIds({ components: { costLine: false } });
   assert.equal(disabled.includes('cost-line'), false);
+});
+
+test('Dashboard subscribes to settings and filters GridStack nodes by visible IDs', () => {
+  const dashboardSource = fs.readFileSync(
+    path.resolve(__dirname, '../renderer/src/components/Dashboard.jsx'),
+    'utf8'
+  );
+
+  assert.match(dashboardSource, /visibleComponentIds/);
+  assert.match(dashboardSource, /settings:loaded/);
+  assert.match(dashboardSource, /visibleIds\.has\(item\.id\)/);
 });
