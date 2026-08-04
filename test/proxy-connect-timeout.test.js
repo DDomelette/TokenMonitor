@@ -9,6 +9,7 @@ const { startScheduler } = require('../src/main/core/scheduler');
 const FAST_TIMEOUTS = Object.freeze({
   connectTimeoutMs: 25,
   connectResponseTimeoutMs: 40,
+  tlsHandshakeTimeoutMs: 40,
   requestTimeoutMs: 100
 });
 
@@ -49,15 +50,30 @@ async function waitFor(predicate, timeoutMs = 300) {
   assert.fail('condition was not met before timeout');
 }
 
-function createSilentProxy(t) {
+function trackedServer(t, onConnection) {
   const sockets = new Set();
   const server = net.createServer((socket) => {
     sockets.add(socket);
     socket.on('close', () => sockets.delete(socket));
-    // Accept the TCP connection but never send a CONNECT response.
+    onConnection(socket);
   });
   t.after(async () => closeServer(server, sockets));
   return { server, sockets };
+}
+
+function createSilentProxy(t) {
+  return trackedServer(t, () => {
+    // Accept the TCP connection but never send a CONNECT response.
+  });
+}
+
+function createStalledTlsProxy(t) {
+  return trackedServer(t, (socket) => {
+    socket.once('data', () => {
+      socket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+      // Ignore the following TLS ClientHello so secureConnect never fires.
+    });
+  });
 }
 
 test('TCP connect timeout destroys the socket and rejects exactly once', async (t) => {
@@ -126,6 +142,26 @@ test('silent proxy CONNECT response times out and closes the accepted socket', a
   await waitFor(() => sockets.size === 0);
 
   assert.equal(rejectionCount, 1);
+});
+
+test('TLS handshake after a successful CONNECT has its own timeout', async (t) => {
+  const { server, sockets } = createStalledTlsProxy(t);
+  const port = await listen(server);
+
+  await assert.rejects(
+    withWatchdog(httpGet(
+      'https://example.com/data',
+      {},
+      `http://127.0.0.1:${port}`,
+      FAST_TIMEOUTS
+    )),
+    (error) => {
+      assert.equal(error.code, 'PROXY_TLS_HANDSHAKE_TIMEOUT');
+      assert.match(error.message, /Proxy TLS handshake timeout/);
+      return true;
+    }
+  );
+  await waitFor(() => sockets.size === 0);
 });
 
 test('scheduler releases inflight after proxy handshake timeout so the channel can retry', async (t) => {
