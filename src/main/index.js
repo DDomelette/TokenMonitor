@@ -89,9 +89,12 @@ function createMainWindow() {
     backgroundColor: '#F6F7F9',
     roundedCorners: true,
     alwaysOnTop: store.get('window.alwaysOnTop'),
-    resizable: false,
+    // 原生缩放:Chromium 在系统缩放循环中拉伸旧帧,不会露出黑色欠采样区(同 VSCode)
+    resizable: true,
     minWidth: 380,
     minHeight: 200,
+    maxWidth: 2400,
+    maxHeight: 1600,
     skipTaskbar: true,
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'preload.js'),
@@ -138,6 +141,11 @@ function createMainWindow() {
 
   mainWindow.on('resize', function () {
     sendMainWindowBounds();
+  });
+
+  // 原生缩放结束后持久化最终尺寸(原生缩放不经过 window:set-bounds / resize:end)
+  mainWindow.on('resized', function () {
+    persistMainWindowBounds();
   });
 
   nativeTheme.on('updated', () => {

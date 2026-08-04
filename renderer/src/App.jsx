@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import ResizeHandles from './components/ResizeHandles.jsx';
 import TitleBar from './components/TitleBar.jsx';
 import StatusBar from './components/StatusBar.jsx';
 import Dashboard from './components/Dashboard.jsx';
@@ -23,14 +22,12 @@ export default function App() {
     return () => window.removeEventListener('wheel', onWheel);
   }, []);
 
+  // 缩放已由系统原生处理(resizable: true),不再渲染应用层 ResizeHandles
   return (
-    <>
-      <ResizeHandles />
-      <div id="app">
-        <TitleBar editing={editing} onToggleLayoutEdit={() => setEditing((e) => !e)} />
-        <Dashboard editing={editing} />
-        <StatusBar />
-      </div>
-    </>
+    <div id="app">
+      <TitleBar editing={editing} onToggleLayoutEdit={() => setEditing((e) => !e)} />
+      <Dashboard editing={editing} />
+      <StatusBar />
+    </div>
   );
 }

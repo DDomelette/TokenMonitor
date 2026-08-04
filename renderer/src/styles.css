@@ -10,7 +10,8 @@ body,
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: transparent;
+  /* 实色底色:非透明窗口下,缩放欠采样区由合成器用视口底色填充,透明会露黑 */
+  background: #F6F7F9;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   color: #1f2329;
   user-select: none;
