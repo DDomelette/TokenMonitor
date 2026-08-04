@@ -338,7 +338,7 @@ export default function Dashboard({ editing }) {
 
   return (
     <div className="content">
-      <div className={'grid-stack' + (editing ? ' editing' : '')} ref={hostRef}>
+      <div key={rebuildKey} className={'grid-stack' + (editing ? ' editing' : '')} ref={hostRef}>
         {gridChildren}
       </div>
     </div>
