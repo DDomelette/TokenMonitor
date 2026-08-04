@@ -1,4 +1,4 @@
-const { initializeStore } = require('./core/store-recovery-safe');
+const { initializeStore } = require('./core/store-recovery');
 const settingsSecurity = require('./core/settings-security');
 
 const defaults = {
