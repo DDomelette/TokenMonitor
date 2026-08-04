@@ -3,10 +3,78 @@ const https = require('https');
 const net = require('net');
 const tls = require('tls');
 
+function proxyConfigError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function explicitNumericPort(rawUrl) {
+  const schemeEnd = rawUrl.indexOf('://');
+  if (schemeEnd < 0) return null;
+  const authority = rawUrl.slice(schemeEnd + 3).split(/[/?#]/, 1)[0];
+  const match = /:(\d+)$/.exec(authority);
+  return match ? Number(match[1]) : null;
+}
+
 function parseProxyUrl(url) {
-  if (!url) return null;
-  const m = /^https?:\/\/([^:/]+)(?::(\d+))?/.exec(url);
-  return m ? { host: m[1], port: m[2] ? Number(m[2]) : 80 } : null;
+  if (url === null || url === undefined) return null;
+  if (typeof url !== 'string') {
+    throw proxyConfigError('INVALID_PROXY_URL', 'Invalid proxy URL: expected http://host[:port]');
+  }
+
+  const raw = url.trim();
+  if (!raw) return null;
+  const schemeMatch = /^([A-Za-z][A-Za-z0-9+.-]*):\/\//.exec(raw);
+  if (!schemeMatch) {
+    throw proxyConfigError('INVALID_PROXY_URL', 'Invalid proxy URL: expected http://host[:port]');
+  }
+
+  const protocol = schemeMatch[1].toLowerCase() + ':';
+  if (protocol !== 'http:' && protocol !== 'https:') {
+    throw proxyConfigError(
+      'UNSUPPORTED_PROXY_PROTOCOL',
+      'Unsupported proxy protocol: ' + protocol
+    );
+  }
+
+  const explicitPort = explicitNumericPort(raw);
+  if (explicitPort !== null && (!Number.isInteger(explicitPort) || explicitPort < 1 || explicitPort > 65535)) {
+    throw proxyConfigError('INVALID_PROXY_PORT', 'Invalid proxy port: ' + explicitPort);
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch (error) {
+    throw proxyConfigError('INVALID_PROXY_URL', 'Invalid proxy URL: expected http://host[:port]');
+  }
+  if (!parsed.hostname) {
+    throw proxyConfigError('INVALID_PROXY_URL', 'Invalid proxy URL: hostname is required');
+  }
+
+  const port = parsed.port
+    ? Number(parsed.port)
+    : (protocol === 'https:' ? 443 : 80);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw proxyConfigError('INVALID_PROXY_PORT', 'Invalid proxy port: ' + String(parsed.port));
+  }
+
+  return { protocol, host: parsed.hostname, port };
+}
+
+function assertSupportedProxy(proxy) {
+  if (!proxy || proxy.protocol === 'http:') return;
+  if (proxy.protocol === 'https:') {
+    throw proxyConfigError(
+      'HTTPS_PROXY_UNSUPPORTED',
+      'HTTPS proxy URLs are not supported; use an http:// proxy URL'
+    );
+  }
+  throw proxyConfigError(
+    'UNSUPPORTED_PROXY_PROTOCOL',
+    'Unsupported proxy protocol: ' + String(proxy.protocol || '')
+  );
 }
 
 // GET JSON。2xx 解析 JSON 并 resolve;401/403 reject 含 "Unauthorized: ... (HTTP xxx)"(供 scheduler 判定 authStatus);
@@ -76,13 +144,20 @@ function requestCore(method, url, headers, body, proxyUrl) {
       req.end();
     };
 
-    const proxy = parseProxyUrl(proxyUrl);
+    let proxy;
+    try {
+      proxy = parseProxyUrl(proxyUrl);
+      assertSupportedProxy(proxy);
+    } catch (error) {
+      reject(error);
+      return;
+    }
     if (!proxy) {
       doRequest(null);
       return;
     }
 
-    // CONNECT 隧道:先与代理建连,再包 TLS。
+    // CONNECT 隧道:先与 HTTP 代理建立明文连接,再把目标连接包 TLS。
     const conn = net.connect(proxy.port, proxy.host, () => {
       conn.write('CONNECT ' + target.hostname + ':443 HTTP/1.1\r\nHost: ' + target.hostname + ':443\r\n\r\n');
     });
@@ -102,4 +177,10 @@ function requestCore(method, url, headers, body, proxyUrl) {
   });
 }
 
-module.exports = { httpGet, httpPostJson, httpPostForm, parseProxyUrl };
+module.exports = {
+  httpGet,
+  httpPostJson,
+  httpPostForm,
+  parseProxyUrl,
+  assertSupportedProxy
+};
