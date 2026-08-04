@@ -21,7 +21,7 @@ function proxyFs(overrides) {
 }
 
 test('a symlinked recovery root is rejected before any backup or Store write', { skip: process.platform === 'win32' }, (t) => {
-  const { initializeStore } = require('../src/main/core/store-recovery-safe');
+  const { initializeStore } = require('../src/main/core/store-recovery');
   const userDataDir = tempUserData(t);
   const externalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-recovery-external-'));
   t.after(() => fs.rmSync(externalDir, { recursive: true, force: true }));
@@ -55,7 +55,7 @@ test('a symlinked recovery root is rejected before any backup or Store write', {
 });
 
 test('cleanup failure after successful Store construction is a backup failure', (t) => {
-  const { initializeStore } = require('../src/main/core/store-recovery-safe');
+  const { initializeStore } = require('../src/main/core/store-recovery');
   const userDataDir = tempUserData(t);
   const keyPath = path.join(userDataDir, '.key');
   const configPath = path.join(userDataDir, 'config.json');
@@ -101,7 +101,7 @@ test('duplicate pending cleanup failures are reduced to safe backup metadata', (
     captureRecoverySnapshot,
     finalizeRecoveryBackup,
     stageRecoveryBackup
-  } = require('../src/main/core/store-recovery-safe');
+  } = require('../src/main/core/store-recovery');
   const userDataDir = tempUserData(t);
   const keyPath = path.join(userDataDir, '.key');
   const configPath = path.join(userDataDir, 'config.json');
@@ -143,8 +143,8 @@ test('production store and startup modules use the hardened recovery boundary', 
     path.resolve(__dirname, '../src/main/core/startup-recovery.js'),
     'utf8'
   );
-  assert.match(storeSource, /require\('\.\/core\/store-recovery-safe'\)/);
-  assert.match(startupSource, /require\('\.\/store-recovery-safe'\)/);
+  assert.match(storeSource, /require\('\.\/core\/store-recovery'\)/);
+  assert.match(startupSource, /require\('\.\/store-recovery'\)/);
 });
 
 test('store startup has one canonical recovery implementation and tests exercise that production path', () => {
