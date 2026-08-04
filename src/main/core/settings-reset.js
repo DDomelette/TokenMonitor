@@ -3,9 +3,12 @@ const RESET_KEEP_KEYS = Object.freeze([
   'providers.deepseek.sessionToken',
   'providers.proxyUrl',
   'usageDaily',
-  // usageDaily contains incrementally aggregated Codex records. Its byte cursor is
-  // part of the same data state; retaining one without the other replays history.
-  'localLogCursors.codex'
+  // usageDaily is incrementally aggregated from local logs. Compatible cursors
+  // and completed data-version migrations are part of the same durable state:
+  // retaining the aggregate without them replays or deletes historical usage.
+  'localLogCursors.codex',
+  'localLogCursors.kimi',
+  'localLogMigrations.kimiTotalIncludesCached'
 ]);
 
 function shouldRestore(value) {
