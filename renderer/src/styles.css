@@ -79,11 +79,13 @@ body,
   flex: 1;
   overflow: auto;
   padding: 12px;
+  /* 让出右侧缩放手柄(.resize-e 6px)的位置:滚动条不再与窗口缩放手柄重叠 */
+  margin-right: 6px;
 }
 
 /* 细滚动条,覆盖原生样式以去掉两端的箭头按钮 */
 .content::-webkit-scrollbar {
-  width: 8px;
+  width: 10px;
 }
 .content::-webkit-scrollbar-track {
   background: transparent;
