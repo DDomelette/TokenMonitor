@@ -3,6 +3,7 @@
 const { ipcMain, BrowserWindow } = require('electron');
 const { buildHeatmap } = require('./core/heatmap');
 const { sanitizeSettings, isWritableSettingKey, resolveWritableSettingKey } = require('./core/settings-security');
+const { resetSettingsStore } = require('./core/settings-reset');
 
 function deepseekApiKeyCtx(deps, apiKey) {
   return {
@@ -138,20 +139,8 @@ module.exports = function setupIPC(deps) {
   });
 
   ipcMain.on('settings:reset', () => {
-    // 只重置外观/布局,凭证与用量数据必须保留(防止误点清空登录状态)
-    const KEEP_KEYS = [
-      'providers.deepseek.apiKey',
-      'providers.deepseek.sessionToken',
-      'providers.proxyUrl',
-      'usageDaily'
-    ];
-    const kept = {};
-    KEEP_KEYS.forEach((k) => { kept[k] = deps.store.get(k); });
-    deps.store.clear();
-    KEEP_KEYS.forEach((k) => {
-      if (kept[k] !== undefined && kept[k] !== '' && kept[k] !== null) deps.store.set(k, kept[k]);
-    });
-    console.log('[settings] reset done (credentials preserved)');
+    resetSettingsStore(deps.store);
+    console.log('[settings] reset done (credentials and usage state preserved)');
     if (getMain()) {
       getMain().setAlwaysOnTop(true);
     }
