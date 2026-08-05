@@ -8,6 +8,7 @@ const { saveSetting } = require('./core/settings-write');
 const { replaceDeepseekApiKey } = require('./core/api-key-replacement');
 const { filterUsageDaily } = require('./core/usage-retention');
 const { getSessionSnapshot } = require('./core/session-state');
+const { skipDeepseekLogin } = require('./core/startup-windows');
 
 function deepseekApiKeyCtx(deps, apiKey) {
   return {
@@ -225,6 +226,20 @@ module.exports = function setupIPC(deps) {
 
   ipcMain.on('window:close', () => {
     if (deps.getLoginWindow()) deps.getLoginWindow().close();
+  });
+
+  ipcMain.on('login:skip', () => {
+    try {
+      skipDeepseekLogin({
+        getLoginWindow: deps.getLoginWindow,
+        getMainWindow: deps.getMainWindow,
+        createMainWindow: deps.createMainWindow
+      });
+    } catch (error) {
+      console.error('[login:skip]', JSON.stringify({
+        code: error && error.code ? error.code : 'MAIN_WINDOW_UNAVAILABLE'
+      }));
+    }
   });
 
   ipcMain.on('window:close-settings', () => {

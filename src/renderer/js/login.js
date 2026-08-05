@@ -26,7 +26,7 @@ window.api.on('login:error', function (msg) {
 });
 
 skipBtn.addEventListener('click', function () {
-  window.api.send('window:close');
+  window.api.send('login:skip');
 });
 
 apiKeyInput.addEventListener('keydown', function (e) {
