@@ -20,5 +20,19 @@
     return [];
   }
 
-  return { linkedWrites: linkedWrites };
+  // 与 renderer/src/theme-sync.js 的 resolveTheme 同一套语义:
+  // followSystemTheme 是主开关,为 true 时忽略 darkMode 手动值,跟随系统。
+  var VALID_MODES = { system: true, dark: true, light: true };
+
+  function resolveTheme(windowValues, systemDark) {
+    var values = windowValues && typeof windowValues === 'object' ? windowValues : {};
+    var followSystem = values.followSystemTheme !== false;
+    var mode = VALID_MODES[values.darkMode] ? values.darkMode : 'system';
+    if (followSystem || mode === 'system') {
+      return systemDark ? 'dark' : 'light';
+    }
+    return mode;
+  }
+
+  return { linkedWrites: linkedWrites, resolveTheme: resolveTheme };
 });
