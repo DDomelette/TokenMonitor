@@ -9,6 +9,7 @@ const DEFAULT_TIMEOUTS = Object.freeze({
   tlsHandshakeTimeoutMs: 10000,
   requestTimeoutMs: 20000
 });
+const MAX_CONNECT_HEADER_BYTES = 32 * 1024;
 
 function proxyConfigError(code, message) {
   const error = new Error(message);
@@ -20,6 +21,12 @@ function stageTimeoutError(code, message) {
   const error = new Error(message);
   error.code = code;
   return error;
+}
+
+function safeProxyStatusLine(line) {
+  return String(line || '')
+    .replace(/[\x00-\x1f\x7f]/g, ' ')
+    .slice(0, 200);
 }
 
 function timeoutValue(options, key, fallback) {
@@ -185,6 +192,7 @@ function requestCore(method, url, headers, body, proxyUrl, timeoutOptions) {
     let connectTimer = null;
     let connectResponseTimer = null;
     let tlsHandshakeTimer = null;
+    let connectBuffer = Buffer.alloc(0);
 
     function clearTimer(timer) {
       if (timer) clearTimeout(timer);
@@ -214,6 +222,7 @@ function requestCore(method, url, headers, body, proxyUrl, timeoutOptions) {
     function rejectOnce(error, destroyTransport) {
       if (settled) return;
       settled = true;
+      connectBuffer = Buffer.alloc(0);
       clearStageTimers();
       if (destroyTransport) destroyActiveTransport();
       reject(error);
@@ -222,6 +231,7 @@ function requestCore(method, url, headers, body, proxyUrl, timeoutOptions) {
     function resolveOnce(value) {
       if (settled) return;
       settled = true;
+      connectBuffer = Buffer.alloc(0);
       clearStageTimers();
       resolve(value);
     }
@@ -288,12 +298,108 @@ function requestCore(method, url, headers, body, proxyUrl, timeoutOptions) {
       }
     };
 
+    function startTlsTunnel() {
+      try {
+        tlsSocket = tls.connect({
+          socket: proxySocket,
+          servername: target.hostname,
+          rejectUnauthorized: true
+        });
+      } catch (error) {
+        rejectOnce(error, true);
+        return;
+      }
+      tlsHandshakeTimer = setTimeout(() => {
+        rejectOnce(
+          stageTimeoutError(
+            'PROXY_TLS_HANDSHAKE_TIMEOUT',
+            'Proxy TLS handshake timeout'
+          ),
+          true
+        );
+      }, timeouts.tlsHandshakeTimeoutMs);
+
+      tlsSocket.once('secureConnect', () => {
+        if (settled) return;
+        clearTimer(tlsHandshakeTimer);
+        tlsHandshakeTimer = null;
+        doRequest(tlsSocket);
+      });
+      tlsSocket.once('error', (error) => rejectOnce(error, true));
+    }
+
+    function onConnectData(chunk) {
+      if (settled) return;
+      const incoming = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      connectBuffer = connectBuffer.length
+        ? Buffer.concat([connectBuffer, incoming])
+        : Buffer.from(incoming);
+
+      const markerIndex = connectBuffer.indexOf('\r\n\r\n');
+      if (markerIndex < 0) {
+        if (connectBuffer.length > MAX_CONNECT_HEADER_BYTES) {
+          rejectOnce(
+            stageTimeoutError(
+              'PROXY_CONNECT_HEADER_TOO_LARGE',
+              'Proxy CONNECT response header too large'
+            ),
+            true
+          );
+        }
+        return;
+      }
+
+      const headerEnd = markerIndex + 4;
+      if (headerEnd > MAX_CONNECT_HEADER_BYTES) {
+        rejectOnce(
+          stageTimeoutError(
+            'PROXY_CONNECT_HEADER_TOO_LARGE',
+            'Proxy CONNECT response header too large'
+          ),
+          true
+        );
+        return;
+      }
+
+      const header = connectBuffer.subarray(0, headerEnd);
+      const remainder = connectBuffer.subarray(headerEnd);
+      connectBuffer = Buffer.alloc(0);
+      const statusLineEnd = header.indexOf('\r\n');
+      const statusLine = header.subarray(
+        0,
+        statusLineEnd >= 0 ? statusLineEnd : header.length
+      ).toString('latin1');
+      const statusMatch = /^HTTP\/1\.[01]\s+(\d{3})(?:\s|$)/i.exec(statusLine);
+      if (!statusMatch || Number(statusMatch[1]) !== 200) {
+        const safeLine = safeProxyStatusLine(statusLine) || 'invalid response';
+        rejectOnce(
+          new Error('proxy CONNECT failed: ' + safeLine),
+          true
+        );
+        return;
+      }
+
+      clearTimer(connectResponseTimer);
+      connectResponseTimer = null;
+      proxySocket.pause();
+      proxySocket.off('data', onConnectData);
+      if (remainder.length) {
+        try {
+          proxySocket.unshift(Buffer.from(remainder));
+        } catch (error) {
+          rejectOnce(error, true);
+          return;
+        }
+      }
+      startTlsTunnel();
+    }
+
     if (!proxy) {
       doRequest(null);
       return;
     }
 
-    // CONNECT 隧道的每个等待阶段独立计时。响应分片缓冲由 #26 单独处理。
+    // CONNECT 隧道的每个等待阶段独立计时，响应头按完整 CRLF 分隔符增量缓冲。
     try {
       proxySocket = net.connect(proxy.port, proxy.host);
     } catch (error) {
@@ -335,47 +441,7 @@ function requestCore(method, url, headers, body, proxyUrl, timeoutOptions) {
       }, timeouts.connectResponseTimeoutMs);
     });
 
-    proxySocket.once('data', (chunk) => {
-      if (settled) return;
-      clearTimer(connectResponseTimer);
-      connectResponseTimer = null;
-      const head = chunk.toString('latin1');
-      if (!/^HTTP\/1\.[01] 200/i.test(head)) {
-        rejectOnce(
-          new Error('proxy CONNECT failed: ' + head.split('\r\n')[0]),
-          true
-        );
-        return;
-      }
-
-      try {
-        tlsSocket = tls.connect({
-          socket: proxySocket,
-          servername: target.hostname,
-          rejectUnauthorized: true
-        });
-      } catch (error) {
-        rejectOnce(error, true);
-        return;
-      }
-      tlsHandshakeTimer = setTimeout(() => {
-        rejectOnce(
-          stageTimeoutError(
-            'PROXY_TLS_HANDSHAKE_TIMEOUT',
-            'Proxy TLS handshake timeout'
-          ),
-          true
-        );
-      }, timeouts.tlsHandshakeTimeoutMs);
-
-      tlsSocket.once('secureConnect', () => {
-        if (settled) return;
-        clearTimer(tlsHandshakeTimer);
-        tlsHandshakeTimer = null;
-        doRequest(tlsSocket);
-      });
-      tlsSocket.once('error', (error) => rejectOnce(error, true));
-    });
+    proxySocket.on('data', onConnectData);
     proxySocket.once('error', (error) => rejectOnce(error, true));
   });
 }
