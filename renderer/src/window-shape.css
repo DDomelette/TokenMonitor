@@ -1,0 +1,10 @@
+html,
+body,
+#root {
+  background: transparent;
+}
+
+#app {
+  border-radius: var(--radius-window);
+  overflow: hidden;
+}
