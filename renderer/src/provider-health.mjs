@@ -20,9 +20,18 @@ function latestFailure(providers) {
     }, null);
 }
 
+function isHealthyProvider(provider) {
+  return !!provider
+    && !provider.lastError
+    && provider.authStatus !== 'missing'
+    && provider.authStatus !== 'expired'
+    && !!finiteTimestamp(provider.lastFetchedAt);
+}
+
 export function summarizeProviderHealth(snapshot) {
   const providers = Array.isArray(snapshot) ? snapshot : [];
   const lastFetchedAt = latestSuccessfulFetch(providers);
+  const healthyProviders = providers.filter(isHealthyProvider);
   const staleFailure = latestFailure(
     providers.filter((provider) => provider && provider.stale)
   );
@@ -31,6 +40,16 @@ export function summarizeProviderHealth(snapshot) {
   if (failed) {
     const name = failed.displayName || failed.id || '平台';
     const message = String(failed.lastError);
+
+    if (healthyProviders.length > 0) {
+      return {
+        mode: 'degraded',
+        running: true,
+        text: `部分数据不可用：${name} ${message}`,
+        lastFetchedAt
+      };
+    }
+
     const stale = !!failed.stale;
     return {
       mode: stale ? 'stale' : 'error',

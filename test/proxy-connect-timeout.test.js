@@ -209,8 +209,5 @@ test('scheduler releases inflight after proxy handshake timeout so the channel c
   await waitFor(() => sockets.size === 0);
 
   assert.equal(fetchCalls, 2);
-  assert.match(
-    scheduler.getState(provider.id).lastError,
-    /Proxy CONNECT response timeout/
-  );
+  assert.equal(scheduler.getState(provider.id).lastError, '请求超时');
 });

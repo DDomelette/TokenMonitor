@@ -81,7 +81,7 @@ test('timeout after a successful quota fetch broadcasts once and preserves stale
     assert.equal(providerBroadcasts(broadcasts).length, 1);
     const failed = latestProvider(broadcasts);
     assert.equal(failed.quota, quota, 'last successful quota must remain available');
-    assert.equal(failed.lastError, 'request timeout');
+    assert.equal(failed.lastError, '请求超时');
     assert.equal(failed.lastErrorChannel, 'quota');
     assert.equal(typeof failed.lastFailedAt, 'number');
     assert.equal(failed.lastFetchedAt, lastFetchedAt);
@@ -111,8 +111,16 @@ test('an identical repeated error on the same channel does not rebroadcast', asy
 });
 
 for (const scenario of [
-  { channel: 'usage', message: 'HTTP 503 Service Unavailable' },
-  { channel: 'balance', message: 'proxy connect ECONNREFUSED 127.0.0.1:7890' }
+  {
+    channel: 'usage',
+    message: 'HTTP 503 Service Unavailable',
+    expected: 'HTTP 503 Service Unavailable'
+  },
+  {
+    channel: 'balance',
+    message: 'proxy connect ECONNREFUSED 127.0.0.1:7890',
+    expected: '代理连接失败'
+  }
 ]) {
   test(`${scenario.channel} ${scenario.message} broadcasts a non-auth failure snapshot`, async () => {
     const capabilities = { balance: false, webUsage: false, quota: false, localLog: false, realtimeProxy: false };
@@ -129,7 +137,7 @@ for (const scenario of [
       assert.equal(providerBroadcasts(broadcasts).length, 1);
       const failed = latestProvider(broadcasts);
       assert.equal(failed.authStatus, 'ok');
-      assert.equal(failed.lastError, scenario.message);
+      assert.equal(failed.lastError, scenario.expected);
       assert.equal(failed.lastErrorChannel, scenario.channel);
       assert.equal(failed.stale, false, 'no successful payload exists yet');
     } finally {

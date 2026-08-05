@@ -14,6 +14,7 @@
   background: var(--provider-health-missing);
 }
 
+.status-dot.degraded,
 .status-dot.stale {
   background: var(--provider-health-warning);
   box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
