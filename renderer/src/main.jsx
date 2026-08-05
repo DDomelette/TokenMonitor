@@ -2,7 +2,6 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import './styles.css';
-import './window-shape.css';
 import './theme.css';
 import './layout-lock.css';
 import './provider-health.css';

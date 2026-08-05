@@ -142,7 +142,7 @@ test('final theme stylesheet is loaded last and covers all main-window surface c
   );
   assert.match(
     mainSource,
-    /import '\.\/styles\.css';\s*import '\.\/window-shape\.css';\s*import '\.\/theme\.css';/
+    /import '\.\/styles\.css';\s*import '\.\/theme\.css';/
   );
 
   const source = fs.readFileSync(
