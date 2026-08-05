@@ -1,16 +1,13 @@
 // 多 Provider 调度器:每 provider 按 capability 独立定时器轮询 usage/quota/balance。
 // 所有可见轮询状态转换都会广播;相同 channel 的重复错误保持静默。
 const { httpGet } = require('./http');
+const { summarizeProviderError } = require('./provider-error-summary');
 
 const DEFAULT_INTERVALS = { usage: 10 * 1000, quota: 60 * 1000, balance: 60 * 1000, localLog: 60 * 1000 };
 
 function isAuthError(err) {
   const msg = (err && (err.message || String(err))) || '';
   return /unauthoriz|401|403|登录|expired|invalid token/i.test(msg);
-}
-
-function errorMessage(error) {
-  return error && error.message ? error.message : String(error);
 }
 
 function startScheduler({ registry, store, broadcast, intervals, onStateChange }) {
@@ -110,7 +107,7 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange }
   function recordFailure(provider, channel, error) {
     const st = ensureState(provider);
     const before = failureSignature(st);
-    const message = errorMessage(error);
+    const message = summarizeProviderError(error);
     const auth = isAuthError(error);
     const previous = st.channelErrors[channel];
 
