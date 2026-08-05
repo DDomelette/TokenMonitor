@@ -6,6 +6,7 @@ const { sanitizeSettings, isWritableSettingKey, resolveWritableSettingKey } = re
 const { resetSettingsStore } = require('./core/settings-reset');
 const { saveSetting } = require('./core/settings-write');
 const { replaceDeepseekApiKey } = require('./core/api-key-replacement');
+const { filterUsageDaily } = require('./core/usage-retention');
 
 function deepseekApiKeyCtx(deps, apiKey) {
   return {
@@ -94,7 +95,10 @@ module.exports = function setupIPC(deps) {
     const { provider, year } = arg || {};
     // 全部 provider 的日数据统一来自 store 键 'usageDaily' { '<provider>:<date>': { total, cached, models? } }:
     // codex/kimi 由本地日志增量聚合;deepseek 由 fetchUsage 按月抓取时持久化(含历史回填)。
-    const usageDaily = deps.store.get('usageDaily') || {};
+    const usageDaily = filterUsageDaily(
+      deps.store.get('usageDaily') || {},
+      deps.store.get('data.historyDays')
+    );
     const byProvider = {};
     const cachedByProvider = {};
     const deepseekModels = {};
@@ -125,15 +129,13 @@ module.exports = function setupIPC(deps) {
 
   /* ======== Settings ======== */
 
-  ipcMain.on('settings:update', (event, { key, value }) => {
-    if (!isWritableSettingKey(key)) {
-      console.warn('[settings] rejected non-whitelisted settings:update key:', key);
+  ipcMain.on('settings:update', (event, { key: rawKey, value }) => {
+    if (!isWritableSettingKey(rawKey)) {
+      console.warn('[settings] rejected non-whitelisted settings:update key:', rawKey);
       return;
     }
-    const targetKey = resolveWritableSettingKey(key);
-    deps.store.set(targetKey, value);
-    deps.applySetting(targetKey, value);
-    deps.broadcastSettings();
+    const key = resolveWritableSettingKey(rawKey);
+    saveSetting(deps, { key, value });
   });
 
   ipcMain.handle('settings:save', (event, payload) => {
