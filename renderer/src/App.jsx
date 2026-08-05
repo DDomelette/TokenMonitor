@@ -7,12 +7,14 @@ import { getSettings, on, send } from './api.js';
 import { installSettingsOpenBridge } from './settings-bridge.js';
 import { installThemeSync } from './theme-sync.js';
 import { installLayoutLockSync } from './layout-lock.js';
+import { installLayoutResetSync } from './layout-reset-sync.js';
 
 initProviders();
 
 export default function App() {
   const [editing, setEditing] = useState(false);
   const [layoutLocked, setLayoutLocked] = useState(true);
+  const [dashboardGeneration, setDashboardGeneration] = useState(0);
 
   useEffect(() => installSettingsOpenBridge(on, send), []);
 
@@ -31,6 +33,12 @@ export default function App() {
     getSettings,
     on,
     onChange: setLayoutLocked
+  }), []);
+
+  useEffect(() => installLayoutResetSync({
+    getSettings,
+    on,
+    onReset: () => setDashboardGeneration((generation) => generation + 1)
   }), []);
 
   useEffect(() => {
@@ -62,7 +70,7 @@ export default function App() {
         layoutLocked={layoutLocked}
         onToggleLayoutEdit={onToggleLayoutEdit}
       />
-      <Dashboard editing={effectiveEditing} />
+      <Dashboard key={dashboardGeneration} editing={effectiveEditing} />
       <StatusBar />
     </div>
   );
