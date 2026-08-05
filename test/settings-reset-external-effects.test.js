@@ -3,84 +3,76 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-function loadWindowSettings() {
-  return require('../src/main/core/window-settings');
+function loadResetPolicy() {
+  return require('../src/main/core/settings-reset');
 }
 
-test('auto-launch setting applies false without requiring a main window', () => {
-  const { applyWindowSetting } = loadWindowSettings();
-  const calls = [];
+function createStore(initial, defaults) {
+  const values = new Map(Object.entries(initial || {}));
+  const resetDefaults = new Map(Object.entries(defaults || {}));
+  return {
+    get(key) {
+      return values.get(key);
+    },
+    set(key, value) {
+      values.set(key, value);
+    },
+    clear() {
+      values.clear();
+      resetDefaults.forEach((value, key) => values.set(key, value));
+    }
+  };
+}
 
-  const handled = applyWindowSetting({
-    key: 'window.autoLaunch',
-    value: false,
+test('reset auto-launch synchronization preserves explicit false', () => {
+  const { syncAutoLaunchAfterReset } = loadResetPolicy();
+  const calls = [];
+  const store = { get: (key) => key === 'window.autoLaunch' ? false : undefined };
+
+  const applied = syncAutoLaunchAfterReset(store, {
+    setLoginItemSettings(settings) {
+      calls.push(settings);
+    }
+  });
+
+  assert.equal(applied, true);
+  assert.deepEqual(calls, [{ openAtLogin: false }]);
+});
+
+test('resetSettingsStore applies the post-clear auto-launch default after restoring preserved data', () => {
+  const { resetSettingsStore } = loadResetPolicy();
+  const calls = [];
+  const store = createStore({
+    'window.autoLaunch': true,
+    'providers.deepseek.apiKey': 'preserved-key'
+  }, {
+    'window.autoLaunch': false,
+    'window.alwaysOnTop': true
+  });
+
+  const restored = resetSettingsStore(store, {
     app: {
       setLoginItemSettings(settings) {
         calls.push(settings);
       }
-    },
-    mainWindow: null,
-    applyTheme() {
-      throw new Error('theme must not be touched');
     }
   });
 
-  assert.equal(handled, true);
+  assert.equal(store.get('window.autoLaunch'), false);
+  assert.equal(store.get('providers.deepseek.apiKey'), 'preserved-key');
+  assert.deepEqual(restored, ['providers.deepseek.apiKey']);
   assert.deepEqual(calls, [{ openAtLogin: false }]);
 });
 
-test('always-on-top remains a live-main-window effect', () => {
-  const { applyWindowSetting } = loadWindowSettings();
-  const values = [];
-  const mainWindow = {
-    isDestroyed: () => false,
-    setAlwaysOnTop(value) {
-      values.push(value);
-    }
-  };
+test('reset auto-launch synchronization is a safe no-op when the Electron API is unavailable', () => {
+  const { syncAutoLaunchAfterReset } = loadResetPolicy();
+  const store = { get: () => false };
 
-  assert.equal(applyWindowSetting({
-    key: 'window.alwaysOnTop',
-    value: true,
-    app: {},
-    mainWindow,
-    applyTheme() {}
-  }), true);
-  assert.deepEqual(values, [true]);
-
-  assert.equal(applyWindowSetting({
-    key: 'window.alwaysOnTop',
-    value: false,
-    app: {},
-    mainWindow: null,
-    applyTheme() {}
-  }), true);
-  assert.deepEqual(values, [true], 'missing windows must not receive a call');
+  assert.equal(syncAutoLaunchAfterReset(store, null), false);
+  assert.equal(syncAutoLaunchAfterReset(store, {}), false);
 });
 
-test('reset replay applies stored always-on-top and auto-launch values without coercing false', () => {
-  const { applyResetWindowSettings } = loadWindowSettings();
-  const values = new Map([
-    ['window.alwaysOnTop', true],
-    ['window.autoLaunch', false]
-  ]);
-  const calls = [];
-
-  const applied = applyResetWindowSettings({
-    store: { get: (key) => values.get(key) },
-    applySetting(key, value) {
-      calls.push([key, value]);
-    }
-  });
-
-  assert.deepEqual(applied, ['window.alwaysOnTop', 'window.autoLaunch']);
-  assert.deepEqual(calls, [
-    ['window.alwaysOnTop', true],
-    ['window.autoLaunch', false]
-  ]);
-});
-
-test('settings reset replays external effects after clearing the store and before broadcast', () => {
+test('settings reset keeps the existing always-on-top side effect before broadcasting', () => {
   const source = fs.readFileSync(
     path.resolve(__dirname, '../src/main/ipc.js'),
     'utf8'
@@ -88,30 +80,20 @@ test('settings reset replays external effects after clearing the store and befor
 
   assert.match(
     source,
-    /const \{ applyResetWindowSettings \} = require\('\.\/core\/window-settings'\);/
-  );
-  assert.match(
-    source,
-    /resetSettingsStore\(deps\.store\);[\s\S]*?applyResetWindowSettings\(\{[\s\S]*?store:\s*deps\.store,[\s\S]*?applySetting:\s*deps\.applySetting[\s\S]*?\}\);[\s\S]*?deps\.broadcastSettings\(\);/
-  );
-  assert.doesNotMatch(
-    source,
-    /ipcMain\.on\('settings:reset'[\s\S]*?getMain\(\)\.setAlwaysOnTop/
+    /resetSettingsStore\(deps\.store\);[\s\S]*?getMain\(\)\.setAlwaysOnTop\(true\);[\s\S]*?deps\.broadcastSettings\(\);/
   );
 });
 
-test('main process delegates canonical setting application to the window-settings module', () => {
+test('reset policy synchronizes the login item after clear and preserved-value restoration', () => {
   const source = fs.readFileSync(
-    path.resolve(__dirname, '../src/main/index.js'),
+    path.resolve(__dirname, '../src/main/core/settings-reset.js'),
     'utf8'
   );
 
+  assert.match(source, /function syncAutoLaunchAfterReset\(store, appOverride\)/);
   assert.match(
     source,
-    /const \{ applyWindowSetting \} = require\('\.\/core\/window-settings'\);/
+    /store\.clear\(\);[\s\S]*?kept\.forEach\([\s\S]*?syncAutoLaunchAfterReset\(store, options && options\.app\);/
   );
-  assert.match(
-    source,
-    /function applySetting\(key, value\) \{\s*return applyWindowSetting\(\{[\s\S]*?key:\s*key,[\s\S]*?value:\s*value,[\s\S]*?app:\s*app,[\s\S]*?mainWindow:\s*mainWindow,[\s\S]*?applyTheme:\s*applyTheme[\s\S]*?\}\);\s*\}/
-  );
+  assert.match(source, /setLoginItemSettings\(\{ openAtLogin: autoLaunch === true \}\)/);
 });
