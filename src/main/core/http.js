@@ -131,15 +131,43 @@ function assertSupportedProxy(proxy) {
   );
 }
 
+function requestWithProxyInput(method, url, headers, body, proxyInput, timeoutOptions) {
+  if (typeof proxyInput === 'function') {
+    return Promise.resolve()
+      .then(() => proxyInput(url))
+      .then((resolvedProxy) => requestCore(
+        method,
+        url,
+        headers,
+        body,
+        resolvedProxy,
+        timeoutOptions
+      ));
+  }
+
+  if (proxyInput && typeof proxyInput.then === 'function') {
+    return Promise.resolve(proxyInput).then((resolvedProxy) => requestCore(
+      method,
+      url,
+      headers,
+      body,
+      resolvedProxy,
+      timeoutOptions
+    ));
+  }
+
+  return requestCore(method, url, headers, body, proxyInput, timeoutOptions);
+}
+
 // GET JSON。2xx 解析 JSON 并 resolve;401/403 reject 含 "Unauthorized: ... (HTTP xxx)"(供 scheduler 判定 authStatus);
 // 其余非 2xx reject 含状态码与响应体片段。headers / proxyUrl / timeoutOptions 均可选。
 function httpGet(url, headers, proxyUrl, timeoutOptions) {
-  return requestCore('GET', url, headers, null, proxyUrl, timeoutOptions);
+  return requestWithProxyInput('GET', url, headers, null, proxyUrl, timeoutOptions);
 }
 
 // POST JSON,返回解析后的 JSON(供 codex refresh_token 等场景)。
 function httpPostJson(url, jsonBody, headers, proxyUrl, timeoutOptions) {
-  return requestCore(
+  return requestWithProxyInput(
     'POST',
     url,
     headers,
@@ -154,7 +182,7 @@ function httpPostForm(url, formObj, headers, proxyUrl, timeoutOptions) {
   const body = Object.keys(formObj)
     .map((k) => encodeURIComponent(k) + '=' + encodeURIComponent(formObj[k]))
     .join('&');
-  return requestCore(
+  return requestWithProxyInput(
     'POST',
     url,
     Object.assign({ 'Content-Type': 'application/x-www-form-urlencoded' }, headers),
