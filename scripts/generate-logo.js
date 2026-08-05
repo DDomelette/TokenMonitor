@@ -1,6 +1,6 @@
-// 生成 Token Monitor 商标(T 形圆角方块)的 PNG 图标,零依赖(手写 PNG 编码 + 解析几何光栅化)。
+// 生成 Token Monitor 商标(T 形圆角方块)的 PNG 与 ICNS 图标,零依赖。
 // 用法: node scripts/generate-logo.js
-// 输出: src/renderer/assets/tray-icon.png(64x64)、src/renderer/assets/icon.png(256x256)
+// 输出: renderer 64/256px PNG 与 electron-builder 使用的 assets/icon.icns。
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
@@ -18,6 +18,16 @@ const BLOCKS = [
   { x: 38, y: 82, w: 32, h: 38, c: [109, 179, 238] }  // 竖列下
 ];
 
+const ICNS_IMAGES = [
+  { type: 'icp4', size: 16 },
+  { type: 'icp5', size: 32 },
+  { type: 'icp6', size: 64 },
+  { type: 'ic07', size: 128 },
+  { type: 'ic08', size: 256 },
+  { type: 'ic09', size: 512 },
+  { type: 'ic10', size: 1024 }
+];
+
 function inside(px, py, blk) {
   const cx = blk.x + blk.w / 2;
   const cy = blk.y + blk.h / 2;
@@ -28,13 +38,13 @@ function inside(px, py, blk) {
   return qx * qx + qy * qy <= R * R;
 }
 
-// 4x4 超采样光栅化:颜色取覆盖样本均值,alpha 为覆盖率(straight alpha)
+// 小尺寸使用 4x4 超采样;512/1024px 使用 2x2,避免构建时不必要的 CPU 开销。
 function render(size) {
   const rgba = Buffer.alloc(size * size * 4);
   const scale = (size * 0.875) / H;
   const offX = (size - W * scale) / 2;
   const offY = (size - H * scale) / 2;
-  const SS = 4;
+  const SS = size <= 256 ? 4 : 2;
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       let r = 0, g = 0, b = 0, covered = 0;
@@ -78,7 +88,7 @@ function crc32(buf) {
   return (c ^ 0xffffffff) >>> 0;
 }
 
-function chunk(type, data) {
+function pngChunk(type, data) {
   const len = Buffer.alloc(4);
   len.writeUInt32BE(data.length, 0);
   const name = Buffer.from(type, 'ascii');
@@ -101,15 +111,73 @@ function encodePNG(width, height, rgba) {
     rgba.copy(raw, y * stride + 1, y * width * 4, (y + 1) * width * 4);
   }
   const idat = zlib.deflateSync(raw, { level: 9 });
-  return Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', Buffer.alloc(0))]);
+  return Buffer.concat([
+    sig,
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', idat),
+    pngChunk('IEND', Buffer.alloc(0))
+  ]);
 }
 
-const outDir = path.join(__dirname, '..', 'src', 'renderer', 'assets');
-[
-  { size: 64, name: 'tray-icon.png' },
-  { size: 256, name: 'icon.png' }
-].forEach(({ size, name }) => {
-  const png = encodePNG(size, size, render(size));
-  fs.writeFileSync(path.join(outDir, name), png);
-  console.log(name, size + 'x' + size, png.length, 'bytes');
-});
+function icnsChunk(type, data) {
+  const header = Buffer.alloc(8);
+  header.write(type, 0, 4, 'ascii');
+  header.writeUInt32BE(data.length + header.length, 4);
+  return Buffer.concat([header, data]);
+}
+
+function encodeICNS(images) {
+  const chunks = images.map(({ type, png }) => icnsChunk(type, png));
+  const totalLength = 8 + chunks.reduce((sum, item) => sum + item.length, 0);
+  const header = Buffer.alloc(8);
+  header.write('icns', 0, 4, 'ascii');
+  header.writeUInt32BE(totalLength, 4);
+  return Buffer.concat([header, ...chunks]);
+}
+
+function generateLogoAssets(options = {}) {
+  const rootDir = options.rootDir || path.resolve(__dirname, '..');
+  const logger = options.logger || console;
+  const rendererOutDir = path.join(rootDir, 'src', 'renderer', 'assets');
+  const builderOutDir = path.join(rootDir, 'assets');
+  fs.mkdirSync(rendererOutDir, { recursive: true });
+  fs.mkdirSync(builderOutDir, { recursive: true });
+
+  const pngBySize = new Map();
+  function pngFor(size) {
+    if (!pngBySize.has(size)) {
+      pngBySize.set(size, encodePNG(size, size, render(size)));
+    }
+    return pngBySize.get(size);
+  }
+
+  const trayPath = path.join(rendererOutDir, 'tray-icon.png');
+  const rendererIconPath = path.join(rendererOutDir, 'icon.png');
+  const icnsPath = path.join(builderOutDir, 'icon.icns');
+  fs.writeFileSync(trayPath, pngFor(64));
+  fs.writeFileSync(rendererIconPath, pngFor(256));
+
+  const icns = encodeICNS(ICNS_IMAGES.map(({ type, size }) => ({
+    type,
+    png: pngFor(size)
+  })));
+  fs.writeFileSync(icnsPath, icns);
+
+  if (logger && typeof logger.log === 'function') {
+    logger.log('tray-icon.png', '64x64', pngFor(64).length, 'bytes');
+    logger.log('icon.png', '256x256', pngFor(256).length, 'bytes');
+    logger.log('icon.icns', ICNS_IMAGES.length + ' sizes', icns.length, 'bytes');
+  }
+
+  return { trayPath, rendererIconPath, icnsPath };
+}
+
+if (require.main === module) generateLogoAssets();
+
+module.exports = {
+  ICNS_IMAGES,
+  encodeICNS,
+  encodePNG,
+  generateLogoAssets,
+  render
+};
