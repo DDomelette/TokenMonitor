@@ -282,6 +282,8 @@ test('DeepSeek modules delegate network ownership to the shared client', () => {
   assert.match(adapterSource, /httpGet:\s*ctx\.httpGet/);
   assert.match(adapterSource, /proxyUrl:\s*ctx\.getProxyUrl\(\)/);
   assert.match(adapterSource, /fetchBalance\(apiKey,\s*requestOptionsFor\(ctx\)\)/);
-  assert.match(adapterSource, /fetchUsageWithFallback\([\s\S]*requestOptionsFor\(ctx\)/);
+  assert.match(adapterSource, /const requestOptions = requestOptionsFor\(ctx\);/);
+  assert.match(adapterSource, /fetchUsageWithFallback\([\s\S]*?\brequestOptions\s*\)/);
+  assert.match(adapterSource, /backfillMonths\([\s\S]*?\brequestOptions\s*\)/);
   assert.match(adapterSource, /fetchUsageAmount\(token,\s*m,\s*y,\s*requestOptions\)/);
 });

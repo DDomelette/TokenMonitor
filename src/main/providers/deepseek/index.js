@@ -94,11 +94,12 @@ module.exports = {
   fetchUsage(ctx, { month, year }) {
     const token = ctx.store.get('providers.deepseek.sessionToken');
     if (!token) return Promise.resolve(null);
+    const requestOptions = requestOptionsFor(ctx);
     return fetcher.fetchUsageWithFallback(
       token,
       month,
       year,
-      requestOptionsFor(ctx)
+      requestOptions
     ).then((usage) => {
       if (usage && usage.amount) persistDaily(ctx.store, usage.amount.dailyData);
       return backfillMonths(
@@ -106,7 +107,7 @@ module.exports = {
         token,
         month,
         year,
-        requestOptionsFor(ctx)
+        requestOptions
       ).then(() => usage);
     });
   }
