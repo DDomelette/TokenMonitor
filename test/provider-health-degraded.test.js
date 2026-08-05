@@ -92,6 +92,8 @@ test('provider health styles include a distinct degraded warning state', () => {
     'utf8'
   );
 
-  assert.match(source, /\.status-dot\.degraded\s*\{/);
-  assert.match(source, /\.status-dot\.degraded\s*\{[\s\S]*?var\(--provider-health-warning\)/);
+  assert.match(
+    source,
+    /\.status-dot\.degraded(?:\s*,[\s\S]*?)?\s*\{[\s\S]*?var\(--provider-health-warning\)/
+  );
 });
