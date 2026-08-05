@@ -2,6 +2,27 @@
 const fs = require('fs');
 const path = require('path');
 
+const MIN_TIMESTAMP_MS = Date.UTC(2000, 0, 1);
+const MAX_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
+
+function incrementDiagnostic(diagnostics, key) {
+  if (!diagnostics || typeof diagnostics !== 'object') return;
+  diagnostics[key] = (Number(diagnostics[key]) || 0) + 1;
+}
+
+function evaluationTimeMs(value) {
+  const now = Number(value);
+  return Number.isFinite(now) ? now : Date.now();
+}
+
+function normalizeTimestampMs(value, nowMs) {
+  const ts = Number(value);
+  const now = evaluationTimeMs(nowMs);
+  if (!Number.isFinite(ts) || !Number.isInteger(ts)) return null;
+  if (ts < MIN_TIMESTAMP_MS || ts > now + MAX_FUTURE_SKEW_MS) return null;
+  return ts;
+}
+
 // 本地时区日期键 'YYYY-MM-DD'(与 fetcher 的 localTodayStr 同款逻辑)。
 function localTzSec() {
   return -new Date().getTimezoneOffset() * 60;
@@ -29,11 +50,21 @@ function walkFiles(root, match) {
 // 增量扫描:只读自上次 offset 起的新字节。游标存 { path: { offset, mtimeMs } }(store 键 cursorKey)。
 // 文件截断(stat.size < offset)或轮换(mtime 变小)→ offset 回退 0。末尾无换行的不完整行不消费,等补齐后再读。
 // 注意:offset 是字节偏移,消费长度必须按 Buffer.byteLength 计算,不能按字符数。
-// 返回 UsageRecord[] 行记录(带 provider 标记)。
-function scanFiles({ root, match, cursorStore, cursorKey, providerId, parseLine }) {
+// 返回 UsageRecord[] 行记录(带 provider 标记)。完整但无效的行仍会推进游标。
+function scanFiles({
+  root,
+  match,
+  cursorStore,
+  cursorKey,
+  providerId,
+  parseLine,
+  diagnostics,
+  nowMs
+}) {
   const records = [];
   if (!root || !fs.existsSync(root)) return records;
 
+  const evaluationNowMs = evaluationTimeMs(nowMs);
   const cursors = cursorStore.get(cursorKey) || {};
   const files = walkFiles(root, match);
 
@@ -72,7 +103,7 @@ function scanFiles({ root, match, cursorStore, cursorKey, providerId, parseLine 
 
     consumText.split('\n').forEach((line) => {
       if (!line) return;
-      const rec = parseLine(line);
+      const rec = parseLine(line, diagnostics, evaluationNowMs);
       if (rec) records.push(Object.assign({ provider: providerId }, rec));
     });
 
@@ -88,11 +119,16 @@ function scanFiles({ root, match, cursorStore, cursorKey, providerId, parseLine 
 }
 
 // 纯函数:records → { '<provider>:<YYYY-MM-DD>': { input, cached, output, total } }。
-// total 缺失时按 input+output 推导。
-function rollupDaily(records) {
+// total 缺失时按 input+output 推导。无效时间戳直接跳过,绝不回退到当前时间。
+function rollupDaily(records, diagnostics, nowMs) {
   const out = {};
+  const evaluationNowMs = evaluationTimeMs(nowMs);
   (records || []).forEach((rec) => {
-    const ts = Number(rec.ts) || Date.now();
+    const ts = normalizeTimestampMs(rec && rec.ts, evaluationNowMs);
+    if (ts === null) {
+      incrementDiagnostic(diagnostics, 'invalidTimestamp');
+      return;
+    }
     const day = localDayStr(ts);
     const key = rec.provider + ':' + day;
     const entry = out[key] || { input: 0, cached: 0, output: 0, total: 0 };
@@ -106,4 +142,14 @@ function rollupDaily(records) {
   return out;
 }
 
-module.exports = { scanFiles, rollupDaily, localDayStr, localTzSec, walkFiles };
+module.exports = {
+  scanFiles,
+  rollupDaily,
+  localDayStr,
+  localTzSec,
+  walkFiles,
+  normalizeTimestampMs,
+  incrementDiagnostic,
+  MIN_TIMESTAMP_MS,
+  MAX_FUTURE_SKEW_MS
+};
