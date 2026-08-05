@@ -5,6 +5,12 @@ function hasValue(value) {
   return typeof value === 'string' ? value.trim().length > 0 : !!value;
 }
 
+function isDestroyed(target) {
+  return !!target
+    && typeof target.isDestroyed === 'function'
+    && target.isDestroyed();
+}
+
 function chooseInitialWindow(options = {}) {
   if (hasValue(options.deepseekApiKey)) return 'main';
 
@@ -20,23 +26,23 @@ function chooseInitialWindow(options = {}) {
 
 function continueWithoutDeepseek(deps) {
   let mainWindow = deps.getMainWindow();
-  if (!mainWindow || mainWindow.isDestroyed()) {
+  if (!mainWindow || isDestroyed(mainWindow)) {
     deps.createMainWindow();
     mainWindow = deps.getMainWindow();
   }
 
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+  if (mainWindow && !isDestroyed(mainWindow)) mainWindow.show();
 
   const loginWindow = deps.getLoginWindow();
-  if (loginWindow && !loginWindow.isDestroyed()) loginWindow.close();
+  if (loginWindow && !isDestroyed(loginWindow)) loginWindow.close();
 
   return mainWindow || null;
 }
 
 function sendSettings(deps) {
   const mainWindow = deps.mainWindow;
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  if (!mainWindow.webContents || mainWindow.webContents.isDestroyed()) return;
+  if (!mainWindow || isDestroyed(mainWindow)) return;
+  if (!mainWindow.webContents || isDestroyed(mainWindow.webContents)) return;
   mainWindow.webContents.send(
     'settings:loaded',
     deps.sanitizeSettings(deps.store.store)
