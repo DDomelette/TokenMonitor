@@ -25,12 +25,10 @@ function sanitizeSettings(storeData) {
   return clone;
 }
 
-// settings:update 的键白名单:渲染进程只能写这些设置,不能覆写凭证或其他内部键。
+// 通用 settings:update/settings:save 的键白名单。凭证只能通过专用验证通道写入。
 const WRITABLE_SETTING_KEYS = new Set(['layout', 'componentOrder', 'providers.proxyUrl']);
 const WRITABLE_SETTING_PREFIXES = ['window.', 'components.', 'data.'];
-
-// 遗留键别名:设置界面仍发送顶层 'apiKey',写入时映射到规范路径
-const WRITABLE_KEY_ALIASES = { apiKey: 'providers.deepseek.apiKey' };
+const WRITABLE_KEY_ALIASES = Object.freeze({});
 
 function isWritableSettingKey(key) {
   if (typeof key !== 'string' || key.length === 0 || key.length > 100) return false;

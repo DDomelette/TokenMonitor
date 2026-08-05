@@ -5,6 +5,7 @@ const { buildHeatmap } = require('./core/heatmap');
 const { sanitizeSettings, isWritableSettingKey, resolveWritableSettingKey } = require('./core/settings-security');
 const { resetSettingsStore } = require('./core/settings-reset');
 const { saveSetting } = require('./core/settings-write');
+const { replaceDeepseekApiKey } = require('./core/api-key-replacement');
 
 function deepseekApiKeyCtx(deps, apiKey) {
   return {
@@ -137,6 +138,15 @@ module.exports = function setupIPC(deps) {
 
   ipcMain.handle('settings:save', (event, payload) => {
     return saveSetting(deps, payload);
+  });
+
+  ipcMain.handle('settings:replace-api-key', async (event, payload) => {
+    const deepseek = deps.registry.get('deepseek');
+    return replaceDeepseekApiKey({
+      store: deps.store,
+      verifyApiKey: (apiKey) => deepseek.fetchBalance(deepseekApiKeyCtx(deps, apiKey)),
+      broadcastSettings: deps.broadcastSettings
+    }, payload);
   });
 
   ipcMain.handle('get:settings', () => {

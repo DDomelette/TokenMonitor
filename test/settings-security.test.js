@@ -30,16 +30,14 @@ test('every settings payload sent to renderers is sanitized', () => {
 });
 
 test('isWritableSettingKey allows UI settings and blocks credentials and internal keys', () => {
-  // 'apiKey' 是设置界面的遗留顶层键,作为别名允许(写入时映射到 providers.deepseek.apiKey)
-  ['window.opacity', 'window.darkMode', 'components.balanceCard', 'data.historyDays', 'layout', 'componentOrder', 'providers.proxyUrl', 'apiKey']
+  ['window.opacity', 'window.darkMode', 'components.balanceCard', 'data.historyDays', 'layout', 'componentOrder', 'providers.proxyUrl']
     .forEach((k) => assert.ok(isWritableSettingKey(k), k + ' should be writable'));
-  // 规范凭证路径仍不允许直接写,防止渲染进程随意覆写凭证命名空间
-  ['providers.deepseek.apiKey', 'providers.deepseek.sessionToken', 'sessionToken', 'usageDaily', '__proto__', 'a__proto__b', '']
+  ['apiKey', 'providers.deepseek.apiKey', 'providers.deepseek.sessionToken', 'sessionToken', 'usageDaily', '__proto__', 'a__proto__b', '']
     .forEach((k) => assert.ok(!isWritableSettingKey(k), k + ' must be blocked'));
 });
 
-test('resolveWritableSettingKey maps the legacy apiKey alias to the canonical path', () => {
-  assert.equal(resolveWritableSettingKey('apiKey'), 'providers.deepseek.apiKey');
+test('resolveWritableSettingKey leaves removed credential aliases unresolved', () => {
+  assert.equal(resolveWritableSettingKey('apiKey'), 'apiKey');
   assert.equal(resolveWritableSettingKey('window.opacity'), 'window.opacity');
 });
 
