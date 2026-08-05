@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { EventEmitter } = require('node:events');
 
 function loadWindowShape() {
   const modulePath = require.resolve('../src/main/core/window-shape');
@@ -113,23 +114,61 @@ test('native shape is a safe no-op on macOS or when setShape is unavailable', ()
   );
 });
 
-test('main window applies the native shape at creation and after every resize', () => {
+test('bootstrap observer shapes only the main renderer and reapplies after resize', () => {
+  const { installRoundedMainWindowShapeObserver } = loadWindowShape();
+  const app = new EventEmitter();
+  const webContents = new EventEmitter();
+  const win = new EventEmitter();
+  let size = [420, 680];
+  const calls = [];
+  win.webContents = webContents;
+  win.getContentSize = () => size;
+  win.setShape = (rects) => calls.push(rects);
+
+  assert.equal(
+    installRoundedMainWindowShapeObserver(app, { platform: 'linux', radius: 16 }),
+    true
+  );
+  app.emit('browser-window-created', {}, win);
+
+  webContents.emit(
+    'did-start-navigation',
+    {},
+    'file:///tmp/TokenMonitor/src/renderer/login.html'
+  );
+  assert.equal(calls.length, 0);
+
+  webContents.emit(
+    'did-start-navigation',
+    {},
+    'file:///tmp/TokenMonitor/renderer/dist/index.html'
+  );
+  assert.equal(calls.length, 1);
+  assert.equal(contains(calls[0], 0, 0), false);
+
+  size = [600, 300];
+  win.emit('resize');
+  assert.equal(calls.length, 2);
+  assert.equal(contains(calls[1], 300, 150), true);
+
+  webContents.emit(
+    'did-navigate',
+    {},
+    'file:///tmp/TokenMonitor/renderer/dist/index.html'
+  );
+  assert.equal(calls.length, 2, 'observer must not install duplicate resize handlers');
+});
+
+test('bootstrap installs the main-window shape observer before loading index.js', () => {
   const source = fs.readFileSync(
-    path.resolve(__dirname, '../src/main/index.js'),
+    path.resolve(__dirname, '../src/main/bootstrap.js'),
     'utf8'
   );
 
+  assert.match(source, /require\('\.\/core\/window-shape'\)/);
   assert.match(
     source,
-    /require\('\.\/core\/window-shape'\)/
-  );
-  assert.match(
-    source,
-    /mainWindow\s*=\s*new BrowserWindow\([\s\S]*?\);\s*applyRoundedWindowShape\(mainWindow/
-  );
-  assert.match(
-    source,
-    /mainWindow\.on\('resize'[\s\S]*?applyRoundedWindowShape\(mainWindow/
+    /installRoundedMainWindowShapeObserver\(app\)[\s\S]*?loadMain:\s*\(\)\s*=>\s*require\('\.\/index'\)/
   );
 });
 
