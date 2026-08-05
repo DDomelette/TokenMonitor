@@ -1,3 +1,5 @@
+const MAIN_WINDOW_UNAVAILABLE = 'MAIN_WINDOW_UNAVAILABLE';
+
 function isUsableWindow(win) {
   if (!win) return false;
   if (typeof win.isDestroyed === 'function' && win.isDestroyed()) return false;
@@ -13,7 +15,7 @@ function ensureMainWindow(options) {
 
   if (!isUsableWindow(mainWindow)) {
     const error = new Error('Main window was not created');
-    error.code = 'MAIN_WINDOW_UNAVAILABLE';
+    error.code = MAIN_WINDOW_UNAVAILABLE;
     throw error;
   }
 
@@ -33,6 +35,7 @@ function skipDeepseekLogin(options) {
 }
 
 module.exports = {
+  MAIN_WINDOW_UNAVAILABLE,
   ensureMainWindow,
   isUsableWindow,
   skipDeepseekLogin
