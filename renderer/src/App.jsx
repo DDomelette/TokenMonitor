@@ -3,12 +3,15 @@ import TitleBar from './components/TitleBar.jsx';
 import StatusBar from './components/StatusBar.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import { initProviders } from './store.js';
-import { send } from './api.js';
+import { on, send } from './api.js';
+import { installSettingsOpenBridge } from './settings-bridge.js';
 
 initProviders();
 
 export default function App() {
   const [editing, setEditing] = useState(false);
+
+  useEffect(() => installSettingsOpenBridge(on, send), []);
 
   // ctrl + 滚轮缩放(与旧版 app.js 行为一致):走主进程 zoom factor
   useEffect(() => {
