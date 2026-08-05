@@ -1,4 +1,5 @@
 const { isWritableSettingKey, resolveWritableSettingKey } = require('./settings-security');
+const { pruneUsageDaily } = require('./usage-retention');
 
 function saveSetting(deps, payload) {
   if (!deps || !deps.store || typeof deps.store.set !== 'function') {
@@ -14,6 +15,9 @@ function saveSetting(deps, payload) {
 
   const targetKey = resolveWritableSettingKey(key);
   deps.store.set(targetKey, payload.value);
+  if (targetKey === 'data.historyDays') {
+    pruneUsageDaily(deps.store);
+  }
 
   if (typeof deps.applySetting === 'function') {
     deps.applySetting(targetKey, payload.value);
