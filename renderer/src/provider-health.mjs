@@ -23,12 +23,15 @@ function latestFailure(providers) {
 export function summarizeProviderHealth(snapshot) {
   const providers = Array.isArray(snapshot) ? snapshot : [];
   const lastFetchedAt = latestSuccessfulFetch(providers);
-  const failed = latestFailure(providers);
+  const staleFailure = latestFailure(
+    providers.filter((provider) => provider && provider.stale)
+  );
+  const failed = staleFailure || latestFailure(providers);
 
   if (failed) {
     const name = failed.displayName || failed.id || '平台';
     const message = String(failed.lastError);
-    const stale = providers.some((provider) => provider && provider.lastError && provider.stale);
+    const stale = !!failed.stale;
     return {
       mode: stale ? 'stale' : 'error',
       running: false,
