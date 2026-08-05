@@ -18,10 +18,8 @@ if (!gotTheLock) {
       dialog,
       shell,
       storeModule,
-      loadMain: () => {
-        pruneUsageDaily(storeModule);
-        return require('./index');
-      },
+      afterInitialize: () => pruneUsageDaily(storeModule),
+      loadMain: () => require('./index'),
       logger: console
     }))
     .catch(() => {
