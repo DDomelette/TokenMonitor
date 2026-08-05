@@ -101,3 +101,12 @@ test('generated ICNS stays untracked and CI verifies clean regeneration', () => 
   assert.match(workflow, /test -s assets\/icon\.icns/);
   assert.match(workflow, /readUInt32BE\(4\)/);
 });
+
+test('CI runs the real macOS packaging command from a clean checkout', () => {
+  const workflow = read('.github/workflows/ci.yml');
+  assert.match(workflow, /mac-build-smoke:/);
+  assert.match(workflow, /mac-build-smoke:[\s\S]*runs-on: macos-latest/);
+  assert.match(workflow, /mac-build-smoke:[\s\S]*npm ci/);
+  assert.match(workflow, /mac-build-smoke:[\s\S]*npm --prefix renderer ci/);
+  assert.match(workflow, /mac-build-smoke:[\s\S]*npm run build:mac/);
+});
