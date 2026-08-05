@@ -120,23 +120,55 @@ test('DeepSeek persistence filters expired days without clearing fetched-month m
 });
 
 test('retention setting changes and startup cleanup use the same physical boundary', () => {
-  const writerSource = fs.readFileSync(
-    path.resolve(__dirname, '../src/main/core/settings-write.js'),
-    'utf8'
-  );
   const bootstrapSource = fs.readFileSync(
     path.resolve(__dirname, '../src/main/bootstrap.js'),
     'utf8'
   );
-
-  assert.match(writerSource, /const \{ pruneUsageDaily \} = require\('\.\/usage-retention'\);/);
-  assert.match(
-    writerSource,
-    /deps\.store\.set\(targetKey, payload\.value\);\s*if \(targetKey === 'data\.historyDays'\) \{\s*pruneUsageDaily\(deps\.store\);\s*\}/
+  const writerSource = fs.readFileSync(
+    path.resolve(__dirname, '../src/main/core/settings-write.js'),
+    'utf8'
   );
+
   assert.match(bootstrapSource, /const \{ pruneUsageDaily \} = require\('\.\/core\/usage-retention'\);/);
   assert.match(
     bootstrapSource,
-    /loadMain:\s*\(\) => \{\s*pruneUsageDaily\(storeModule\);\s*return require\('\.\/index'\);\s*\}/
+    /afterInitialize:\s*\(\)\s*=>\s*pruneUsageDaily\(storeModule\)/
   );
+  assert.match(bootstrapSource, /loadMain:\s*\(\)\s*=>\s*require\('\.\/index'\)/);
+  assert.match(writerSource, /const \{ pruneUsageDaily \} = require\('\.\/usage-retention'\);/);
+  assert.match(
+    writerSource,
+    /if \(targetKey === 'data\.historyDays'\) \{\s*pruneUsageDaily\(deps\.store\);\s*\}/
+  );
+});
+
+test('startup cleanup runs after store initialization and before the main process loads', async () => {
+  const { runStoreBootstrap } = require('../src/main/core/startup-recovery');
+  const sequence = [];
+
+  const result = await runStoreBootstrap({
+    app: {
+      getPath() {
+        sequence.push('getPath');
+        return '/safe/user-data';
+      }
+    },
+    dialog: {},
+    shell: {},
+    storeModule: {
+      initialize() {
+        sequence.push('initialize');
+      }
+    },
+    afterInitialize() {
+      sequence.push('prune');
+    },
+    loadMain() {
+      sequence.push('loadMain');
+    },
+    logger: { error() { throw new Error('success path must not log'); } }
+  });
+
+  assert.deepEqual(sequence, ['getPath', 'initialize', 'prune', 'loadMain']);
+  assert.deepEqual(result, { started: true });
 });
