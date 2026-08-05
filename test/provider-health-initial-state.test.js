@@ -25,14 +25,14 @@ test('an empty provider snapshot is loading, never online', async () => {
 test('a non-empty snapshot with every provider missing credentials is explicit', async () => {
   const { summarizeProviderHealth } = await loadHealth();
   const health = summarizeProviderHealth([
-    { id: 'codex', authStatus: 'missing', lastError: null, lastFetchedAt: null },
+    { id: 'codex', authStatus: 'missing', lastError: null, lastFetchedAt: 1000 },
     { id: 'kimi', authStatus: 'missing', lastError: null, lastFetchedAt: null }
   ]);
 
   assert.equal(health.mode, 'missing');
   assert.equal(health.running, false);
   assert.equal(health.text, '未配置可用凭证');
-  assert.equal(health.lastFetchedAt, null);
+  assert.equal(health.lastFetchedAt, 1000, 'retained data time remains available without implying connectivity');
 });
 
 test('a mixed initial snapshot stays loading when one provider may still fetch', async () => {
