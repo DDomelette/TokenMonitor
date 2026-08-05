@@ -14,6 +14,13 @@ function monthKey(y, m) {
   return y + '-' + String(m).padStart(2, '0');
 }
 
+function requestOptionsFor(ctx) {
+  return {
+    httpGet: ctx.httpGet,
+    proxyUrl: ctx.getProxyUrl()
+  };
+}
+
 // 把 amount.dailyData 按日持久化到 store 键 'usageDaily'('deepseek:<date>'),
 // 形状与 codex/kimi 本地日志聚合一致(total/cached),并附加 models 供热力图悬停明细。
 function persistDaily(store, dailyData) {
@@ -39,7 +46,7 @@ function persistDaily(store, dailyData) {
 
 // 回填当前月之前的 BACKFILL_MONTHS 个月(只抓 amount,热力图不需要 cost)。
 // 已抓取过的月份(含空月)记录在 FETCHED_MONTHS_KEY,跳过;失败即停,下轮轮询重试。
-async function backfillMonths(store, token, month, year) {
+async function backfillMonths(store, token, month, year, requestOptions) {
   const done = new Set(store.get(FETCHED_MONTHS_KEY) || []);
   for (let i = 1; i <= BACKFILL_MONTHS; i++) {
     const d = new Date(year, month - 1 - i, 1);
@@ -48,7 +55,7 @@ async function backfillMonths(store, token, month, year) {
     const key = monthKey(y, m);
     if (done.has(key)) continue;
     try {
-      const amount = await fetcher.fetchUsageAmount(token, m, y);
+      const amount = await fetcher.fetchUsageAmount(token, m, y, requestOptions);
       persistDaily(store, amount.dailyData);
       done.add(key);
       store.set(FETCHED_MONTHS_KEY, Array.from(done));
@@ -71,7 +78,7 @@ module.exports = {
   fetchBalance(ctx) {
     const apiKey = ctx.store.get('providers.deepseek.apiKey');
     if (!apiKey) return Promise.resolve(null);
-    return fetchBalance(apiKey);
+    return fetchBalance(apiKey, requestOptionsFor(ctx));
   },
 
   // 可选:web 用量(保持 DeepSeek 现有返回形状 { cost, amount, month, year, fellBack })。
@@ -79,9 +86,20 @@ module.exports = {
   fetchUsage(ctx, { month, year }) {
     const token = ctx.store.get('providers.deepseek.sessionToken');
     if (!token) return Promise.resolve(null);
-    return fetcher.fetchUsageWithFallback(token, month, year).then((usage) => {
+    return fetcher.fetchUsageWithFallback(
+      token,
+      month,
+      year,
+      requestOptionsFor(ctx)
+    ).then((usage) => {
       if (usage && usage.amount) persistDaily(ctx.store, usage.amount.dailyData);
-      return backfillMonths(ctx.store, token, month, year).then(() => usage);
+      return backfillMonths(
+        ctx.store,
+        token,
+        month,
+        year,
+        requestOptionsFor(ctx)
+      ).then(() => usage);
     });
   }
 
