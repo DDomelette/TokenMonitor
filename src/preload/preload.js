@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('api', {
       'settings:update',
       'settings:reset',
       'login:submit',
+      'login:skip',
       'window:minimize',
       'window:close',
       'window:close-settings',
