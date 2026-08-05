@@ -1,0 +1,101 @@
+name: Apply issue 44 heatmap patch
+
+on:
+  push:
+    branches:
+      - fix/issue-44-heatmap-local-calendar-clock
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/issue-44-heatmap-local-calendar-clock
+
+      - name: Apply deterministic component patch and remove this workflow
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          component_path = Path('renderer/src/components/TokenHeatmap.jsx')
+          source = component_path.read_text(encoding='utf-8')
+
+          import_anchor = "import { buildSundayWeekTotals, buildWeeks, colorLevel, formatToken, sundayWeekKey } from '../lib/heatmap.js';\n"
+          clock_import = (
+              "import {\n"
+              "  createLocalCalendarClock,\n"
+              "  findDayColumn,\n"
+              "  localDayKey,\n"
+              "  resolveHeatmapYear\n"
+              "} from '../lib/local-calendar-clock.js';\n"
+          )
+          if clock_import not in source:
+              if import_anchor not in source:
+                  raise SystemExit('heatmap import anchor not found')
+              source = source.replace(import_anchor, import_anchor + clock_import, 1)
+
+          old_signature = "export default function TokenHeatmap({ provider = 'all', year = new Date().getFullYear() }) {\n"
+          new_signature = (
+              "export default function TokenHeatmap({ provider = 'all', year: requestedYear }) {\n"
+              "  const [clockDate, setClockDate] = useState(() => new Date());\n"
+              "  const year = resolveHeatmapYear(requestedYear, clockDate);\n"
+          )
+          if new_signature not in source:
+              if old_signature not in source:
+                  raise SystemExit('TokenHeatmap signature anchor not found')
+              source = source.replace(old_signature, new_signature, 1)
+
+          fetch_anchor = (
+              "  useEffect(() => {\n"
+              "    getHeatmap({ provider: selProvider, year: year }).then(setData).catch(() => {});\n"
+              "  }, [selProvider, year]);\n"
+          )
+          clock_effect = (
+              "  useEffect(() => {\n"
+              "    const clock = createLocalCalendarClock({\n"
+              "      onChange: (date) => setClockDate(date)\n"
+              "    });\n"
+              "    return () => clock.stop();\n"
+              "  }, []);\n\n"
+          )
+          if clock_effect not in source:
+              if fetch_anchor not in source:
+                  raise SystemExit('heatmap fetch effect anchor not found')
+              source = source.replace(fetch_anchor, clock_effect + fetch_anchor, 1)
+
+          old_today = (
+              "  const todayCol = useMemo(() => {\n"
+              "    const now = new Date();\n"
+              "    const iso = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');\n"
+              "    for (let c = 0; c < weeks.length; c++) {\n"
+              "      if (weeks[c].some((cell) => cell && cell.date === iso)) return c;\n"
+              "    }\n"
+              "    return weeks.length - 1;\n"
+              "  }, [weeks]);\n"
+          )
+          new_today = (
+              "  const todayKey = localDayKey(clockDate);\n"
+              "  const todayCol = useMemo(\n"
+              "    () => findDayColumn(weeks, todayKey),\n"
+              "    [weeks, todayKey]\n"
+              "  );\n"
+          )
+          if new_today not in source:
+              if old_today not in source:
+                  raise SystemExit('today column anchor not found')
+              source = source.replace(old_today, new_today, 1)
+
+          component_path.write_text(source, encoding='utf-8')
+          Path('.github/workflows/apply-issue-44-heatmap-patch.yml').unlink()
+          PY
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add renderer/src/components/TokenHeatmap.jsx .github/workflows/apply-issue-44-heatmap-patch.yml
+          git commit -m "fix: refresh the heatmap at local midnight"
+          git push
