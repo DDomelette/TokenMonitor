@@ -126,7 +126,7 @@ test('input and custom-select handlers share the keyed queue without a global ti
   assert.doesNotMatch(source, /var debounceTimer\s*=/);
   assert.match(
     source,
-    /var settingsUpdateQueue = window\.SettingsDebounce\.createKeyedDebouncer\(\{[\s\S]*?onEmit:\s*function \(key, value\) \{[\s\S]*?window\.api\.send\('settings:update', \{ key: key, value: value \}\);/
+    /var settingsUpdateQueue = window\.SettingsDebounce\.createKeyedDebouncer\(\{[\s\S]*?onEmit:\s*function \(key, value\) \{\s*return window\.api\.invoke\('settings:save', \{ key: key, value: value \}\);\s*\}/
   );
   assert.match(
     source,
