@@ -2,15 +2,20 @@
   var definitions = window.SettingsDefinitions;
   var sessionState = { loggedIn: false, error: null };
   var closingSettingsWindow = false;
+  var failedSaveKeys = Object.create(null);
   var settingsUpdateQueue = window.SettingsDebounce.createKeyedDebouncer({
     delay: 300,
     onEmit: function (key, value) {
       return window.api.invoke('settings:save', { key: key, value: value });
     },
-    onSuccess: function () {
-      showSaveError('');
+    onSuccess: function (key) {
+      delete failedSaveKeys[key];
+      if (Object.keys(failedSaveKeys).length === 0) {
+        showSaveError('');
+      }
     },
-    onError: function () {
+    onError: function (error, key) {
+      failedSaveKeys[key] = true;
       showSaveError('设置保存失败，请重试。');
     }
   });
