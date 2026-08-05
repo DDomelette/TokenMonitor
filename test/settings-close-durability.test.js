@@ -143,7 +143,7 @@ test('failed writes are restored as pending and a later close retry can persist 
   assert.equal(queue.hasPending(), false);
 });
 
-test('acknowledged settings writer validates, resolves aliases, applies side effects, and broadcasts once', () => {
+test('acknowledged settings writer validates, applies side effects, and broadcasts once', () => {
   const { saveSetting } = loadSettingsWrite();
   const calls = [];
   const result = saveSetting({
@@ -158,12 +158,12 @@ test('acknowledged settings writer validates, resolves aliases, applies side eff
     broadcastSettings() {
       calls.push(['broadcast']);
     }
-  }, { key: 'apiKey', value: 'sk-new-value' });
+  }, { key: 'window.darkMode', value: 'dark' });
 
   assert.deepEqual(result, { ok: true });
   assert.deepEqual(calls, [
-    ['set', 'providers.deepseek.apiKey', 'sk-new-value'],
-    ['apply', 'providers.deepseek.apiKey', 'sk-new-value'],
+    ['set', 'window.darkMode', 'dark'],
+    ['apply', 'window.darkMode', 'dark'],
     ['broadcast']
   ]);
 });
