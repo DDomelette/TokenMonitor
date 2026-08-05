@@ -8,6 +8,7 @@ const deepseekProvider = require('./providers/deepseek');
 const codexProvider = require('./providers/codex');
 const kimiProvider = require('./providers/kimi');
 const { startScheduler } = require('./core/scheduler');
+const { wakeMostRelevantWindow } = require('./core/startup-windows');
 const setupIPC = require('./ipc');
 const { captureSession } = require('./providers/deepseek/session');
 const {
@@ -48,11 +49,11 @@ if (!gotTheLock) {
 }
 
 app.on('second-instance', () => {
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
-  }
+  wakeMostRelevantWindow({
+    getMainWindow: () => mainWindow,
+    getLoginWindow: () => loginWindow,
+    getSettingsWindow: () => settingsWindow
+  });
 });
 
 function getWinBounds() {
