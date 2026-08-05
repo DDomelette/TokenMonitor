@@ -36,16 +36,17 @@ Electron `session.defaultSession.resolveProxy(targetUrl)` is called at request t
 - `PROXY host:port` becomes `http://host:port` for the shared HTTP CONNECT client.
 - Unsupported directives such as `SOCKS` or `HTTPS` fail with a bounded configuration error rather than silently bypassing the configured proxy.
 
-The scheduler supplies Providers with the same `getProxyUrl()` interface as today. In system mode it returns a target-aware asynchronous resolver function. The shared HTTP client detects this function, invokes it with the actual request URL, awaits the result, then follows its existing direct or CONNECT path. Existing string and null callers are unchanged.
+The shared HTTP client accepts its existing string/null proxy input plus a target-aware resolver function or promise. When a resolver is supplied, the client invokes it with the actual request URL, awaits the result, and then follows its existing direct or CONNECT path. Existing direct and custom callers remain unchanged.
 
 ## Main-process integration
 
-`index.js` constructs one proxy-input getter from the store and Electron session resolver. It injects that getter into:
+System-proxy interpretation is centralized at the network boundaries rather than copied through application lifecycle code:
 
-- the Provider scheduler;
-- login and API-key verification IPC contexts.
+- the scheduler maps the stored `'system'` sentinel to `resolveElectronSystemProxy` before exposing `getProxyUrl()` to every Provider;
+- DeepSeek API-key verification maps the same sentinel at the balance transport boundary;
+- the shared HTTP client resolves the resulting function against the concrete target URL.
 
-All Providers therefore use one live policy. Changing the setting affects the next request without restarting the app.
+All normal polling, manual refresh, DeepSeek balance verification, usage fallback, and historical backfill therefore consume the same live stored policy. Changing the setting affects the next request without restarting the app.
 
 ## Settings UI
 
@@ -56,7 +57,7 @@ The settings definitions add a dedicated network row with:
 - explicit Apply button;
 - inline success/error feedback.
 
-The UI derives the mode from the stored representation and sends the canonical candidate through the existing acknowledged `settings:save` channel. Renderer checks improve feedback, but the main-process validation remains authoritative.
+The UI derives the mode from the stored representation and sends the canonical candidate through the existing acknowledged `settings:save` channel. Renderer checks improve feedback, but the main-process validation remains authoritative. The custom address input has no generic settings key, so intermediate typing never enters the debounced settings queue.
 
 ## Error handling
 
@@ -76,7 +77,7 @@ Tests cover:
 - save-before-write validation and no broadcast on failure;
 - new-install defaults;
 - settings UI mode/address controls and feedback;
-- scheduler and API-key verification using the injected live proxy policy;
+- scheduler polling and API-key verification receiving the stored system policy as a resolver;
 - full existing CI, renderer build, and Electron/Xvfb smoke.
 
 ## Scope
