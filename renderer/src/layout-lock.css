@@ -1,0 +1,13 @@
+.titlebar-btn-layout:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.titlebar-btn-layout:disabled:hover,
+.titlebar-btn-layout:disabled:active {
+  background: transparent;
+  color: inherit;
+  transform: none;
+}
