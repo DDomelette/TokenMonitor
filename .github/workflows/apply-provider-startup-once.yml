@@ -23,13 +23,6 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          def replace_once(path, old, new):
-              text = path.read_text()
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{path}: expected one exact match, found {count}')
-              path.write_text(text.replace(old, new, 1))
-
           def replace_between(path, start_marker, end_marker, replacement):
               text = path.read_text()
               start = text.find(start_marker)
@@ -42,7 +35,24 @@ jobs:
                   raise SystemExit(f'{path}: start marker is not unique')
               path.write_text(text[:start] + replacement + text[end:])
 
+          def insert_after(path, marker, insertion):
+              text = path.read_text()
+              if text.count(marker) != 1:
+                  raise SystemExit(f'{path}: expected one after-marker: {marker!r}')
+              path.write_text(text.replace(marker, marker + insertion, 1))
+
+          def insert_before(path, marker, insertion):
+              text = path.read_text()
+              if text.count(marker) != 1:
+                  raise SystemExit(f'{path}: expected one before-marker: {marker!r}')
+              path.write_text(text.replace(marker, insertion + marker, 1))
+
           ipc = Path('src/main/ipc.js')
+          index = Path('src/main/index.js')
+          if "ipcMain.on('login:skip'" in ipc.read_text() and "require('./core/provider-startup')" in index.read_text():
+              print('Provider startup integration already applied')
+              raise SystemExit(0)
+
           replace_between(
               ipc,
               "  ipcMain.on('login:submit', async (event, { apiKey }) => {",
@@ -68,30 +78,14 @@ jobs:
           """
           )
 
-          index = Path('src/main/index.js')
-          replace_once(index, """const {
-            clearSession,
-            expireSession,
-            getSessionSnapshot,
-            getTraySessionLabel,
-            restoreSession
-          } = require('./core/session-state');
-          """, """const {
-            clearSession,
-            expireSession,
-            getSessionSnapshot,
-            getTraySessionLabel,
-            restoreSession
-          } = require('./core/session-state');
-          const {
+          insert_after(index, "} = require('./core/session-state');\n", """const {
             chooseInitialWindow,
             continueWithoutDeepseek: continueWithoutDeepseekPolicy,
             initializeMainRenderer
           } = require('./core/provider-startup');
           """)
 
-          replace_once(index, """  loadRenderer(mainWindow);
-          """, """  mainWindow.webContents.once('did-finish-load', function () {
+          insert_before(index, "  loadRenderer(mainWindow);", """  mainWindow.webContents.once('did-finish-load', function () {
             initializeMainRenderer({
               mainWindow,
               store,
@@ -107,35 +101,19 @@ jobs:
               now: Date.now
             });
           });
-          loadRenderer(mainWindow);
           """)
 
-          replace_once(index, """  loginWindow.on('closed', () => {
-            loginWindow = null;
-          });
-          }
-          """, """  loginWindow.on('closed', () => {
-            loginWindow = null;
-          });
-          }
-
-          function continueWithoutDeepseek() {
+          insert_before(index, "// 复用 DeepSeek 平台会话窗口", """function continueWithoutDeepseek() {
             return continueWithoutDeepseekPolicy({
               getMainWindow: () => mainWindow,
               getLoginWindow: () => loginWindow,
               createMainWindow
             });
           }
+
           """)
 
-          replace_once(index, """    createMainWindow,
-            createLoginWindow,
-            createSessionWindow,
-          """, """    createMainWindow,
-            createLoginWindow,
-            continueWithoutDeepseek,
-            createSessionWindow,
-          """)
+          insert_after(index, "    createLoginWindow,\n", "    continueWithoutDeepseek,\n")
 
           replace_between(
               index,
@@ -150,10 +128,12 @@ jobs:
           """
           )
 
-          replace_once(index, """app.on('activate', () => {
-            if (mainWindow) mainWindow.show();
-          });
-          """, """app.on('activate', () => {
+          text = index.read_text()
+          activate_marker = "app.on('activate', () => {"
+          activate = text.find(activate_marker)
+          if activate < 0 or text.find(activate_marker, activate + 1) >= 0:
+              raise SystemExit('src/main/index.js: activate marker missing or duplicated')
+          index.write_text(text[:activate] + """app.on('activate', () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.show();
               return;
