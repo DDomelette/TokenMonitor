@@ -13,6 +13,7 @@ async function runStoreBootstrap({
   dialog,
   shell,
   storeModule,
+  afterInitialize,
   loadMain,
   logger = console
 }) {
@@ -20,6 +21,9 @@ async function runStoreBootstrap({
   try {
     const userDataDir = app.getPath('userData');
     storeModule.initialize({ userDataDir });
+    if (typeof afterInitialize === 'function') {
+      await afterInitialize();
+    }
   } catch (error) {
     startupError = error;
   }

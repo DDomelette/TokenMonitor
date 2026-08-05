@@ -2,6 +2,7 @@ const { app, dialog, shell } = require('electron');
 const storeModule = require('./store');
 const { runStoreBootstrap } = require('./core/startup-recovery');
 const { installRoundedMainWindowShapeObserver } = require('./core/window-shape');
+const { pruneUsageDaily } = require('./core/usage-retention');
 
 installRoundedMainWindowShapeObserver(app);
 
@@ -17,6 +18,7 @@ if (!gotTheLock) {
       dialog,
       shell,
       storeModule,
+      afterInitialize: () => pruneUsageDaily(storeModule),
       loadMain: () => require('./index'),
       logger: console
     }))
