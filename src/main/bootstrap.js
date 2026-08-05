@@ -1,6 +1,9 @@
 const { app, dialog, shell } = require('electron');
 const storeModule = require('./store');
 const { runStoreBootstrap } = require('./core/startup-recovery');
+const { installRoundedMainWindowShapeObserver } = require('./core/window-shape');
+
+installRoundedMainWindowShapeObserver(app);
 
 const gotTheLock = app.requestSingleInstanceLock();
 
