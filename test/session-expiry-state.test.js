@@ -66,15 +66,21 @@ test('tray login labels distinguish missing, expired, and valid states', () => {
   assert.equal(getTraySessionLabel({ status: 'valid', loggedIn: true, error: null }), '重新登录平台');
 });
 
-test('main process integrates the session state boundary for expiry, restoration, snapshots, and tray text', () => {
+test('main process integrates the session state boundary for expiry, delegated restoration, snapshots, and tray text', () => {
   const main = fs.readFileSync(path.resolve(__dirname, '../src/main/index.js'), 'utf8');
   const ipc = fs.readFileSync(path.resolve(__dirname, '../src/main/ipc.js'), 'utf8');
+  const startup = fs.readFileSync(
+    path.resolve(__dirname, '../src/main/core/provider-startup.js'),
+    'utf8'
+  );
 
   assert.match(main, /require\('\.\/core\/session-state'\)/);
   assert.match(main, /expireSession\(runtime, '会话已过期，请重新登录'\)/);
   assert.match(main, /store\.delete\('providers\.deepseek\.sessionToken'\)/);
   assert.match(main, /restoreSession\(runtime, token\)/);
-  assert.match(main, /restoreSession\(runtime, storedSessionToken\)/);
+  assert.equal(main.includes('initializeMainRenderer({'), true);
+  assert.equal(startup.includes("deps.store.get('providers.deepseek.sessionToken')"), true);
+  assert.equal(startup.includes('deps.restoreSession(deps.runtime, storedSessionToken)'), true);
   assert.match(main, /getTraySessionLabel\(getSessionSnapshot\(runtime\)\)/);
   assert.match(ipc, /getSessionSnapshot\(deps\.runtime\)/);
 });
