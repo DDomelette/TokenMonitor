@@ -120,6 +120,24 @@
     border: 1px solid #E5E7EB;
   }
   .btn-secondary:hover { background: rgba(0, 0, 0, 0.03); }
+  /* 暗色:与主窗口 theme.css 同一套配色 */
+  body.dark .container {
+    background: rgba(30, 32, 38, 0.94);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.34);
+  }
+  body.dark .login-titlebar-text,
+  body.dark .subtitle { color: #A8B0BD; }
+  body.dark .form-label { color: #F3F4F6; }
+  body.dark .form-input {
+    background: #252730;
+    border-color: #3A3C45;
+    color: #F3F4F6;
+  }
+  body.dark .btn-secondary {
+    color: #A8B0BD;
+    border-color: #3A3C45;
+  }
+  body.dark .btn-secondary:hover { background: rgba(255, 255, 255, 0.06); }
 </style>
 </head>
 <body>
@@ -143,6 +161,7 @@
     <button class="btn btn-primary" id="loginBtn">验证并登录</button>
   </div>
 </div>
+<script src="js/theme-mode-link.js"></script>
 <script src="js/login.js"></script>
 </body>
 </html>
