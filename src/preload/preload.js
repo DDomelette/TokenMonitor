@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('api', {
     const validChannels = [
       'get:settings',
       'settings:save',
+      'settings:replace-api-key',
       'get:dashboard',
       'get:providers',
       'get:heatmap',
