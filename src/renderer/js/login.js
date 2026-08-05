@@ -3,6 +3,39 @@ var loginBtn = document.getElementById('loginBtn');
 var skipBtn = document.getElementById('skipBtn');
 var errorMsg = document.getElementById('errorMsg');
 
+// 主题与主窗口/设置窗口一致:followSystemTheme 为主开关
+// (语义同 renderer/src/theme-sync.js),theme:changed 仅作唤醒信号。
+var themeSettings = null;
+var systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+
+function applyTheme() {
+  var windowValues = (themeSettings && themeSettings.window) || {};
+  var theme = ThemeModeLink.resolveTheme(windowValues, systemThemeMedia.matches);
+  document.body.classList.toggle('dark', theme === 'dark');
+}
+
+window.api.invoke('get:settings').then(function (settings) {
+  themeSettings = settings;
+  applyTheme();
+}).catch(function () {
+  applyTheme();
+});
+
+window.api.on('settings:loaded', function (settings) {
+  themeSettings = settings;
+  applyTheme();
+});
+
+window.api.on('theme:changed', function () {
+  applyTheme();
+});
+
+systemThemeMedia.addEventListener('change', function () {
+  applyTheme();
+});
+
+applyTheme();
+
 loginBtn.addEventListener('click', function () {
   var apiKey = apiKeyInput.value.trim();
   if (!apiKey) {

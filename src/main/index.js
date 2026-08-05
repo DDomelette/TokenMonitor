@@ -164,7 +164,11 @@ function createMainWindow() {
 
   nativeTheme.on('updated', () => {
     if (store.get('window.followSystemTheme')) {
-      mainWindow.webContents.send('theme:changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
+      const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+      mainWindow.webContents.send('theme:changed', theme);
+      if (loginWindow && !loginWindow.isDestroyed()) {
+        loginWindow.webContents.send('theme:changed', theme);
+      }
     }
   });
 }
@@ -460,6 +464,9 @@ function applyTheme() {
   }
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.send('theme:changed', isDark ? 'dark' : 'light');
+  }
+  if (loginWindow && !loginWindow.isDestroyed()) {
+    loginWindow.webContents.send('theme:changed', isDark ? 'dark' : 'light');
   }
 }
 
