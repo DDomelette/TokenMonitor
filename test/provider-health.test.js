@@ -68,10 +68,26 @@ test('StatusBar derives display state from provider snapshots and never resets r
   assert.match(source, /status-dot \$\{health\.mode\}/);
 });
 
-test('status styles include a distinct stale warning state', () => {
-  const source = fs.readFileSync(
-    path.resolve(__dirname, '../renderer/src/styles.css'),
+test('provider health styles load last and include distinct stale and error states', () => {
+  const entrySource = fs.readFileSync(
+    path.resolve(__dirname, '../renderer/src/main.jsx'),
     'utf8'
   );
-  assert.match(source, /\.status-dot\.stale\s*\{[\s\S]*?var\(--warning\)/);
+  const styleSource = fs.readFileSync(
+    path.resolve(__dirname, '../renderer/src/provider-health.css'),
+    'utf8'
+  );
+
+  assert.match(
+    entrySource,
+    /import '\.\/layout-lock\.css';\s*import '\.\/provider-health\.css';/
+  );
+  assert.match(
+    styleSource,
+    /\.status-dot\.stale\s*\{[\s\S]*?var\(--provider-health-warning\)/
+  );
+  assert.match(
+    styleSource,
+    /\.status-dot\.error\s*\{[\s\S]*?var\(--provider-health-error\)/
+  );
 });
