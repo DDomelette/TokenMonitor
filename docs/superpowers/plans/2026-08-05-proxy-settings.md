@@ -17,13 +17,13 @@
 - Create: `test/proxy-settings-integration.test.js`
 - Modify: none
 
-- [ ] Test direct, system, and normalized custom stored values.
-- [ ] Test invalid schemes, credentials, paths, query strings, fragments, and ports.
-- [ ] Test `DIRECT` and `PROXY` system directives and rejection of unsupported directives.
-- [ ] Test invalid settings are rejected before store mutation, side effects, or broadcast.
-- [ ] Test the new-install default is direct.
-- [ ] Test settings definitions and renderer controls expose mode, address, Apply, and inline feedback.
-- [ ] Create a Draft PR and record the expected RED result.
+- [x] Test direct, system, and normalized custom stored values.
+- [x] Test invalid schemes, credentials, paths, query strings, fragments, and ports.
+- [x] Test `DIRECT` and `PROXY` system directives and rejection of unsupported directives.
+- [x] Test invalid settings are rejected before store mutation, side effects, or broadcast.
+- [x] Test the new-install default is direct.
+- [x] Test settings definitions and renderer controls expose mode, address, Apply, and inline feedback.
+- [x] Create a Draft PR and record the expected RED result.
 
 ### Task 2: Implement authoritative proxy policy
 
@@ -34,28 +34,28 @@
 - Test: `test/proxy-settings-policy.test.js`
 - Test: `test/proxy-settings-integration.test.js`
 
-- [ ] Implement strict custom HTTP proxy normalization.
-- [ ] Implement stored-value classification and validation.
-- [ ] Parse Electron system-proxy directives into direct or HTTP CONNECT proxy values.
-- [ ] Implement a live store-backed proxy-input getter.
-- [ ] Change the new-install default from localhost:7890 to direct.
-- [ ] Normalize and validate every `providers.proxyUrl` write before persistence.
+- [x] Implement strict custom HTTP proxy normalization.
+- [x] Implement stored-value classification and validation.
+- [x] Parse Electron system-proxy directives into direct or HTTP CONNECT proxy values.
+- [x] Implement a live store-backed proxy-input getter for isolated policy consumers and tests.
+- [x] Change the new-install default from localhost:7890 to direct.
+- [x] Normalize and validate every `providers.proxyUrl` write before persistence.
 
 ### Task 3: Integrate target-aware system proxy resolution
 
 **Files:**
 - Modify: `src/main/core/http.js`
 - Modify: `src/main/core/scheduler.js`
-- Modify: `src/main/index.js`
-- Modify: `src/main/ipc.js`
+- Modify: `src/main/providers/deepseek/balance.js`
 - Create: `test/http-proxy-resolver.test.js`
 - Test: `test/proxy-settings-integration.test.js`
 
-- [ ] Allow the shared HTTP client to accept a proxy resolver function or promise.
-- [ ] Invoke resolver functions with the actual target URL before parsing the proxy.
-- [ ] Inject one live proxy-input getter into the scheduler and IPC verification contexts.
-- [ ] Resolve system policy through `session.defaultSession.resolveProxy(targetUrl)`.
-- [ ] Preserve all existing direct/custom proxy behavior and timeout/error semantics.
+- [x] Allow the shared HTTP client to accept a proxy resolver function or promise.
+- [x] Invoke resolver functions with the actual target URL before parsing the proxy.
+- [x] Resolve the stored system sentinel at the scheduler network boundary for every Provider.
+- [x] Resolve the same sentinel at the DeepSeek balance boundary used by API-key verification.
+- [x] Call `session.defaultSession.resolveProxy(targetUrl)` lazily through the centralized policy module.
+- [x] Preserve all existing direct/custom proxy behavior and timeout/error semantics.
 
 ### Task 4: Add settings-window controls
 
@@ -64,19 +64,19 @@
 - Modify: `src/renderer/js/settings-window.js`
 - Test: `test/proxy-settings-integration.test.js`
 
-- [ ] Add the Network group and dedicated proxy control definition.
-- [ ] Derive Direct/System/Custom mode from the stored value.
-- [ ] Enable the address input only for Custom mode.
-- [ ] Submit canonical candidates through `settings:save`.
-- [ ] Show inline success and validation-error feedback.
-- [ ] Ensure generic debounce handlers never save intermediate proxy text.
+- [x] Add the Network group and dedicated proxy control definition.
+- [x] Derive Direct/System/Custom mode from the stored value.
+- [x] Enable the address input only for Custom mode.
+- [x] Submit canonical candidates through `settings:save`.
+- [x] Show inline success and validation-error feedback.
+- [x] Ensure generic debounce handlers never save intermediate proxy text.
 
 ### Task 5: Final verification and merge
 
 **Files:**
 - Modify: PR description only
 
-- [ ] Run the complete Node test suite.
+- [ ] Run the complete Node test suite on the final documentation-aligned head.
 - [ ] Run the renderer production build.
 - [ ] Run the Electron/Xvfb visibility smoke and upload screenshots.
 - [ ] Review the fixed-head diff for proxy bypasses, unsafe PAC text, and unintended migration behavior.
