@@ -27,35 +27,27 @@ jobs:
               text = path.read_text()
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f'{path}: expected one match, found {count}')
+                  raise SystemExit(f'{path}: expected one exact match, found {count}')
               path.write_text(text.replace(old, new, 1))
 
+          def replace_between(path, start_marker, end_marker, replacement):
+              text = path.read_text()
+              start = text.find(start_marker)
+              if start < 0:
+                  raise SystemExit(f'{path}: start marker not found: {start_marker!r}')
+              end = text.find(end_marker, start)
+              if end < 0:
+                  raise SystemExit(f'{path}: end marker not found: {end_marker!r}')
+              if text.find(start_marker, start + len(start_marker)) >= 0:
+                  raise SystemExit(f'{path}: start marker is not unique')
+              path.write_text(text[:start] + replacement + text[end:])
+
           ipc = Path('src/main/ipc.js')
-          replace_once(ipc, """  ipcMain.on('login:submit', async (event, { apiKey }) => {
-            const main = getMain();
-            try {
-              const deepseek = deps.registry.get('deepseek');
-              const info = await deepseek.fetchBalance(deepseekApiKeyCtx(deps, apiKey));
-              if (!info) throw new Error('API Key 验证失败');
-              deps.store.set('providers.deepseek.apiKey', apiKey);
-              if (deps.getLoginWindow()) deps.getLoginWindow().close();
-              if (!main) deps.createMainWindow();
-              else main.show();
-              const win = getMain();
-              if (win && !win.webContents.isDestroyed()) {
-                win.webContents.on('did-finish-load', () => {
-                  win.webContents.send('settings:loaded', sanitizeSettings(deps.store.store));
-                  deps.scheduler.poll('deepseek', 'balance');
-                  deps.createSessionWindow();
-                });
-              }
-            } catch (e) {
-              if (deps.getLoginWindow() && !deps.getLoginWindow().isDestroyed()) {
-                event.sender.send('login:error', 'API Key 验证失败: ' + e.message);
-              }
-            }
-          });
-          """, """  ipcMain.on('login:submit', async (event, { apiKey }) => {
+          replace_between(
+              ipc,
+              "  ipcMain.on('login:submit', async (event, { apiKey }) => {",
+              "  /* ======== Dashboard / Providers ======== */",
+              """  ipcMain.on('login:submit', async (event, { apiKey }) => {
             try {
               const deepseek = deps.registry.get('deepseek');
               const info = await deepseek.fetchBalance(deepseekApiKeyCtx(deps, apiKey));
@@ -72,7 +64,9 @@ jobs:
           ipcMain.on('login:skip', () => {
             deps.continueWithoutDeepseek();
           });
-          """)
+
+          """
+          )
 
           index = Path('src/main/index.js')
           replace_once(index, """const {
@@ -143,38 +137,18 @@ jobs:
             createSessionWindow,
           """)
 
-          replace_once(index, """  const apiKey = store.get('providers.deepseek.apiKey');
-            if (apiKey) {
-              createMainWindow();
-              mainWindow.webContents.on('did-finish-load', () => {
-                mainWindow.webContents.send('settings:loaded', store.sanitizeSettings(store.store));
-                scheduler.poll('deepseek', 'balance');
-
-                const storedSessionToken = store.get('providers.deepseek.sessionToken') || null;
-                restoreSession(runtime, storedSessionToken);
-                if (getSessionSnapshot(runtime).loggedIn) {
-                  console.log('[session] startup with stored token, starting usage timer');
-                  scheduler.poll('deepseek', 'usage');
-                  runtime.proxyStatus = { running: true, port: 0, activeSince: Date.now() };
-                } else {
-                  console.log('[session] startup without token, opening platform login window');
-                  clearSession(runtime, '请登录平台获取用量');
-                  runtime.proxyStatus = { running: false, port: 0, error: '请登录平台获取用量' };
-                  createSessionWindow();
-                }
-                broadcastSessionState();
-                updateTrayMenu();
-              });
-            } else {
-              createLoginWindow();
-            }
-          """, """  const initialWindow = chooseInitialWindow({
+          replace_between(
+              index,
+              "  const apiKey = store.get('providers.deepseek.apiKey');",
+              "\n});\n\napp.on('window-all-closed'",
+              """  const initialWindow = chooseInitialWindow({
             deepseekApiKey: store.get('providers.deepseek.apiKey'),
             providerSnapshot: scheduler.getSnapshot()
           });
           if (initialWindow === 'main') createMainWindow();
           else createLoginWindow();
-          """)
+          """
+          )
 
           replace_once(index, """app.on('activate', () => {
             if (mainWindow) mainWindow.show();
