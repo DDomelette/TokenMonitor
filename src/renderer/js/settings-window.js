@@ -1,15 +1,53 @@
 (function () {
   var definitions = window.SettingsDefinitions;
   var sessionState = { loggedIn: false, error: null };
+  var closingSettingsWindow = false;
   var settingsUpdateQueue = window.SettingsDebounce.createKeyedDebouncer({
     delay: 300,
     onEmit: function (key, value) {
-      window.api.send('settings:update', { key: key, value: value });
+      return window.api.invoke('settings:save', { key: key, value: value });
+    },
+    onSuccess: function () {
+      showSaveError('');
+    },
+    onError: function () {
+      showSaveError('设置保存失败，请重试。');
     }
   });
 
   function getNested(obj, path) {
     return path.split('.').reduce(function (o, k) { return (o && o[k] !== undefined) ? o[k] : undefined; }, obj);
+  }
+
+  function showSaveError(message) {
+    var errorEl = document.getElementById('settingsSaveError');
+    if (!errorEl) return;
+    errorEl.textContent = message || '';
+    errorEl.hidden = !message;
+  }
+
+  function setClosePending(pending) {
+    var closeBtn = document.getElementById('settingsCloseBtn');
+    var doneBtn = document.getElementById('settingsDoneBtn');
+    if (closeBtn) closeBtn.disabled = pending;
+    if (doneBtn) doneBtn.disabled = pending;
+    var app = document.getElementById('app');
+    if (app) app.setAttribute('aria-busy', pending ? 'true' : 'false');
+  }
+
+  function requestSettingsClose() {
+    if (closingSettingsWindow) return;
+    closingSettingsWindow = true;
+    setClosePending(true);
+    showSaveError('');
+
+    settingsUpdateQueue.flush().then(function () {
+      window.api.send('window:close-settings');
+    }).catch(function () {
+      closingSettingsWindow = false;
+      setClosePending(false);
+      showSaveError('设置保存失败，请重试。');
+    });
   }
 
   function buildSessionSection() {
@@ -86,8 +124,8 @@
   }
 
   function bindEvents() {
-    document.getElementById('settingsCloseBtn').addEventListener('click', function () { window.api.send('window:close-settings'); });
-    document.getElementById('settingsDoneBtn').addEventListener('click', function () { window.api.send('window:close-settings'); });
+    document.getElementById('settingsCloseBtn').addEventListener('click', requestSettingsClose);
+    document.getElementById('settingsDoneBtn').addEventListener('click', requestSettingsClose);
     document.getElementById('resetBtn').addEventListener('click', function () {
       if (!window.confirm('确定要重置外观与布局设置吗?\nAPI Key、平台登录与用量数据都会保留。')) return;
       window.api.send('settings:reset');
