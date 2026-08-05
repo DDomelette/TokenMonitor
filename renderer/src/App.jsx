@@ -3,8 +3,9 @@ import TitleBar from './components/TitleBar.jsx';
 import StatusBar from './components/StatusBar.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import { initProviders } from './store.js';
-import { on, send } from './api.js';
+import { getSettings, on, send } from './api.js';
 import { installSettingsOpenBridge } from './settings-bridge.js';
+import { installThemeSync } from './theme-sync.js';
 
 initProviders();
 
@@ -12,6 +13,17 @@ export default function App() {
   const [editing, setEditing] = useState(false);
 
   useEffect(() => installSettingsOpenBridge(on, send), []);
+
+  useEffect(() => installThemeSync({
+    getSettings,
+    on,
+    mediaQuery: window.matchMedia('(prefers-color-scheme: dark)'),
+    root: document.documentElement,
+    body: document.body,
+    dispatchThemeApplied: (theme) => window.dispatchEvent(
+      new CustomEvent('tokenmonitor:theme-applied', { detail: { theme } })
+    )
+  }), []);
 
   // ctrl + 滚轮缩放(与旧版 app.js 行为一致):走主进程 zoom factor
   useEffect(() => {
