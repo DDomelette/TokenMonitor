@@ -134,7 +134,7 @@ test('Windows packaging generates icons before electron-builder runs', () => {
     pkg.scripts['build:win'],
     /^npm run generate:icons && npm run build:renderer && electron-builder --win$/
   );
-  assert.match(read('electron-builder.yml'), /win:\n(?:.*\n)*?  icon: assets\/icon\.ico\n/);
+  assert.match(read('electron-builder.yml'), /win:\r?\n(?:.*\r?\n)*?  icon: assets\/icon\.ico\r?\n/);
 });
 
 test('CI performs a real unsigned Windows package build', () => {
