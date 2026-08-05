@@ -41,6 +41,33 @@ test('provider health distinguishes retained stale data from an initial failure'
   assert.equal(failed.lastFetchedAt, null);
 });
 
+test('mixed provider failures keep a stale warning attached to the provider with retained data', async () => {
+  const { summarizeProviderHealth } = await loadHealth();
+  const health = summarizeProviderHealth([
+    {
+      id: 'retained',
+      displayName: 'Retained',
+      lastError: 'request timeout',
+      lastFailedAt: 1000,
+      lastFetchedAt: 500,
+      stale: true
+    },
+    {
+      id: 'initial',
+      displayName: 'Initial',
+      lastError: 'HTTP 503',
+      lastFailedAt: 2000,
+      lastFetchedAt: null,
+      stale: false
+    }
+  ]);
+
+  assert.equal(health.mode, 'stale');
+  assert.match(health.text, /Retained/);
+  assert.match(health.text, /request timeout/);
+  assert.doesNotMatch(health.text, /Initial|HTTP 503/);
+});
+
 test('provider health reports online and uses the latest successful provider timestamp', async () => {
   const { summarizeProviderHealth } = await loadHealth();
   const health = summarizeProviderHealth([
