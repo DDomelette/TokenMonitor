@@ -1,11 +1,27 @@
 // GitHub 风格 Token 活动热力图的纯函数(node 可测)。
 
+const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const pad = (n) => String(n).padStart(2, '0');
+const dayKey = (date) => date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
+
+function parseLocalDay(value) {
+  const match = typeof value === 'string' ? DATE_KEY_PATTERN.exec(value) : null;
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (
+    date.getFullYear() !== year
+    || date.getMonth() !== month - 1
+    || date.getDate() !== day
+  ) return null;
+  return date;
+}
+
 // 构造某年 53 列 × 7 行网格:每列 = 一周(周日起),每行 = 星期几。
 // 首列为该年 1 月 1 日所在周的周日(可能落在前一年);最后一列补足到 7 天。
 export function buildWeeks(year) {
-  const pad = (n) => String(n).padStart(2, '0');
-  const dayKey = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-
   const start = new Date(year, 0, 1);
   start.setDate(start.getDate() - start.getDay());
   const end = new Date(year, 11, 31);
@@ -38,6 +54,29 @@ export function buildWeeks(year) {
   return weeks;
 }
 
+// 返回日期所在可视列的周日起始日。使用本地日历字段,与 buildWeeks 的周日至周六列一致。
+export function sundayWeekKey(date) {
+  if (!(date instanceof Date) || !Number.isFinite(date.getTime())) return null;
+  const sunday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  sunday.setDate(sunday.getDate() - sunday.getDay());
+  return dayKey(sunday);
+}
+
+// 将每日用量按热力图的周日至周六可视列聚合。跨年首列以真实周日为键,
+// 但只会累加调用方传入的数据(所选年份的 API 快照不会自动引入上一年数据)。
+export function buildSundayWeekTotals(days) {
+  const totals = {};
+  Object.keys(days || {}).forEach((dateKey) => {
+    const total = Number(days[dateKey]) || 0;
+    if (total <= 0) return;
+    const date = parseLocalDay(dateKey);
+    if (!date) return;
+    const key = sundayWeekKey(date);
+    totals[key] = (totals[key] || 0) + total;
+  });
+  return totals;
+}
+
 // 0 = 无消耗;1..4 按 value/maxDaily 四档均分(0.25 / 0.5 / 0.75)。
 export function colorLevel(value, maxDaily) {
   const v = Number(value) || 0;
@@ -57,14 +96,4 @@ export function formatToken(n) {
   if (value >= 100000000) return (value / 100000000).toFixed(1) + '亿';
   if (value >= 10000) return (value / 10000).toLocaleString('en-US') + '万';
   return value.toLocaleString('en-US');
-}
-
-// ISO 周年份(周一为每周第一天,用于"每周"聚合)。
-export function isoWeekKey(date) {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
-  return d.getUTCFullYear() + '-W' + weekNo;
 }
