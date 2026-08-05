@@ -35,11 +35,21 @@ export default function useECharts(ref, buildOption, deps) {
         }, 150);
       }
     };
+    const onThemeApplied = () => {
+      if (!chartRef.current) {
+        ensure();
+        return;
+      }
+      chartRef.current.setOption(buildRef.current(), true);
+      chartRef.current.resize();
+    };
     ensure();
     const observer = new ResizeObserver(ensure);
     observer.observe(dom);
+    window.addEventListener('tokenmonitor:theme-applied', onThemeApplied);
     return () => {
       observer.disconnect();
+      window.removeEventListener('tokenmonitor:theme-applied', onThemeApplied);
       if (rebuildTimer) clearTimeout(rebuildTimer);
       if (chartRef.current) chartRef.current.dispose();
       chartRef.current = null;
