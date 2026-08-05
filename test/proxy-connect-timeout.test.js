@@ -56,6 +56,8 @@ function trackedServer(t, onConnection) {
     sockets.add(socket);
     socket.on('close', () => sockets.delete(socket));
     onConnection(socket);
+    // Consume inbound CONNECT/TLS bytes so peer shutdown is observed promptly.
+    socket.resume();
   });
   t.after(async () => closeServer(server, sockets));
   return { server, sockets };
