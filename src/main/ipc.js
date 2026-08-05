@@ -4,6 +4,7 @@ const { ipcMain, BrowserWindow } = require('electron');
 const { buildHeatmap } = require('./core/heatmap');
 const { sanitizeSettings, isWritableSettingKey, resolveWritableSettingKey } = require('./core/settings-security');
 const { resetSettingsStore } = require('./core/settings-reset');
+const { saveSetting } = require('./core/settings-write');
 
 function deepseekApiKeyCtx(deps, apiKey) {
   return {
@@ -132,6 +133,10 @@ module.exports = function setupIPC(deps) {
     deps.store.set(targetKey, value);
     deps.applySetting(targetKey, value);
     deps.broadcastSettings();
+  });
+
+  ipcMain.handle('settings:save', (event, payload) => {
+    return saveSetting(deps, payload);
   });
 
   ipcMain.handle('get:settings', () => {
