@@ -61,7 +61,7 @@ function writeCodexRecord(root) {
   );
 }
 
-test('reset preserves Codex aggregate and its compatible scan cursor as one data unit', (t) => {
+test('reset preserves Codex aggregate and its compatible scan cursor as one data unit', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-codex-reset-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   writeCodexRecord(root);
@@ -75,7 +75,7 @@ test('reset preserves Codex aggregate and its compatible scan cursor as one data
     'window.opacity': 55
   });
 
-  const firstRecords = readLocalLog({ store });
+  const firstRecords = await readLocalLog({ store });
   assert.equal(firstRecords.length, 1);
   assert.equal(totalForProvider(store, 'codex'), 12);
   const firstCursor = structuredClone(store.get('localLogCursors.codex'));
@@ -90,9 +90,8 @@ test('reset preserves Codex aggregate and its compatible scan cursor as one data
     assert.equal(store.get('providers.deepseek.sessionToken'), 'preserved-session');
     assert.equal(store.get('window.opacity'), undefined);
 
-    // The localLogRoot override is test-only configuration and is intentionally reset.
     store.set('providers.codex.localLogRoot', root);
-    const repeatedRecords = readLocalLog({ store });
+    const repeatedRecords = await readLocalLog({ store });
     assert.equal(repeatedRecords.length, 0);
     assert.equal(totalForProvider(store, 'codex'), 12);
   }
