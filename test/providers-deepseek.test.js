@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const https = require('node:https');
 
-const { UsageFetcher } = require('../src/main/providers/deepseek/usage');
+const { UsageFetcher, localTodayStr } = require('../src/main/providers/deepseek/usage');
 const { fetchBalance } = require('../src/main/providers/deepseek/balance');
 const deepseekAdapter = require('../src/main/providers/deepseek');
 
@@ -35,7 +35,7 @@ function mockHttpsSequence(bodies) {
   };
 }
 
-const TODAY = '2026-08-02';
+const TODAY = localTodayStr();
 const YESTERDAY = '2026-07-30';
 
 function responseBody(dayData) {

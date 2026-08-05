@@ -65,13 +65,13 @@ function parseDailyData(days, sumFn) {
   });
 }
 
-function lastDay(dailyData) {
+function todayData(dailyData) {
   if (!dailyData || !dailyData.length) return null;
   var todayStr = localTodayStr();
   for (var i = dailyData.length - 1; i >= 0; i--) {
     if (dailyData[i].date === todayStr) return dailyData[i];
   }
-  return dailyData[dailyData.length - 1];
+  return null;
 }
 
 function parseCostData(data) {
@@ -89,7 +89,7 @@ function parseCostData(data) {
     totalCost += cost;
   });
 
-  var today = lastDay(days);
+  var today = todayData(days);
 
   return {
     dailyData: days,
@@ -125,7 +125,7 @@ function parseTokenData(data) {
   var inputTokens = totalCacheHit + totalCacheMiss;
   var cacheRate = (inputTokens > 0) ? (totalCacheHit / inputTokens * 100) : 0;
 
-  var today = lastDay(days);
+  var today = todayData(days);
   var todayInput = (today ? today.cacheHit + today.cacheMiss : 0);
   var todayRate = (todayInput > 0) ? (today.cacheHit / todayInput * 100) : 0;
 
