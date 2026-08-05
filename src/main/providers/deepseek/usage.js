@@ -1,8 +1,8 @@
-// DeepSeek 平台用量采集:从旧 src/main/fetcher.js 原样搬入(行为不变)。
-// 唯一改动:host 由模块常量改为可构造注入(this.host),便于测试与多环境。
-const https = require('https');
+// DeepSeek 平台用量采集:解析逻辑保持本地,网络传输统一委托给主进程 HTTP 客户端。
+const { httpGet: defaultHttpGet } = require('../../core/http');
 
 const PLATFORM_HOST = 'platform.deepseek.com';
+const USAGE_TIMEOUTS = Object.freeze({ requestTimeoutMs: 15000 });
 
 function localTzSec() {
   return -new Date().getTimezoneOffset() * 60;
@@ -145,77 +145,82 @@ function parseTokenData(data) {
   };
 }
 
+function validateUsageResponse(data) {
+  if (data && data.code && data.msg) {
+    throw new Error(data.msg);
+  }
+  return data;
+}
+
 class UsageFetcher {
   constructor(host) {
     this.host = host || PLATFORM_HOST;
   }
 
-  httpGet(sessionToken, path) {
-    return new Promise((resolve, reject) => {
-      const options = {
-        hostname: this.host,
-        path: path,
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${sessionToken}`,
-          'Accept': 'application/json',
-          'x-app-version': '1.0.0'
-        },
-        rejectUnauthorized: true
-      };
-
-      const req = https.request(options, (res) => {
-        let body = '';
-        res.on('data', chunk => { body += chunk; });
-        res.on('end', () => {
-          if (res.statusCode === 401 || res.statusCode === 403) {
-            reject(new Error('Unauthorized: session expired (HTTP ' + res.statusCode + ')'));
-            return;
-          }
-          try {
-            const data = JSON.parse(body);
-            if (data.code && data.msg) {
-              reject(new Error(data.msg));
-              return;
-            }
-            resolve(data);
-          } catch (e) {
-            reject(new Error('Failed to parse response'));
-          }
-        });
-      });
-
-      req.on('error', reject);
-      req.setTimeout(15000, () => { req.destroy(); reject(new Error('Request timeout')); });
-      req.end();
-    });
+  httpGet(sessionToken, requestPath, requestOptions) {
+    const options = requestOptions || {};
+    const request = options.httpGet || defaultHttpGet;
+    return request(
+      `https://${this.host}${requestPath}`,
+      {
+        'Authorization': `Bearer ${sessionToken}`,
+        'Accept': 'application/json',
+        'x-app-version': '1.0.0'
+      },
+      options.proxyUrl || null,
+      USAGE_TIMEOUTS
+    ).then(validateUsageResponse);
   }
 
-  fetchUsageCost(sessionToken, month, year) {
-    return this.httpGet(sessionToken, `/api/v0/usage/cost?month=${month}&year=${year}`)
-      .then(parseCostData);
+  fetchUsageCost(sessionToken, month, year, requestOptions) {
+    return this.httpGet(
+      sessionToken,
+      `/api/v0/usage/cost?month=${month}&year=${year}`,
+      requestOptions
+    ).then(parseCostData);
   }
 
-  fetchUsageAmount(sessionToken, month, year) {
-    return this.httpGet(sessionToken, `/api/v0/usage/amount?month=${month}&year=${year}`)
-      .then(parseTokenData);
+  fetchUsageAmount(sessionToken, month, year, requestOptions) {
+    return this.httpGet(
+      sessionToken,
+      `/api/v0/usage/amount?month=${month}&year=${year}`,
+      requestOptions
+    ).then(parseTokenData);
   }
 
   // Fetches the given month; if it has no usage at all, falls back to the previous month
   // (handles the month-start window where the current month is still empty).
-  async fetchUsageWithFallback(sessionToken, month, year) {
-    var cost = await this.fetchUsageCost(sessionToken, month, year);
-    var amount = await this.fetchUsageAmount(sessionToken, month, year);
+  async fetchUsageWithFallback(sessionToken, month, year, requestOptions) {
+    var cost = await this.fetchUsageCost(sessionToken, month, year, requestOptions);
+    var amount = await this.fetchUsageAmount(sessionToken, month, year, requestOptions);
     if (cost.aggregate.totalCost === 0 && amount.aggregate.totalTokens === 0) {
       var prev = new Date(year, month - 2, 1);
       var prevMonth = prev.getMonth() + 1;
       var prevYear = prev.getFullYear();
-      var prevCost = await this.fetchUsageCost(sessionToken, prevMonth, prevYear);
-      var prevAmount = await this.fetchUsageAmount(sessionToken, prevMonth, prevYear);
+      var prevCost = await this.fetchUsageCost(
+        sessionToken,
+        prevMonth,
+        prevYear,
+        requestOptions
+      );
+      var prevAmount = await this.fetchUsageAmount(
+        sessionToken,
+        prevMonth,
+        prevYear,
+        requestOptions
+      );
       return { cost: prevCost, amount: prevAmount, month: prevMonth, year: prevYear, fellBack: true };
     }
     return { cost: cost, amount: amount, month: month, year: year, fellBack: false };
   }
 }
 
-module.exports = { UsageFetcher, PLATFORM_HOST, parseCostData, parseTokenData, localTodayStr, localTzSec };
+module.exports = {
+  UsageFetcher,
+  PLATFORM_HOST,
+  parseCostData,
+  parseTokenData,
+  localTodayStr,
+  localTzSec,
+  validateUsageResponse
+};

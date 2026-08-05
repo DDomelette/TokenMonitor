@@ -103,7 +103,8 @@ test('deepseek adapter fetchUsage persists daily tokens and backfills previous m
     store: {
       get: (k) => (k === 'providers.deepseek.sessionToken' ? 'tok' : data[k]),
       set: (k, v) => { data[k] = v; }
-    }
+    },
+    getProxyUrl: () => null
   };
   try {
     await deepseekAdapter.fetchUsage(ctx, { month: 8, year: 2026 });
@@ -136,7 +137,8 @@ test('deepseek adapter fetchUsage skips months already marked fetched', async ()
     store: {
       get: (k) => (k === 'providers.deepseek.sessionToken' ? 'tok' : data[k]),
       set: (k, v) => { data[k] = v; }
-    }
+    },
+    getProxyUrl: () => null
   };
   try {
     await deepseekAdapter.fetchUsage(ctx, { month: 8, year: 2026 });
