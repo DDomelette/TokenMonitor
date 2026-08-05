@@ -1,40 +1,31 @@
-// 状态栏:连接状态点 + 刷新时间(与旧版 statusbar 行为一致)。
-// providers:changed 快照里有任一 provider 拿到数据即视为"数据连接正常"。
-import React, { useEffect, useState } from 'react';
-import { onProvidersChanged } from '../api.js';
+// 状态栏:展示 provider 快照中的成功时间、当前错误和陈旧状态。
+import React, { useEffect, useMemo, useState } from 'react';
+import { useProviders } from '../hooks/useProviders.js';
+import { summarizeProviderHealth } from '../provider-health.mjs';
 
-function hasData(snapshot) {
-  return Array.isArray(snapshot) && snapshot.some((p) => p.quota || p.lastError === null);
+function formatRefresh(lastFetchedAt, now) {
+  if (!Number.isFinite(lastFetchedAt)) return '--';
+  const elapsed = Math.max(0, Math.floor((now - lastFetchedAt) / 60000));
+  return elapsed === 0 ? '刚刚刷新' : elapsed + ' 分钟前';
 }
 
 export default function StatusBar() {
-  const [status, setStatus] = useState({ running: false, error: null });
-  const [refreshText, setRefreshText] = useState('--');
-  // 最近一次拿到数据的时间:随 providers:changed 广播(手动刷新/定时轮询成功)重置
-  const [lastRefresh, setLastRefresh] = useState(Date.now());
+  const providers = useProviders();
+  const health = useMemo(() => summarizeProviderHealth(providers), [providers]);
+  const [clock, setClock] = useState(() => Date.now());
 
   useEffect(() => {
-    return onProvidersChanged((snapshot) => {
-      setStatus({ running: hasData(snapshot), error: null });
-      setLastRefresh(Date.now());
-    });
+    const timer = setInterval(() => setClock(Date.now()), 15000);
+    return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    const update = () => {
-      const elapsed = Math.floor((Date.now() - lastRefresh) / 60000);
-      setRefreshText(elapsed === 0 ? '刚刚刷新' : elapsed + ' 分钟前');
-    };
-    update();
-    const timer = setInterval(update, 15000);
-    return () => clearInterval(timer);
-  }, [lastRefresh]);
+  const refreshText = formatRefresh(health.lastFetchedAt, clock);
 
   return (
     <div className="statusbar">
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        <span className={`status-dot ${status.running ? 'online' : 'offline'}`} />
-        <span>{status.running ? '数据连接正常' : (status.error || '未获取数据')}</span>
+      <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+        <span className={`status-dot ${health.mode}`} />
+        <span className="provider-health-text" title={health.text}>{health.text}</span>
       </div>
       <span>平台用量</span>
       <span>{refreshText}</span>

@@ -1,0 +1,21 @@
+:root {
+  --provider-health-warning: var(--warning, #f59e0b);
+  --provider-health-error: var(--error, #ef4444);
+}
+
+.status-dot.stale {
+  background: var(--provider-health-warning);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+}
+
+.status-dot.error {
+  background: var(--provider-health-error);
+}
+
+.provider-health-text {
+  min-width: 0;
+  max-width: min(58vw, 280px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
