@@ -12,7 +12,7 @@ test('accepted settings updates are broadcast to live windows', () => {
   assert.match(main, /function broadcastSettings\(/);
   const updateHandler = ipc.match(/ipcMain\.on\('settings:update'[\s\S]*?\n  \}\);/);
   assert.ok(updateHandler);
-  assert.match(updateHandler[0], /broadcastSettings\(\)/);
+  assert.match(updateHandler[0], /saveSetting\(deps,/);
 });
 
 test('React dashboard initializes layout from the same settings object via validateState', () => {
