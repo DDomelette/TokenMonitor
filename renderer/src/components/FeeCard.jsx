@@ -1,5 +1,6 @@
 // 统计卡片(余额/今日消耗/缓存命中率),逻辑从 fee-cards.js 逐行迁移。
 import React from 'react';
+import { getYesterdayCost } from '../fee-card-date.mjs';
 
 function formatTokens(n) {
   const value = Number(n) || 0;
@@ -14,18 +15,6 @@ function getBalanceClass(totalBalance) {
   if (val < 5) return 'error';
   if (val < 20) return 'warning';
   return 'primary';
-}
-
-function getYesterdayCost(costDaily) {
-  if (!costDaily || !costDaily.length) return 0;
-  const todayStr = new Date().toISOString().slice(0, 10);
-  let todayIdx = -1;
-  for (let i = costDaily.length - 1; i >= 0; i--) {
-    if (costDaily[i].date === todayStr) { todayIdx = i; break; }
-  }
-  if (todayIdx > 0) return costDaily[todayIdx - 1].total;
-  if (todayIdx === -1) return costDaily[costDaily.length - 1].total;
-  return 0;
 }
 
 function placeholders(id) {
