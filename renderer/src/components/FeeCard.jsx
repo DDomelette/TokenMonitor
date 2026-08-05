@@ -1,6 +1,7 @@
 // 统计卡片(余额/今日消耗/缓存命中率),逻辑从 fee-cards.js 逐行迁移。
 import React from 'react';
 import { getYesterdayCost } from '../fee-card-date.mjs';
+import { formatCurrencyAmount } from '../fee-card-money.mjs';
 
 function formatTokens(n) {
   const value = Number(n) || 0;
@@ -33,10 +34,13 @@ export default function FeeCard({ id, balance, stats }) {
       return (
         <div className="fee-card-content">
           <div className="fee-card-value-wrap">
-            <div className={`fee-card-value ${cls}`}>¥{balance.total || '--'}</div>
+            <div className={`fee-card-value ${cls}`}>
+              {formatCurrencyAmount(balance.currency, balance.total)}
+            </div>
           </div>
           <div className="fee-card-sub">
-            充值 {balance.toppedUp || '--'}<br />赠金 {balance.granted || '--'}
+            充值 {formatCurrencyAmount(balance.currency, balance.toppedUp)}<br />
+            赠金 {formatCurrencyAmount(balance.currency, balance.granted)}
           </div>
         </div>
       );
