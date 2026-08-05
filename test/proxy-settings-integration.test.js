@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const { saveSetting } = require('../src/main/core/settings-write');
 const { startScheduler } = require('../src/main/core/scheduler');
+const { fetchBalance } = require('../src/main/providers/deepseek/balance');
 
 function source(relativePath) {
   return fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8');
@@ -90,14 +91,71 @@ test('scheduler ProviderContext consumes the injected live proxy input getter', 
   }
 });
 
-test('main process resolves Electron system proxy and injects one live policy everywhere', () => {
-  const indexSource = source('src/main/index.js');
-  const ipcSource = source('src/main/ipc.js');
+test('stored system mode reaches both scheduler polling and API-key verification as a resolver', async () => {
+  let schedulerProxyInput = null;
+  const provider = {
+    id: 'fake',
+    displayName: 'Fake',
+    capabilities: {
+      balance: false,
+      webUsage: false,
+      quota: true,
+      localLog: false,
+      realtimeProxy: true
+    },
+    authStatus() { return 'ok'; },
+    async fetchQuota(ctx) {
+      schedulerProxyInput = ctx.getProxyUrl();
+      return { provider: 'fake', windows: [] };
+    }
+  };
+  const scheduler = startScheduler({
+    registry: {
+      list: () => [provider],
+      get: (id) => (id === provider.id ? provider : undefined)
+    },
+    store: { get: () => 'system' },
+    broadcast: () => {},
+    intervals: false
+  });
 
-  assert.match(indexSource, /session\.defaultSession\.resolveProxy\(/);
-  assert.match(indexSource, /createProxyInputGetter/);
-  assert.match(indexSource, /getProxyInput:\s*getProxyInput/);
-  assert.match(ipcSource, /getProxyUrl:\s*deps\.getProxyInput/);
+  try {
+    await scheduler.poll('fake', 'quota');
+    assert.equal(typeof schedulerProxyInput, 'function');
+  } finally {
+    scheduler.stop();
+  }
+
+  let verificationProxyInput = null;
+  const result = await fetchBalance('api-key', {
+    proxyUrl: 'system',
+    httpGet: async function (url, headers, proxyInput) {
+      verificationProxyInput = proxyInput;
+      return {
+        is_available: true,
+        balance_infos: [{
+          currency: 'CNY',
+          total_balance: '1',
+          granted_balance: '0',
+          topped_up_balance: '1'
+        }]
+      };
+    }
+  });
+  assert.equal(result.total, '1');
+  assert.equal(typeof verificationProxyInput, 'function');
+});
+
+test('main-process network boundaries centralize Electron system proxy resolution', () => {
+  const policySource = source('src/main/core/proxy-settings.js');
+  const schedulerSource = source('src/main/core/scheduler.js');
+  const balanceSource = source('src/main/providers/deepseek/balance.js');
+
+  assert.match(policySource, /session\.defaultSession/);
+  assert.match(policySource, /defaultSession\.resolveProxy\(targetUrl\)/);
+  assert.match(schedulerSource, /stored === SYSTEM_PROXY_VALUE \? resolveElectronSystemProxy : stored/);
+  assert.match(balanceSource, /value === SYSTEM_PROXY_VALUE/);
+  assert.match(balanceSource, /return resolveElectronSystemProxy/);
 });
 
 test('settings page exposes direct, system, and custom proxy controls with explicit apply feedback', () => {
