@@ -1,6 +1,7 @@
 node_modules/
 build/
 dist/
+/assets/icon.icns
 *.log
 config.json
 history.json
