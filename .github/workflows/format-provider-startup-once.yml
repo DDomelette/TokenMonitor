@@ -1,0 +1,132 @@
+name: Format provider startup integration once
+
+on:
+  push:
+    branches:
+      - fix/issue-38-provider-independent-startup
+
+permissions:
+  contents: write
+
+jobs:
+  format-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/issue-38-provider-independent-startup
+
+      - name: Format exact integration blocks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              text = path.read_text()
+              count = text.count(old)
+              if count == 0 and new in text:
+                  return
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, found {count}')
+              path.write_text(text.replace(old, new, 1))
+
+          ipc = Path('src/main/ipc.js')
+          replace_once(ipc, """  ipcMain.on('login:submit', async (event, { apiKey }) => {
+          try {
+            const deepseek = deps.registry.get('deepseek');
+            const info = await deepseek.fetchBalance(deepseekApiKeyCtx(deps, apiKey));
+            if (!info) throw new Error('API Key 验证失败');
+            deps.store.set('providers.deepseek.apiKey', apiKey);
+            deps.continueWithoutDeepseek();
+          } catch (e) {
+            if (deps.getLoginWindow() && !deps.getLoginWindow().isDestroyed()) {
+              event.sender.send('login:error', 'API Key 验证失败: ' + e.message);
+            }
+          }
+        });
+
+        ipcMain.on('login:skip', () => {
+          deps.continueWithoutDeepseek();
+        });
+          """, """  ipcMain.on('login:submit', async (event, { apiKey }) => {
+            try {
+              const deepseek = deps.registry.get('deepseek');
+              const info = await deepseek.fetchBalance(deepseekApiKeyCtx(deps, apiKey));
+              if (!info) throw new Error('API Key 验证失败');
+              deps.store.set('providers.deepseek.apiKey', apiKey);
+              deps.continueWithoutDeepseek();
+            } catch (e) {
+              if (deps.getLoginWindow() && !deps.getLoginWindow().isDestroyed()) {
+                event.sender.send('login:error', 'API Key 验证失败: ' + e.message);
+              }
+            }
+          });
+
+          ipcMain.on('login:skip', () => {
+            deps.continueWithoutDeepseek();
+          });
+          """)
+
+          index = Path('src/main/index.js')
+          replace_once(index, """  mainWindow.webContents.once('did-finish-load', function () {
+          initializeMainRenderer({
+            mainWindow,
+            store,
+            sanitizeSettings: store.sanitizeSettings,
+            scheduler,
+            runtime,
+            restoreSession,
+            getSessionSnapshot,
+            clearSession,
+            createSessionWindow,
+            broadcastSessionState,
+            updateTrayMenu,
+            now: Date.now
+          });
+        });
+          """, """  mainWindow.webContents.once('did-finish-load', function () {
+            initializeMainRenderer({
+              mainWindow,
+              store,
+              sanitizeSettings: store.sanitizeSettings,
+              scheduler,
+              runtime,
+              restoreSession,
+              getSessionSnapshot,
+              clearSession,
+              createSessionWindow,
+              broadcastSessionState,
+              updateTrayMenu,
+              now: Date.now
+            });
+          });
+          """)
+
+          replace_once(index, """  const initialWindow = chooseInitialWindow({
+          deepseekApiKey: store.get('providers.deepseek.apiKey'),
+          providerSnapshot: scheduler.getSnapshot()
+        });
+        if (initialWindow === 'main') createMainWindow();
+        else createLoginWindow();
+          """, """  const initialWindow = chooseInitialWindow({
+            deepseekApiKey: store.get('providers.deepseek.apiKey'),
+            providerSnapshot: scheduler.getSnapshot()
+          });
+          if (initialWindow === 'main') createMainWindow();
+          else createLoginWindow();
+          """)
+          PY
+
+      - name: Commit formatting
+        run: |
+          git add src/main/index.js src/main/ipc.js
+          if git diff --cached --quiet; then
+            echo "Formatting already applied"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "style: align provider startup integration"
+          git push origin HEAD:fix/issue-38-provider-independent-startup
