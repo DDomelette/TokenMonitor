@@ -1,0 +1,65 @@
+name: Apply issue 38 IPC patch
+
+on:
+  push:
+    branches:
+      - fix/issue-38-optional-deepseek-onboarding
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/issue-38-optional-deepseek-onboarding
+
+      - name: Apply deterministic IPC patch and remove this workflow
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          ipc_path = Path('src/main/ipc.js')
+          source = ipc_path.read_text(encoding='utf-8')
+
+          import_anchor = "const { getSessionSnapshot } = require('./core/session-state');\n"
+          import_line = "const { skipDeepseekLogin } = require('./core/startup-windows');\n"
+          if import_line not in source:
+              if import_anchor not in source:
+                  raise SystemExit('IPC import anchor not found')
+              source = source.replace(import_anchor, import_anchor + import_line, 1)
+
+          close_block = """  ipcMain.on('window:close', () => {\n    if (deps.getLoginWindow()) deps.getLoginWindow().close();\n  });\n"""
+          skip_block = """
+
+  ipcMain.on('login:skip', () => {
+    try {
+      skipDeepseekLogin({
+        getLoginWindow: deps.getLoginWindow,
+        getMainWindow: deps.getMainWindow,
+        createMainWindow: deps.createMainWindow
+      });
+    } catch (error) {
+      console.error('[login:skip]', JSON.stringify({
+        code: error && error.code ? error.code : 'MAIN_WINDOW_UNAVAILABLE'
+      }));
+    }
+  });
+"""
+          if "ipcMain.on('login:skip'" not in source:
+              if close_block not in source:
+                  raise SystemExit('IPC close-handler anchor not found')
+              source = source.replace(close_block, close_block + skip_block, 1)
+
+          ipc_path.write_text(source, encoding='utf-8')
+          Path('.github/workflows/apply-issue-38-ipc-patch.yml').unlink()
+          PY
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main/ipc.js .github/workflows/apply-issue-38-ipc-patch.yml
+          git commit -m "fix: handle optional DeepSeek onboarding skip"
+          git push
