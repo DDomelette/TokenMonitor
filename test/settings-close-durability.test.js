@@ -252,3 +252,20 @@ test('settings window waits for flush before close and keeps the window open on 
   );
   assert.match(html, /id="settingsSaveError"[^>]*role="alert"[^>]*hidden/);
 });
+
+test('settings save error remains visible while any failed key is still pending', () => {
+  const source = fs.readFileSync(
+    path.resolve(__dirname, '../src/renderer/js/settings-window.js'),
+    'utf8'
+  );
+
+  assert.match(source, /var failedSaveKeys = Object\.create\(null\);/);
+  assert.match(
+    source,
+    /onSuccess:\s*function \(key\) \{\s*delete failedSaveKeys\[key\];\s*if \(Object\.keys\(failedSaveKeys\)\.length === 0\) \{\s*showSaveError\(''\);\s*\}\s*\}/
+  );
+  assert.match(
+    source,
+    /onError:\s*function \(error, key\) \{\s*failedSaveKeys\[key\] = true;\s*showSaveError\('设置保存失败，请重试。'\);\s*\}/
+  );
+});
