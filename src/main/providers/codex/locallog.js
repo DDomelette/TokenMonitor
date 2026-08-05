@@ -3,6 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { scanFiles, rollupDaily } = require('../../core/locallog');
+const { filterUsageDaily } = require('../../core/usage-retention');
 
 // ~/.codex/sessions/**/rollout-*.jsonl
 const DEFAULT_ROOT = () => path.join(os.homedir(), '.codex', 'sessions');
@@ -51,7 +52,7 @@ function readLocalLog(ctx, opts) {
     parseLine: parseRolloutLine
   });
   if (records.length && store) {
-    const daily = rollupDaily(records);
+    const daily = filterUsageDaily(rollupDaily(records), store.get('data.historyDays'));
     const usageDaily = store.get('usageDaily') || {};
     Object.keys(daily).forEach((key) => {
       const prev = usageDaily[key] || { input: 0, cached: 0, output: 0, total: 0 };
