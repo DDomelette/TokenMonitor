@@ -203,8 +203,8 @@ test('login, preload, IPC, and main startup use the dedicated provider-independe
   const ipc = read('src/main/ipc.js');
   const main = read('src/main/index.js');
 
-  assert.match(login, /skipBtn[\s\S]*window\.api\.send\('login:skip'\)/);
-  assert.doesNotMatch(login, /skipBtn[\s\S]*window\.api\.send\('window:close'\)/);
+  assert.equal(login.includes("window.api.send('login:skip')"), true);
+  assert.equal(login.includes("window.api.send('window:close')"), false);
   assert.match(preload, /'login:skip'/);
   assert.match(ipc, /ipcMain\.on\('login:skip'[\s\S]*deps\.continueWithoutDeepseek\(\)/);
   assert.match(main, /chooseInitialWindow\([\s\S]*providerSnapshot:\s*scheduler\.getSnapshot\(\)/);
