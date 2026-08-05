@@ -16,7 +16,7 @@ const dashboard = fs.readFileSync(
 // 形成内层直角色块。两者叠加即暗色下的"分层/多余直角边"。
 test('dark surface background applies only to the rounded component-surface card', () => {
   const rule = themeCss.match(
-    /:root\[data-theme='dark'\] ([^{]+)\{\s*background: var\(--bg-card\);/
+    /:root\[data-theme[$]?='dark'\] ([^{]+)\{\s*background: var\(--bg-card\);/
   );
   assert.ok(rule, 'dark bg-card rule must exist');
   const selectors = rule[1].split(',').map((s) => s.trim());
@@ -24,11 +24,11 @@ test('dark surface background applies only to the rounded component-surface card
 });
 
 test('dark theme never paints the grid-item wrapper or nested component roots', () => {
-  assert.doesNotMatch(themeCss, /\[data-theme='dark'\][^{]*\.chart-widget(?![\w-])/);
-  assert.doesNotMatch(themeCss, /\[data-theme='dark'\][^{]*\.quota-card(?![\w-])/);
-  assert.doesNotMatch(themeCss, /\[data-theme='dark'\][^{]*\.stat-card(?![\w-])/);
-  assert.doesNotMatch(themeCss, /\[data-theme='dark'\][^{]*\.provider-bar(?![\w-])/);
-  assert.doesNotMatch(themeCss, /\[data-theme='dark'\][^{]*\.token-heatmap(?![\w-])/);
+  assert.doesNotMatch(themeCss, /\[data-theme[$]?='dark'\][^{]*\.chart-widget(?![\w-])/);
+  assert.doesNotMatch(themeCss, /\[data-theme[$]?='dark'\][^{]*\.quota-card(?![\w-])/);
+  assert.doesNotMatch(themeCss, /\[data-theme[$]?='dark'\][^{]*\.stat-card(?![\w-])/);
+  assert.doesNotMatch(themeCss, /\[data-theme[$]?='dark'\][^{]*\.provider-bar(?![\w-])/);
+  assert.doesNotMatch(themeCss, /\[data-theme[$]?='dark'\][^{]*\.token-heatmap(?![\w-])/);
 });
 
 test('chart-widget class marks the outer grid-stack-item section, not a paintable card', () => {
