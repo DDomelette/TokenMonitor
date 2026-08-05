@@ -115,10 +115,60 @@ test('a parser failure commits prior lines and replays the failing line on recov
   }
 });
 
-test('scheduler awaits asynchronous local-log providers before finishing the channel', () => {
-  const source = fs.readFileSync(
-    path.resolve(__dirname, '../src/main/core/scheduler.js'),
-    'utf8'
-  );
-  assert.match(source, /await provider\.readLocalLog\(ctx\)/);
+test('scheduler awaits asynchronous local-log providers before finishing the channel', async () => {
+  const { startScheduler } = require('../src/main/core/scheduler');
+  let release;
+  let started = false;
+  let settled = false;
+  const blocked = new Promise((resolve) => {
+    release = resolve;
+  });
+  const provider = {
+    id: 'fixture',
+    displayName: 'Fixture',
+    capabilities: {
+      balance: false,
+      webUsage: false,
+      quota: false,
+      localLog: true
+    },
+    authStatus() {
+      return 'ok';
+    },
+    async readLocalLog() {
+      started = true;
+      await blocked;
+    }
+  };
+  const registry = {
+    list() {
+      return [provider];
+    },
+    get(id) {
+      return id === provider.id ? provider : undefined;
+    }
+  };
+  const scheduler = startScheduler({
+    registry,
+    store: { get() { return null; } },
+    broadcast() {},
+    intervals: false
+  });
+  const poll = scheduler.poll(provider.id, 'localLog').then(() => {
+    settled = true;
+  });
+
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(started, true);
+    assert.equal(settled, false, 'poll must remain pending while the provider scan is blocked');
+
+    release();
+    await poll;
+    assert.equal(settled, true);
+  } finally {
+    release();
+    await poll.catch(() => {});
+    scheduler.stop();
+  }
 });
