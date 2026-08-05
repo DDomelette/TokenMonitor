@@ -102,27 +102,40 @@
 /* ======== 亚克力主题:窗口高透透出 DWM 磨砂,卡片 Fluent 半透叠加层 ======== */
 :root[data-theme='acrylic-light'] {
   color-scheme: light;
-  --bg-window: rgba(255, 255, 255, 0.25);
-  --bg-card: rgba(255, 255, 255, 0.45);
+  --bg-window: rgba(255, 255, 255, 0.12);
+  --bg-card: rgba(255, 255, 255, 0.35);
   --border: rgba(0, 0, 0, 0.10);
   --shadow-window: 0 12px 34px rgba(0, 0, 0, 0.18);
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.10);
+  /* 分层投影:卡片像浮在磨砂底上,避免与窗口底割裂 */
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.10), 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 :root[data-theme='acrylic-dark'] {
   color-scheme: dark;
-  --bg-window: rgba(20, 22, 28, 0.35);
+  --bg-window: rgba(20, 22, 28, 0.22);
   --bg-card: rgba(255, 255, 255, 0.06);
   --text-primary: #F3F4F6;
   --text-secondary: #A8B0BD;
   --text-inverse: #111827;
   --border: rgba(255, 255, 255, 0.14);
   --shadow-window: 0 12px 34px rgba(0, 0, 0, 0.34);
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.28);
+  --shadow-card: 0 6px 20px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.30);
 }
 
 /* 亚克力亮调窗口底色高透;acrylic-dark 由 data-theme$='dark' 的规则消费上方变量 */
 :root[data-theme='acrylic-light'] #app {
   background: var(--bg-window);
   box-shadow: var(--shadow-window);
+}
+
+/* 亮调卡片基础样式无阴影,亚克力亮调显式补上悬浮投影 */
+:root[data-theme='acrylic-light'] .component-surface {
+  box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(16px) saturate(140%);
+}
+
+/* 亚克力暗调:在暗色规则之上叠加玻璃内高光与背景模糊 */
+:root[data-theme='acrylic-dark'] .component-surface {
+  box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px) saturate(140%);
 }

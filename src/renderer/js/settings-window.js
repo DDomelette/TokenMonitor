@@ -390,6 +390,7 @@
     var windowValues = (themeSettings && themeSettings.window) || {};
     var theme = ThemeModeLink.resolveTheme(windowValues, systemThemeMedia.matches);
     document.body.classList.toggle('dark', theme === 'dark' || theme === 'acrylic-dark');
+    document.body.dataset.theme = theme;
   }
 
   function applyInitialTheme(settings) {
