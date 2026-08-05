@@ -1,6 +1,7 @@
 // DeepSeek Provider 适配器:组装 usage/balance/session/proxy,对外暴露统一 ProviderAdapter 接口。
 const { UsageFetcher } = require('./usage');
 const { fetchBalance } = require('./balance');
+const { isRetainedDay } = require('../../core/usage-retention');
 
 const fetcher = new UsageFetcher();
 
@@ -21,6 +22,7 @@ function persistDaily(store, dailyData) {
   let changed = false;
   dailyData.forEach((d) => {
     if (!d || !d.date) return;
+    if (!isRetainedDay(d.date, store.get('data.historyDays'))) return;
     const total = Math.round(Number(d.total) || 0);
     if (total <= 0) return;
     usageDaily['deepseek:' + d.date] = {
