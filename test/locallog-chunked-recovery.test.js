@@ -81,7 +81,7 @@ test('budget exhaustion finishes only the already-started line and never request
   );
 });
 
-test('a parser failure commits prior lines and replays the failing line on recovery', async () => {
+test('a parser failure rolls back every unreturned record for replay', async () => {
   const root = makeTempDir();
   const file = path.join(root, 'fixture.jsonl');
   const store = makeCursorStore();
@@ -101,14 +101,14 @@ test('a parser failure commits prior lines and replays the failing line on recov
     );
 
     assert.equal(
-      store.values['cursor.fixture'][file].offset,
-      Buffer.byteLength(lines[0]),
-      'the throwing line itself must remain uncommitted'
+      store.values['cursor.fixture'],
+      undefined,
+      'a rejected scan must not commit cursors for records that were never returned to the provider'
     );
 
     failSecond = false;
     const recovered = await scan(root, store, (raw) => JSON.parse(raw));
-    assert.deepEqual(recovered.map((record) => record.sequence), [2, 3]);
+    assert.deepEqual(recovered.map((record) => record.sequence), [1, 2, 3]);
     assert.equal(store.values['cursor.fixture'][file].offset, fs.statSync(file).size);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
