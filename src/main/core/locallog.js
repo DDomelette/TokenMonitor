@@ -23,13 +23,19 @@ function normalizeTimestampMs(value, nowMs) {
   return ts;
 }
 
-// 本地时区日期键 'YYYY-MM-DD'(与 fetcher 的 localTodayStr 同款逻辑)。
-function localTzSec() {
-  return -new Date().getTimezoneOffset() * 60;
+function pad2(value) {
+  return String(value).padStart(2, '0');
 }
 
+// 返回目标时间戳所在时刻的本地时区偏移秒数,而不是扫描时刻的偏移。
+function localTzSec(tsMs = Date.now()) {
+  return -new Date(tsMs).getTimezoneOffset() * 60;
+}
+
+// 本地时区日期键 'YYYY-MM-DD',直接读取目标时间戳的本地日历字段。
 function localDayStr(tsMs) {
-  return new Date(tsMs + localTzSec() * 1000).toISOString().slice(0, 10);
+  const date = new Date(tsMs);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
 function walkFiles(root, match) {
