@@ -98,6 +98,34 @@ function parseSystemProxyResult(rawResult) {
   throw unsupportedSystemProxy();
 }
 
+async function resolveElectronSystemProxy(targetUrl) {
+  let defaultSession;
+  try {
+    const { session } = require('electron');
+    defaultSession = session && session.defaultSession;
+  } catch (_) {
+    defaultSession = null;
+  }
+
+  if (!defaultSession || typeof defaultSession.resolveProxy !== 'function') {
+    throw proxyError(
+      'SYSTEM_PROXY_RESOLUTION_FAILED',
+      '无法读取系统代理设置'
+    );
+  }
+
+  let result;
+  try {
+    result = await defaultSession.resolveProxy(targetUrl);
+  } catch (_) {
+    throw proxyError(
+      'SYSTEM_PROXY_RESOLUTION_FAILED',
+      '无法读取系统代理设置'
+    );
+  }
+  return parseSystemProxyResult(result);
+}
+
 function createProxyInputGetter({ store, resolveSystemProxy }) {
   return function getProxyInput() {
     const stored = normalizeStoredProxyValue(store.get('providers.proxyUrl'));
@@ -133,5 +161,6 @@ module.exports = {
   normalizeStoredProxyValue,
   classifyStoredProxyValue,
   parseSystemProxyResult,
+  resolveElectronSystemProxy,
   createProxyInputGetter
 };
