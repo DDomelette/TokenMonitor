@@ -11,7 +11,7 @@ var systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
 function applyTheme() {
   var windowValues = (themeSettings && themeSettings.window) || {};
   var theme = ThemeModeLink.resolveTheme(windowValues, systemThemeMedia.matches);
-  document.body.classList.toggle('dark', theme === 'dark');
+  document.body.classList.toggle('dark', theme === 'dark' || theme === 'acrylic-dark');
 }
 
 window.api.invoke('get:settings').then(function (settings) {

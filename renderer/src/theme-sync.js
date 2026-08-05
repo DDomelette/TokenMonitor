@@ -1,4 +1,5 @@
-const VALID_MODES = new Set(['system', 'dark', 'light']);
+const VALID_MODES = new Set(['system', 'dark', 'light', 'acrylic-light', 'acrylic-dark']);
+const VALID_THEMES = new Set(['light', 'dark', 'acrylic-light', 'acrylic-dark']);
 
 function windowSettings(settings) {
   return settings && settings.window && typeof settings.window === 'object'
@@ -14,12 +15,12 @@ export function resolveTheme(settings, systemDark) {
   if (followSystem || mode === 'system') {
     return systemDark ? 'dark' : 'light';
   }
-  return mode === 'dark' ? 'dark' : 'light';
+  return mode;
 }
 
 function setElementTheme(element, theme) {
   if (!element) return;
-  const isDark = theme === 'dark';
+  const isDark = theme === 'dark' || theme === 'acrylic-dark';
   if (element.dataset) element.dataset.theme = theme;
   if (element.classList && typeof element.classList.toggle === 'function') {
     element.classList.toggle('dark', isDark);
@@ -45,7 +46,7 @@ export function installThemeSync(options) {
   const unsubscribers = [];
 
   function commit(theme) {
-    if (disposed || (theme !== 'dark' && theme !== 'light')) return null;
+    if (disposed || !VALID_THEMES.has(theme)) return null;
     if (theme === currentTheme) return theme;
     currentTheme = theme;
     setElementTheme(root, theme);
@@ -56,7 +57,7 @@ export function installThemeSync(options) {
 
   function recompute(fallbackTheme) {
     if (settings) return commit(resolveTheme(settings, systemDark));
-    if (fallbackTheme === 'dark' || fallbackTheme === 'light') {
+    if (VALID_THEMES.has(fallbackTheme)) {
       return commit(fallbackTheme);
     }
     return null;

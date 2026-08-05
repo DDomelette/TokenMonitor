@@ -149,7 +149,7 @@ test('final theme stylesheet is loaded last and covers all main-window surface c
     path.resolve(__dirname, '../renderer/src/theme.css'),
     'utf8'
   );
-  assert.match(source, /:root\[data-theme=['"]dark['"]\]/);
+  assert.match(source, /:root\[data-theme[$]?=['"]dark['"]\]/);
   assert.match(source, /--bg-window:/);
   assert.match(source, /--bg-card:/);
   assert.match(source, /--text-primary:/);

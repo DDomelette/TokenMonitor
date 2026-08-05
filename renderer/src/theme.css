@@ -2,7 +2,7 @@
   color-scheme: light;
 }
 
-:root[data-theme='dark'] {
+:root[data-theme$='dark'] {
   color-scheme: dark;
   --bg-window: rgba(30, 32, 38, 0.94);
   --bg-card: #252730;
@@ -14,87 +14,115 @@
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.28);
 }
 
-:root[data-theme='dark'] body {
+:root[data-theme$='dark'] body {
   color: var(--text-primary);
 }
 
-:root[data-theme='dark'] #app {
+:root[data-theme$='dark'] #app {
   background: var(--bg-window);
   color: var(--text-primary);
   box-shadow: var(--shadow-window);
 }
 
-:root[data-theme='dark'] .component-surface {
+:root[data-theme$='dark'] .component-surface {
   background: var(--bg-card);
   border-color: var(--border);
   color: var(--text-primary);
   box-shadow: var(--shadow-card);
 }
 
-:root[data-theme='dark'] .fee-card-surface {
+:root[data-theme$='dark'] .fee-card-surface {
   background: linear-gradient(145deg, rgba(116, 184, 252, 0.09), transparent 52%), var(--bg-card);
   border-color: var(--border);
   color: var(--text-primary);
 }
 
-:root[data-theme='dark'] .titlebar,
-:root[data-theme='dark'] .statusbar {
+:root[data-theme$='dark'] .titlebar,
+:root[data-theme$='dark'] .statusbar {
   color: var(--text-secondary);
   border-color: rgba(255, 255, 255, 0.09);
 }
 
-:root[data-theme='dark'] .titlebar-title,
-:root[data-theme='dark'] .component-title,
-:root[data-theme='dark'] .quota-card-title,
-:root[data-theme='dark'] .stat-value {
+:root[data-theme$='dark'] .titlebar-title,
+:root[data-theme$='dark'] .component-title,
+:root[data-theme$='dark'] .quota-card-title,
+:root[data-theme$='dark'] .stat-value {
   color: var(--text-primary);
 }
 
-:root[data-theme='dark'] .titlebar-btn {
+:root[data-theme$='dark'] .titlebar-btn {
   color: var(--text-secondary);
 }
 
-:root[data-theme='dark'] .titlebar-btn:hover,
-:root[data-theme='dark'] .heatmap-tab:hover,
-:root[data-theme='dark'] .heatmap-mode-btn:hover {
+:root[data-theme$='dark'] .titlebar-btn:hover,
+:root[data-theme$='dark'] .heatmap-tab:hover,
+:root[data-theme$='dark'] .heatmap-mode-btn:hover {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
 }
 
-:root[data-theme='dark'] .statusbar {
+:root[data-theme$='dark'] .statusbar {
   border-top-color: rgba(255, 255, 255, 0.09);
 }
 
-:root[data-theme='dark'] .content::-webkit-scrollbar-thumb {
+:root[data-theme$='dark'] .content::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.20);
 }
 
-:root[data-theme='dark'] .content::-webkit-scrollbar-thumb:hover {
+:root[data-theme$='dark'] .content::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.30);
 }
 
-:root[data-theme='dark'] .heatmap-tab,
-:root[data-theme='dark'] .heatmap-mode-btn,
-:root[data-theme='dark'] .quota-card-plan,
-:root[data-theme='dark'] .stat-label,
-:root[data-theme='dark'] .component-subtitle,
-:root[data-theme='dark'] .embed-empty,
-:root[data-theme='dark'] .placeholder {
+:root[data-theme$='dark'] .heatmap-tab,
+:root[data-theme$='dark'] .heatmap-mode-btn,
+:root[data-theme$='dark'] .quota-card-plan,
+:root[data-theme$='dark'] .stat-label,
+:root[data-theme$='dark'] .component-subtitle,
+:root[data-theme$='dark'] .embed-empty,
+:root[data-theme$='dark'] .placeholder {
   color: var(--text-secondary);
 }
 
-:root[data-theme='dark'] .heatmap-tooltip {
+:root[data-theme$='dark'] .heatmap-tooltip {
   background: rgba(20, 22, 28, 0.97);
   border: 1px solid var(--border);
   color: var(--text-primary);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
 }
 
-:root[data-theme='dark'] .heatmap-tooltip-label {
+:root[data-theme$='dark'] .heatmap-tooltip-label {
   color: rgba(229, 231, 235, 0.76);
 }
 
-:root[data-theme='dark'] .grid-stack-placeholder > .placeholder-content,
-:root[data-theme='dark'] .layout-editing .grid-stack-item-content {
+:root[data-theme$='dark'] .grid-stack-placeholder > .placeholder-content,
+:root[data-theme$='dark'] .layout-editing .grid-stack-item-content {
   border-color: rgba(116, 184, 252, 0.46);
+}
+
+/* ======== 亚克力主题:窗口高透透出 DWM 磨砂,卡片 Fluent 半透叠加层 ======== */
+:root[data-theme='acrylic-light'] {
+  color-scheme: light;
+  --bg-window: rgba(255, 255, 255, 0.25);
+  --bg-card: rgba(255, 255, 255, 0.45);
+  --border: rgba(0, 0, 0, 0.10);
+  --shadow-window: 0 12px 34px rgba(0, 0, 0, 0.18);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.10);
+}
+
+:root[data-theme='acrylic-dark'] {
+  color-scheme: dark;
+  --bg-window: rgba(20, 22, 28, 0.35);
+  --bg-card: rgba(255, 255, 255, 0.06);
+  --text-primary: #F3F4F6;
+  --text-secondary: #A8B0BD;
+  --text-inverse: #111827;
+  --border: rgba(255, 255, 255, 0.14);
+  --shadow-window: 0 12px 34px rgba(0, 0, 0, 0.34);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.28);
+}
+
+/* 亚克力亮调窗口底色高透;acrylic-dark 由 data-theme$='dark' 的规则消费上方变量 */
+:root[data-theme='acrylic-light'] #app {
+  background: var(--bg-window);
+  box-shadow: var(--shadow-window);
 }

@@ -11,7 +11,7 @@
   // 手动选择夜间/日间模式时必须同时关闭跟随系统,否则选择会被系统主题覆盖。
   function linkedWrites(key, value) {
     if (key !== 'window.darkMode') return [];
-    if (value === 'dark' || value === 'light') {
+    if (VALID_MODES[value] && value !== 'system') {
       return [{ key: 'window.followSystemTheme', value: false }];
     }
     if (value === 'system') {
@@ -22,7 +22,7 @@
 
   // 与 renderer/src/theme-sync.js 的 resolveTheme 同一套语义:
   // followSystemTheme 是主开关,为 true 时忽略 darkMode 手动值,跟随系统。
-  var VALID_MODES = { system: true, dark: true, light: true };
+  var VALID_MODES = { system: true, dark: true, light: true, 'acrylic-light': true, 'acrylic-dark': true };
 
   function resolveTheme(windowValues, systemDark) {
     var values = windowValues && typeof windowValues === 'object' ? windowValues : {};
