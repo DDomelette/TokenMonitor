@@ -25,7 +25,7 @@ var tailDefinitions = [
   { group: '数据', key: 'data.historyDays', type: 'select', label: '历史数据保留', options: [
     { value: 3, label: '3 天' }, { value: 7, label: '7 天' }, { value: 30, label: '30 天' }
   ], default: 7 },
-  { group: '关于', key: 'apiKey', type: 'password', label: 'API Key', default: '' }
+  { group: '关于', key: 'apiKey', type: 'credential', label: 'API Key', default: '' }
 ];
 
 window.SettingsDefinitions = windowDefinitions.concat(componentDefinitions, tailDefinitions);
