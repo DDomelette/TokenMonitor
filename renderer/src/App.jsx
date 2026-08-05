@@ -6,11 +6,13 @@ import { initProviders } from './store.js';
 import { getSettings, on, send } from './api.js';
 import { installSettingsOpenBridge } from './settings-bridge.js';
 import { installThemeSync } from './theme-sync.js';
+import { installLayoutLockSync } from './layout-lock.js';
 
 initProviders();
 
 export default function App() {
   const [editing, setEditing] = useState(false);
+  const [layoutLocked, setLayoutLocked] = useState(true);
 
   useEffect(() => installSettingsOpenBridge(on, send), []);
 
@@ -25,6 +27,16 @@ export default function App() {
     )
   }), []);
 
+  useEffect(() => installLayoutLockSync({
+    getSettings,
+    on,
+    onChange: setLayoutLocked
+  }), []);
+
+  useEffect(() => {
+    if (layoutLocked) setEditing(false);
+  }, [layoutLocked]);
+
   // ctrl + 滚轮缩放(与旧版 app.js 行为一致):走主进程 zoom factor
   useEffect(() => {
     const onWheel = (e) => {
@@ -37,11 +49,20 @@ export default function App() {
     return () => window.removeEventListener('wheel', onWheel);
   }, []);
 
+  const effectiveEditing = editing && !layoutLocked;
+  const onToggleLayoutEdit = () => {
+    if (!layoutLocked) setEditing((current) => !current);
+  };
+
   // 缩放已由系统原生处理(resizable: true),不再渲染应用层 ResizeHandles
   return (
     <div id="app">
-      <TitleBar editing={editing} onToggleLayoutEdit={() => setEditing((e) => !e)} />
-      <Dashboard editing={editing} />
+      <TitleBar
+        editing={effectiveEditing}
+        layoutLocked={layoutLocked}
+        onToggleLayoutEdit={onToggleLayoutEdit}
+      />
+      <Dashboard editing={effectiveEditing} />
       <StatusBar />
     </div>
   );
