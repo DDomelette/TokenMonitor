@@ -86,8 +86,25 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange }
     ]);
   }
 
-  function hasAuthFailure(st) {
-    return Object.keys(st.channelErrors).some((channel) => st.channelErrors[channel].auth);
+  function setAuthStatus(provider, status) {
+    const st = ensureState(provider);
+    if (!status || st.authStatus === status) return false;
+    st.authStatus = status;
+    st.authStatusChangedAt = Date.now();
+    touch(provider.id);
+    return true;
+  }
+
+  function readAuthStatus(provider) {
+    if (typeof provider.authStatus !== 'function') return 'ok';
+    return provider.authStatus(ctxFor(provider)) || 'ok';
+  }
+
+  function canPollProtected(provider) {
+    const observed = readAuthStatus(provider);
+    if (observed !== 'missing') return true;
+    setAuthStatus(provider, 'missing');
+    return false;
   }
 
   function recordFailure(provider, channel, error) {
@@ -122,7 +139,7 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange }
     st.lastFetchedAt = Date.now();
     delete st.channelErrors[channel];
 
-    if (st.authStatus === 'expired' && !hasAuthFailure(st)) {
+    if (st.authStatus !== 'ok') {
       st.authStatus = 'ok';
       st.authStatusChangedAt = Date.now();
     }
@@ -136,10 +153,6 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange }
     if (!st.channelErrors[channel]) return;
 
     delete st.channelErrors[channel];
-    if (st.authStatus === 'expired' && !hasAuthFailure(st)) {
-      st.authStatus = 'ok';
-      st.authStatusChangedAt = Date.now();
-    }
     refreshFailureSummary(st);
     touch(provider.id);
   }
@@ -156,6 +169,7 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange }
   }
 
   async function pollBalance(provider) {
+    if (!canPollProtected(provider)) return;
     try {
       const balance = await provider.fetchBalance(ctxFor(provider));
       recordSuccess(provider, 'balance', 'balance', balance);
@@ -165,6 +179,7 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange }
   }
 
   async function pollUsage(provider) {
+    if (!canPollProtected(provider)) return;
     const now = new Date();
     try {
       const usage = await provider.fetchUsage(ctxFor(provider), {
@@ -178,6 +193,7 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange }
   }
 
   async function pollQuota(provider) {
+    if (!canPollProtected(provider)) return;
     try {
       const quota = await provider.fetchQuota(ctxFor(provider));
       recordSuccess(provider, 'quota', 'quota', quota);
@@ -205,10 +221,7 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange }
   function start() {
     registry.list().forEach((provider) => {
       const st = ensureState(provider);
-      const ctx = ctxFor(provider);
-      st.authStatus = typeof provider.authStatus === 'function'
-        ? provider.authStatus(ctx)
-        : 'ok';
+      st.authStatus = readAuthStatus(provider);
       if (provider.capabilities.balance && typeof provider.fetchBalance === 'function') {
         schedule(provider, 'balance', () => pollBalance(provider), enabled.balance);
       }
