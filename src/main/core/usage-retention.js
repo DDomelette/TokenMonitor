@@ -15,6 +15,21 @@ function localDayString(timestamp) {
   return year + '-' + month + '-' + day;
 }
 
+function isValidLocalDay(day) {
+  if (typeof day !== 'string' || !DAY_PATTERN.test(day)) return false;
+
+  const year = Number(day.slice(0, 4));
+  const month = Number(day.slice(5, 7));
+  const date = Number(day.slice(8, 10));
+  const probe = new Date(0);
+  probe.setHours(12, 0, 0, 0);
+  probe.setFullYear(year, month - 1, date);
+
+  return probe.getFullYear() === year
+    && probe.getMonth() === month - 1
+    && probe.getDate() === date;
+}
+
 function retentionStartDay(historyDays, nowMs) {
   const days = normalizeHistoryDays(historyDays);
   if (!days) return null;
@@ -29,7 +44,7 @@ function retentionStartDay(historyDays, nowMs) {
 }
 
 function isRetainedDay(day, historyDays, nowMs) {
-  if (typeof day !== 'string' || !DAY_PATTERN.test(day)) return false;
+  if (!isValidLocalDay(day)) return false;
   const days = normalizeHistoryDays(historyDays);
   if (!days) return true;
 
@@ -42,8 +57,6 @@ function isRetainedDay(day, historyDays, nowMs) {
 function filterUsageDaily(usageDaily, historyDays, nowMs) {
   const source = usageDaily && typeof usageDaily === 'object' ? usageDaily : {};
   const days = normalizeHistoryDays(historyDays);
-  if (!days) return Object.assign({}, source);
-
   const filtered = {};
   Object.keys(source).forEach((key) => {
     const match = DAILY_KEY_PATTERN.exec(key);
