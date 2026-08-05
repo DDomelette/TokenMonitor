@@ -40,9 +40,15 @@ test('ctrl wheel zoom goes through the main process zoom factor', () => {
 
 test('zoom factor is persisted and restored on startup', () => {
   assert.match(main, /zoomFactor/);
-  const create = main.match(/function createMainWindow\(\) \{[\s\S]*?\n\}/);
-  assert.ok(create);
-  assert.match(create[0], /setZoomFactor/);
+  const createStart = main.indexOf('function createMainWindow() {');
+  const createEnd = main.indexOf('function createLoginWindow() {', createStart);
+  assert.ok(createStart >= 0 && createEnd > createStart);
+  const create = main.slice(createStart, createEnd);
+  assert.equal(create.includes("mainWindow.webContents.on('did-finish-load'"), true);
+  assert.equal(
+    create.includes("mainWindow.webContents.setZoomFactor(store.get('window.zoomFactor') || 1)"),
+    true
+  );
 });
 
 test('css no longer relies on the partial font-scale variable', () => {
