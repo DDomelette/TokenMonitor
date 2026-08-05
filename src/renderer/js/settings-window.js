@@ -77,6 +77,48 @@
     btn.textContent = loggedIn ? '重新登录平台' : '登录平台获取用量';
   }
 
+  function showDeepseekApiKeyFeedback(message, isError) {
+    var feedback = document.getElementById('deepseekApiKeyFeedback');
+    if (!feedback) return;
+    feedback.textContent = message || '';
+    feedback.style.color = isError ? '#c43b3b' : 'var(--text-secondary)';
+    feedback.hidden = !message;
+  }
+
+  function setDeepseekApiKeyPending(pending) {
+    var input = document.getElementById('deepseekApiKeyInput');
+    var button = document.getElementById('deepseekApiKeySaveBtn');
+    if (input) input.disabled = pending;
+    if (button) {
+      button.disabled = pending;
+      button.textContent = pending ? '验证中…' : '验证并保存';
+    }
+  }
+
+  function submitDeepseekApiKey() {
+    var input = document.getElementById('deepseekApiKeyInput');
+    var candidate = input ? input.value.trim() : '';
+    if (!candidate) {
+      showDeepseekApiKeyFeedback('请输入新的 API Key。', true);
+      return;
+    }
+
+    setDeepseekApiKeyPending(true);
+    showDeepseekApiKeyFeedback('', false);
+    window.api.invoke('settings:replace-api-key', { apiKey: candidate }).then(function () {
+      var currentInput = document.getElementById('deepseekApiKeyInput');
+      if (currentInput) {
+        currentInput.value = '';
+        currentInput.placeholder = '已保存,输入新 Key 以更换';
+      }
+      showDeepseekApiKeyFeedback('API Key 已验证并保存。', false);
+    }).catch(function () {
+      showDeepseekApiKeyFeedback('API Key 验证失败，已保留原值。', true);
+    }).then(function () {
+      setDeepseekApiKeyPending(false);
+    });
+  }
+
   function render(def, val, placeholder) {
     var v = val !== undefined ? val : def.default;
     switch (def.type) {
@@ -101,6 +143,12 @@
           '</div>' +
         '</div>';
       }
+      case 'credential':
+        return '<div style="display:flex;flex-direction:column;gap:6px;width:100%;">' +
+          '<input type="password" class="text-input" id="deepseekApiKeyInput" value=""' + (placeholder ? ' placeholder="' + placeholder + '"' : ' placeholder="输入新的 API Key"') + '>' +
+          '<button type="button" class="btn btn-primary" id="deepseekApiKeySaveBtn">验证并保存</button>' +
+          '<span id="deepseekApiKeyFeedback" role="status" hidden style="font-size:12px;line-height:1.3;"></span>' +
+        '</div>';
       case 'password':
         return '<input type="password" class="text-input" data-key="' + def.key + '" value="' + v + '"' + (placeholder ? ' placeholder="' + placeholder + '"' : '') + '>';
       default:
@@ -122,7 +170,7 @@
           if (d.key === 'apiKey' && settings.providers && settings.providers.deepseek && settings.providers.deepseek.apiKeySet) {
             placeholder = '已保存,输入新 Key 以更换';
           }
-          return '<div class="setting-row' + (d.type === 'slider' ? ' vertical' : '') + '"><div><span class="setting-label">' + d.label + '</span></div>' + render(d, getNested(settings, d.key), placeholder) + '</div>';
+          return '<div class="setting-row' + (d.type === 'slider' || d.type === 'credential' ? ' vertical' : '') + '"><div><span class="setting-label">' + d.label + '</span></div>' + render(d, getNested(settings, d.key), placeholder) + '</div>';
         }).join('') + '</div>';
     });
     return html;
@@ -139,6 +187,11 @@
     var reloginBtn = document.getElementById('sessionReloginBtn');
     if (reloginBtn) {
       reloginBtn.addEventListener('click', function () { window.api.send('session:relogin'); });
+    }
+
+    var deepseekApiKeySaveBtn = document.getElementById('deepseekApiKeySaveBtn');
+    if (deepseekApiKeySaveBtn) {
+      deepseekApiKeySaveBtn.addEventListener('click', submitDeepseekApiKey);
     }
 
     document.querySelectorAll('input[data-key]').forEach(function (el) {
