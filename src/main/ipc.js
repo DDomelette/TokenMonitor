@@ -56,29 +56,22 @@ module.exports = function setupIPC(deps) {
   /* ======== 登录 ======== */
 
   ipcMain.on('login:submit', async (event, { apiKey }) => {
-    const main = getMain();
-    try {
-      const deepseek = deps.registry.get('deepseek');
-      const info = await deepseek.fetchBalance(deepseekApiKeyCtx(deps, apiKey));
-      if (!info) throw new Error('API Key 验证失败');
-      deps.store.set('providers.deepseek.apiKey', apiKey);
-      if (deps.getLoginWindow()) deps.getLoginWindow().close();
-      if (!main) deps.createMainWindow();
-      else main.show();
-      const win = getMain();
-      if (win && !win.webContents.isDestroyed()) {
-        win.webContents.on('did-finish-load', () => {
-          win.webContents.send('settings:loaded', sanitizeSettings(deps.store.store));
-          deps.scheduler.poll('deepseek', 'balance');
-          deps.createSessionWindow();
-        });
-      }
-    } catch (e) {
-      if (deps.getLoginWindow() && !deps.getLoginWindow().isDestroyed()) {
-        event.sender.send('login:error', 'API Key 验证失败: ' + e.message);
-      }
+  try {
+    const deepseek = deps.registry.get('deepseek');
+    const info = await deepseek.fetchBalance(deepseekApiKeyCtx(deps, apiKey));
+    if (!info) throw new Error('API Key 验证失败');
+    deps.store.set('providers.deepseek.apiKey', apiKey);
+    deps.continueWithoutDeepseek();
+  } catch (e) {
+    if (deps.getLoginWindow() && !deps.getLoginWindow().isDestroyed()) {
+      event.sender.send('login:error', 'API Key 验证失败: ' + e.message);
     }
-  });
+  }
+});
+
+ipcMain.on('login:skip', () => {
+  deps.continueWithoutDeepseek();
+});
 
   /* ======== Dashboard / Providers ======== */
 

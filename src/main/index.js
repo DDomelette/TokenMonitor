@@ -17,6 +17,11 @@ const {
   getTraySessionLabel,
   restoreSession
 } = require('./core/session-state');
+const {
+  chooseInitialWindow,
+  continueWithoutDeepseek: continueWithoutDeepseekPolicy,
+  initializeMainRenderer
+} = require('./core/provider-startup');
 
 let mainWindow = null;
 let loginWindow = null;
@@ -117,6 +122,22 @@ function createMainWindow() {
   // 整窗透明度已由 backgroundMaterial:'acrylic' 的 DWM 磨砂取代。
   // 禁用 setOpacity:它会加 WS_EX_LAYERED,分层窗口缩放时新区域被清成透明黑,
   // 整窗统一 alpha 混合后显示为黑边。
+  mainWindow.webContents.once('did-finish-load', function () {
+  initializeMainRenderer({
+    mainWindow,
+    store,
+    sanitizeSettings: store.sanitizeSettings,
+    scheduler,
+    runtime,
+    restoreSession,
+    getSessionSnapshot,
+    clearSession,
+    createSessionWindow,
+    broadcastSessionState,
+    updateTrayMenu,
+    now: Date.now
+  });
+});
   loadRenderer(mainWindow);
 
   // 渲染进程异常诊断:加载失败/进程崩溃时写入日志
@@ -189,6 +210,14 @@ function createLoginWindow() {
   loginWindow.loadFile(path.join(__dirname, '..', 'renderer', 'login.html'));
   loginWindow.on('closed', () => {
     loginWindow = null;
+  });
+}
+
+function continueWithoutDeepseek() {
+  return continueWithoutDeepseekPolicy({
+    getMainWindow: () => mainWindow,
+    getLoginWindow: () => loginWindow,
+    createMainWindow
   });
 }
 
@@ -502,6 +531,7 @@ app.whenReady().then(() => {
     getLoginWindow: () => loginWindow,
     createMainWindow,
     createLoginWindow,
+    continueWithoutDeepseek,
     createSessionWindow,
     createSettingsWindow,
     broadcastSettings,
@@ -516,31 +546,13 @@ app.whenReady().then(() => {
   createTray();
   app.setLoginItemSettings({ openAtLogin: store.get('window.autoLaunch') });
 
-  const apiKey = store.get('providers.deepseek.apiKey');
-  if (apiKey) {
-    createMainWindow();
-    mainWindow.webContents.on('did-finish-load', () => {
-      mainWindow.webContents.send('settings:loaded', store.sanitizeSettings(store.store));
-      scheduler.poll('deepseek', 'balance');
+  const initialWindow = chooseInitialWindow({
+  deepseekApiKey: store.get('providers.deepseek.apiKey'),
+  providerSnapshot: scheduler.getSnapshot()
+});
+if (initialWindow === 'main') createMainWindow();
+else createLoginWindow();
 
-      const storedSessionToken = store.get('providers.deepseek.sessionToken') || null;
-      restoreSession(runtime, storedSessionToken);
-      if (getSessionSnapshot(runtime).loggedIn) {
-        console.log('[session] startup with stored token, starting usage timer');
-        scheduler.poll('deepseek', 'usage');
-        runtime.proxyStatus = { running: true, port: 0, activeSince: Date.now() };
-      } else {
-        console.log('[session] startup without token, opening platform login window');
-        clearSession(runtime, '请登录平台获取用量');
-        runtime.proxyStatus = { running: false, port: 0, error: '请登录平台获取用量' };
-        createSessionWindow();
-      }
-      broadcastSessionState();
-      updateTrayMenu();
-    });
-  } else {
-    createLoginWindow();
-  }
 });
 
 app.on('window-all-closed', () => {
@@ -554,5 +566,19 @@ app.on('before-quit', () => {
 });
 
 app.on('activate', () => {
-  if (mainWindow) mainWindow.show();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    return;
+  }
+  if (loginWindow && !loginWindow.isDestroyed()) {
+    loginWindow.show();
+    return;
+  }
+
+  const initialWindow = chooseInitialWindow({
+    deepseekApiKey: store.get('providers.deepseek.apiKey'),
+    providerSnapshot: scheduler ? scheduler.getSnapshot() : []
+  });
+  if (initialWindow === 'main') createMainWindow();
+  else createLoginWindow();
 });
