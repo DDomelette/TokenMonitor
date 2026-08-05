@@ -1,7 +1,12 @@
 (function () {
-  var debounceTimer = null;
   var definitions = window.SettingsDefinitions;
   var sessionState = { loggedIn: false, error: null };
+  var settingsUpdateQueue = window.SettingsDebounce.createKeyedDebouncer({
+    delay: 300,
+    onEmit: function (key, value) {
+      window.api.send('settings:update', { key: key, value: value });
+    }
+  });
 
   function getNested(obj, path) {
     return path.split('.').reduce(function (o, k) { return (o && o[k] !== undefined) ? o[k] : undefined; }, obj);
@@ -135,10 +140,7 @@
   }
 
   function handleSelectChange(key, value) {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(function () {
-      window.api.send('settings:update', { key: key, value: value });
-    }, 300);
+    settingsUpdateQueue.schedule(key, value);
   }
 
   function handleChange(el) {
@@ -156,10 +158,7 @@
     } else {
       value = el.value;
     }
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(function () {
-      window.api.send('settings:update', { key: key, value: value });
-    }, 300);
+    settingsUpdateQueue.schedule(key, value);
   }
 
   function renderAll(settings) {
