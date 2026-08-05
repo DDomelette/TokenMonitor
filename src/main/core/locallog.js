@@ -48,12 +48,10 @@ function pad2(value) {
   return String(value).padStart(2, '0');
 }
 
-// 返回目标时间戳所在时刻的本地时区偏移秒数,而不是扫描时刻的偏移。
 function localTzSec(tsMs = Date.now()) {
   return -new Date(tsMs).getTimezoneOffset() * 60;
 }
 
-// 本地时区日期键 'YYYY-MM-DD',直接读取目标时间戳的本地日历字段。
 function localDayStr(tsMs) {
   const date = new Date(tsMs);
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
@@ -146,10 +144,11 @@ async function scanFiles({
         while (readPosition < stat.size) {
           if (remainingBudget <= 0 && pending.length === 0) break;
 
+          const finishingStartedLine = remainingBudget <= 0;
           const fileRemaining = stat.size - readPosition;
-          const budgetAllowance = remainingBudget > 0
-            ? remainingBudget
-            : readChunkBytes;
+          const budgetAllowance = finishingStartedLine
+            ? readChunkBytes
+            : remainingBudget;
           const readSize = Math.min(readChunkBytes, fileRemaining, budgetAllowance);
           if (readSize <= 0) break;
 
@@ -165,6 +164,7 @@ async function scanFiles({
             : Buffer.from(chunk);
 
           let lineStart = 0;
+          let completedLines = 0;
           while (true) {
             const newlineIndex = pending.indexOf(0x0a, lineStart);
             if (newlineIndex < 0) break;
@@ -177,6 +177,8 @@ async function scanFiles({
 
             committedOffset += newlineIndex + 1 - lineStart;
             lineStart = newlineIndex + 1;
+            completedLines += 1;
+            if (finishingStartedLine) break;
           }
 
           if (lineStart > 0) {
@@ -185,6 +187,10 @@ async function scanFiles({
           cursors[filePath] = { offset: committedOffset, mtimeMs: stat.mtimeMs };
 
           await yieldBlock();
+          if (finishingStartedLine && completedLines > 0) {
+            pending = Buffer.alloc(0);
+            break;
+          }
           if (remainingBudget <= 0 && pending.length === 0) break;
         }
       } catch (error) {
@@ -214,8 +220,6 @@ async function scanFiles({
   return records;
 }
 
-// 纯函数:records → { '<provider>:<YYYY-MM-DD>': { input, cached, output, total } }。
-// total 缺失时按 input+output 推导。无效时间戳直接跳过,绝不回退到当前时间。
 function rollupDaily(records, diagnostics, nowMs) {
   const out = {};
   const evaluationNowMs = evaluationTimeMs(nowMs);
