@@ -45,18 +45,20 @@
 环境要求:Node.js ≥ 18(推荐 20+)、npm ≥ 9。Windows 11 可获得完整的亚克力与圆角体验(Windows 10 退化为直角、无磨砂)。
 
 ```bash
-npm install
-npm --prefix renderer install
-npm run build:renderer   # 构建渲染层(React + Vite)
-npm start                # 启动 Electron
+npm ci
+npm --prefix renderer ci
+npm start                # 自动构建 renderer 并启动 Electron
 ```
+
+`npm start` 会先执行 renderer 的生产构建。构建失败时 Electron 不会启动；如果绕过 npm 脚本直接启动 Electron，主进程也会在创建窗口前检查构建产物并明确退出。
 
 首次启动会弹出登录窗口,输入 DeepSeek API Key(`sk-` 开头,在 [DeepSeek 开发者平台](https://platform.deepseek.com/api_keys) 创建),随后按提示完成平台登录即可。
 
 ### 常用命令
 
 ```bash
-npm test                 # 运行全部测试(node --test,约 116 项)
+npm test                 # 运行全部测试(node --test)
+npm run build:renderer   # 仅构建渲染层(React + Vite)
 npm run dev:renderer     # 渲染层 Vite 开发服务器
 npm run build:win        # 打包 Windows 安装包(electron-builder)
 npm run build:mac        # 打包 macOS

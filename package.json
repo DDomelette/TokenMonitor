@@ -4,6 +4,7 @@
   "description": "DeepSeek API 用量监控悬浮窗",
   "main": "src/main/bootstrap.js",
   "scripts": {
+    "prestart": "npm run build:renderer",
     "start": "electron .",
     "test": "node --test",
     "build:win": "npm run build:renderer && electron-builder --win",

@@ -3,6 +3,7 @@ const storeModule = require('./store');
 const { runStoreBootstrap } = require('./core/startup-recovery');
 const { installRoundedMainWindowShapeObserver } = require('./core/window-shape');
 const { pruneUsageDaily } = require('./core/usage-retention');
+const { assertRendererBuild } = require('./core/renderer-entry');
 
 installRoundedMainWindowShapeObserver(app);
 
@@ -13,17 +14,23 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.whenReady()
-    .then(() => runStoreBootstrap({
-      app,
-      dialog,
-      shell,
-      storeModule,
-      afterInitialize: () => pruneUsageDaily(storeModule),
-      loadMain: () => require('./index'),
-      logger: console
-    }))
-    .catch(() => {
-      console.error('[bootstrap]', JSON.stringify({ code: 'BOOTSTRAP_FAILED' }));
+    .then(() => {
+      assertRendererBuild();
+      return runStoreBootstrap({
+        app,
+        dialog,
+        shell,
+        storeModule,
+        afterInitialize: () => pruneUsageDaily(storeModule),
+        loadMain: () => require('./index'),
+        logger: console
+      });
+    })
+    .catch((error) => {
+      const details = error && error.code === 'RENDERER_BUILD_MISSING'
+        ? { code: 'RENDERER_BUILD_MISSING', action: 'npm run build:renderer' }
+        : { code: 'BOOTSTRAP_FAILED' };
+      console.error('[bootstrap]', JSON.stringify(details));
       app.isQuitting = true;
       app.quit();
     });
