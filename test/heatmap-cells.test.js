@@ -2,10 +2,20 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { buildWeeks, colorLevel, formatToken, isoWeekKey } = require('../renderer/src/lib/heatmap.js');
+const {
+  buildSundayWeekTotals,
+  buildWeeks,
+  colorLevel,
+  formatToken,
+  sundayWeekKey
+} = require('../renderer/src/lib/heatmap.js');
 
 const root = path.resolve(__dirname, '..');
 const heatmapJsx = fs.readFileSync(path.join(root, 'renderer/src/components/TokenHeatmap.jsx'), 'utf8');
+
+function localDate(day) {
+  return new Date(day + 'T00:00:00');
+}
 
 test('buildWeeks(2026) starts at the Sunday of the week containing Jan 1 and fills 53 columns', () => {
   const weeks = buildWeeks(2026);
@@ -17,6 +27,59 @@ test('buildWeeks(2026) starts at the Sunday of the week containing Jan 1 and fil
   assert.equal(weeks[0][4].inYear, true);
   // 最后一列补足 7 天
   assert.ok(weeks[52].every((cell) => cell && cell.date));
+});
+
+test('visual week keys use the Sunday that starts the rendered column', () => {
+  assert.equal(sundayWeekKey(localDate('2026-08-02')), '2026-08-02');
+  assert.equal(sundayWeekKey(localDate('2026-08-03')), '2026-08-02');
+  assert.equal(sundayWeekKey(localDate('2026-08-08')), '2026-08-02');
+  assert.equal(sundayWeekKey(localDate('2026-08-09')), '2026-08-09');
+});
+
+test('Sunday-only and Monday-only usage aggregate into their visual columns', () => {
+  const totals = buildSundayWeekTotals({
+    '2026-08-02': 5,
+    '2026-08-03': 7,
+    '2026-08-09': 11
+  });
+
+  assert.deepEqual(totals, {
+    '2026-08-02': 12,
+    '2026-08-09': 11
+  });
+});
+
+test('a cross-year column is keyed by its actual Sunday while summing selected-year days', () => {
+  const weeks = buildWeeks(2026);
+  const firstColumnKey = sundayWeekKey(localDate(weeks[0][0].date));
+  const totals = buildSundayWeekTotals({
+    '2026-01-01': 4,
+    '2026-01-03': 6
+  });
+
+  assert.equal(firstColumnKey, '2025-12-28');
+  assert.equal(totals[firstColumnKey], 10);
+});
+
+test('every weekly total equals the sum of the seven daily cells in that rendered column', () => {
+  const weeks = buildWeeks(2026);
+  const days = {};
+
+  weeks.forEach((column) => {
+    column.forEach((cell, row) => {
+      if (cell.inYear) days[cell.date] = row + 1;
+    });
+  });
+
+  const totals = buildSundayWeekTotals(days);
+  weeks.forEach((column) => {
+    const key = sundayWeekKey(localDate(column[0].date));
+    const expected = column.reduce(
+      (sum, cell) => sum + (cell.inYear ? Number(days[cell.date]) || 0 : 0),
+      0
+    );
+    assert.equal(totals[key] || 0, expected, key);
+  });
 });
 
 test('colorLevel maps four quartiles plus zero', () => {
@@ -34,8 +97,11 @@ test('formatToken uses 亿 / 万 / thousands separators', () => {
   assert.equal(formatToken(8521), '8,521');
 });
 
-test('TokenHeatmap renders 53x7 grid with daily/weekly/cumulative tabs and tooltip copy', () => {
+test('TokenHeatmap renders visual-week totals without ISO-week aggregation', () => {
   assert.match(heatmapJsx, /buildWeeks/);
+  assert.match(heatmapJsx, /buildSundayWeekTotals/);
+  assert.match(heatmapJsx, /sundayWeekKey/);
+  assert.doesNotMatch(heatmapJsx, /isoWeekKey/);
   assert.match(heatmapJsx, /colorLevel/);
   assert.match(heatmapJsx, /formatToken/);
   assert.match(heatmapJsx, /每日/);
