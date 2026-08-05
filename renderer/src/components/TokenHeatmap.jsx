@@ -3,6 +3,12 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getHeatmap, onProvidersChanged } from '../api.js';
 import { buildSundayWeekTotals, buildWeeks, colorLevel, formatToken, sundayWeekKey } from '../lib/heatmap.js';
+import {
+  createLocalCalendarClock,
+  findDayColumn,
+  localDayKey,
+  resolveHeatmapYear
+} from '../lib/local-calendar-clock.js';
 
 const CELL = 12;
 const GAP = 2;
@@ -19,7 +25,9 @@ function dateLabel(date) {
   return (d.getMonth() + 1) + '月' + d.getDate() + '日';
 }
 
-export default function TokenHeatmap({ provider = 'all', year = new Date().getFullYear() }) {
+export default function TokenHeatmap({ provider = 'all', year: requestedYear }) {
+  const [clockDate, setClockDate] = useState(() => new Date());
+  const year = resolveHeatmapYear(requestedYear, clockDate);
   const [selProvider, setSelProvider] = useState(provider);
   const [mode, setMode] = useState('daily');
   const [data, setData] = useState({ days: {}, maxDaily: 0 });
@@ -30,6 +38,13 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
   const tipTimers = useRef({ settle: null, hide: null, fade: null });
   const pendingTip = useRef(null);
   const lastTipX = useRef(0);
+
+  useEffect(() => {
+    const clock = createLocalCalendarClock({
+      onChange: (date) => setClockDate(date)
+    });
+    return () => clock.stop();
+  }, []);
 
   useEffect(() => {
     getHeatmap({ provider: selProvider, year: year }).then(setData).catch(() => {});
@@ -61,14 +76,11 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
   const colWidth = mode === 'weekly' ? CELL + GAP + 6 : CELL + GAP;
   const availWidth = boxWidth > 0 ? boxWidth - 4 : window.innerWidth - 52;
   const maxCols = Math.max(4, Math.floor(availWidth / colWidth));
-  const todayCol = useMemo(() => {
-    const now = new Date();
-    const iso = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
-    for (let c = 0; c < weeks.length; c++) {
-      if (weeks[c].some((cell) => cell && cell.date === iso)) return c;
-    }
-    return weeks.length - 1;
-  }, [weeks]);
+  const todayKey = localDayKey(clockDate);
+  const todayCol = useMemo(
+    () => findDayColumn(weeks, todayKey),
+    [weeks, todayKey]
+  );
   const end = maxCols >= weeks.length ? weeks.length : Math.min(weeks.length, todayCol + 1);
   const start = maxCols >= weeks.length ? 0 : Math.max(0, end - maxCols);
   const visibleWeeks = useMemo(() => weeks.slice(start, end), [weeks, start, end]);
