@@ -118,7 +118,7 @@ test('scheduler broadcasts quota snapshot on successful fetch', async () => {
   }
 });
 
-test('scheduler marks authStatus expired and broadcasts on 401 quota error', async () => {
+test('scheduler marks authStatus expired and broadcasts a safe summary on 401 quota error', async () => {
   const adapter = makeFakeAdapter({
     fetchQuota: async () => { throw new Error('Unauthorized: session expired (HTTP 401)'); }
   });
@@ -134,7 +134,7 @@ test('scheduler marks authStatus expired and broadcasts on 401 quota error', asy
     const last = broadcasts.filter((b) => b.channel === 'providers:changed').pop();
     const snap = last.payload.find((p) => p.id === 'fake');
     assert.equal(snap.authStatus, 'expired');
-    assert.ok(/401|unauthoriz/i.test(snap.lastError || ''));
+    assert.equal(snap.lastError, '认证已过期或无效');
   } finally {
     scheduler.stop();
   }
