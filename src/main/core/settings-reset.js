@@ -15,7 +15,38 @@ function shouldRestore(value) {
   return value !== undefined && value !== '' && value !== null;
 }
 
-function resetSettingsStore(store) {
+function resolveElectronApp(appOverride) {
+  if (appOverride && typeof appOverride.setLoginItemSettings === 'function') {
+    return appOverride;
+  }
+
+  try {
+    const electron = require('electron');
+    if (electron && electron.app
+        && typeof electron.app.setLoginItemSettings === 'function') {
+      return electron.app;
+    }
+  } catch (_) {
+    // Plain Node tests and unsupported runtimes may not expose Electron APIs.
+  }
+
+  return null;
+}
+
+function syncAutoLaunchAfterReset(store, appOverride) {
+  if (!store || typeof store.get !== 'function') {
+    throw new TypeError('syncAutoLaunchAfterReset requires a store with a get method');
+  }
+
+  const electronApp = resolveElectronApp(appOverride);
+  if (!electronApp) return false;
+
+  const autoLaunch = store.get('window.autoLaunch');
+  electronApp.setLoginItemSettings({ openAtLogin: autoLaunch === true });
+  return true;
+}
+
+function resetSettingsStore(store, options) {
   if (!store || typeof store.get !== 'function'
       || typeof store.set !== 'function' || typeof store.clear !== 'function') {
     throw new TypeError('resetSettingsStore requires a store with get/set/clear methods');
@@ -29,11 +60,14 @@ function resetSettingsStore(store) {
 
   store.clear();
   kept.forEach((value, key) => store.set(key, value));
+  syncAutoLaunchAfterReset(store, options && options.app);
   return Array.from(kept.keys());
 }
 
 module.exports = {
   RESET_KEEP_KEYS,
   resetSettingsStore,
-  shouldRestore
+  resolveElectronApp,
+  shouldRestore,
+  syncAutoLaunchAfterReset
 };
