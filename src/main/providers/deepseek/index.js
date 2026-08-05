@@ -15,6 +15,14 @@ function monthKey(y, m) {
 }
 
 function requestOptionsFor(ctx) {
+  // ProviderContext supplies both functions in production. Keep direct-mode callers and
+  // focused adapter tests compatible when they provide only the store boundary.
+  if (!ctx || typeof ctx.getProxyUrl !== 'function') {
+    return {
+      httpGet: ctx && ctx.httpGet,
+      proxyUrl: null
+    };
+  }
   return {
     httpGet: ctx.httpGet,
     proxyUrl: ctx.getProxyUrl()
