@@ -7,6 +7,7 @@ const { resetSettingsStore } = require('./core/settings-reset');
 const { saveSetting } = require('./core/settings-write');
 const { replaceDeepseekApiKey } = require('./core/api-key-replacement');
 const { filterUsageDaily } = require('./core/usage-retention');
+const { getSessionSnapshot } = require('./core/session-state');
 
 function deepseekApiKeyCtx(deps, apiKey) {
   return {
@@ -214,7 +215,12 @@ module.exports = function setupIPC(deps) {
   });
 
   ipcMain.handle('get:session-state', () => {
-    return { loggedIn: !!deps.runtime.sessionToken, error: deps.runtime.proxyStatus.error || null };
+    const snapshot = getSessionSnapshot(deps.runtime);
+    return {
+      status: snapshot.status,
+      loggedIn: snapshot.loggedIn,
+      error: snapshot.error
+    };
   });
 
   ipcMain.on('window:close', () => {
