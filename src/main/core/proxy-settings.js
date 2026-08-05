@@ -33,7 +33,10 @@ function normalizeCustomProxyUrl(rawValue) {
   }
 
   const hostname = parsed.hostname.toLowerCase();
-  const authority = hostname.includes(':') ? `[${hostname}]` : hostname;
+  const alreadyBracketed = hostname.startsWith('[') && hostname.endsWith(']');
+  const authority = alreadyBracketed
+    ? hostname
+    : (hostname.includes(':') ? `[${hostname}]` : hostname);
   return `http://${authority}${port === 80 ? '' : `:${port}`}`;
 }
 
