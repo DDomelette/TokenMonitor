@@ -27,10 +27,10 @@ if (!gotTheLock) {
       });
     })
     .catch((error) => {
-      const code = error && error.code === 'RENDERER_BUILD_MISSING'
-        ? 'RENDERER_BUILD_MISSING'
-        : 'BOOTSTRAP_FAILED';
-      console.error('[bootstrap]', JSON.stringify({ code }));
+      const details = error && error.code === 'RENDERER_BUILD_MISSING'
+        ? { code: 'RENDERER_BUILD_MISSING', action: 'npm run build:renderer' }
+        : { code: 'BOOTSTRAP_FAILED' };
+      console.error('[bootstrap]', JSON.stringify(details));
       app.isQuitting = true;
       app.quit();
     });
