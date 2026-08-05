@@ -2,39 +2,34 @@
 
 ## Goal
 
-Remove every drawn and interactive pixel outside the main window's rounded outline while preserving the current non-layered, resizable acrylic window architecture.
+Remove drawn and interactive pixels outside the main window's rounded outline while preserving the current non-layered, resizable acrylic window architecture.
 
 ## Current failure
 
-The main `BrowserWindow` is deliberately non-transparent and relies on `roundedCorners: true`, while the React root explicitly uses `border-radius: 0`. This makes the result dependent on the platform compositor's native corner behavior. On platforms or configurations where that compositor clipping is absent or incomplete, the full rectangular native surface remains visible behind the content.
+The main `BrowserWindow` is deliberately non-transparent and relies on `roundedCorners: true`, while the existing global stylesheet sets `#app { border-radius: 0; }`. The visible result therefore depends on compositor-specific native clipping. Where that clipping is absent or incomplete, the rectangular native surface can remain visible behind the intended curve.
 
-Changing back to `transparent: true` is not selected because the repository already moved away from layered-window opacity/resize behavior to avoid resize artifacts. CSS clipping alone also cannot remove pixels drawn by the native window surface outside the CSS root.
+Returning to `transparent: true` is not selected because the repository already moved away from layered-window opacity behavior to avoid resize artifacts. CSS clipping alone also cannot remove native-window pixels or mouse hit targets outside the CSS root.
 
 ## Selected design
 
-Use Electron's experimental `BrowserWindow.setShape()` API on Windows and Linux to define the actual drawable and interactive native window region. The API states that pixels outside the supplied rectangles are not drawn and mouse events fall through. macOS remains on its native rounded-window path because `setShape()` is not supported there.
+Use Electron's experimental `BrowserWindow.setShape()` API on Windows and Linux to define the actual drawable and interactive native region. Pixels outside the supplied rectangles are not drawn and do not receive mouse events. macOS remains on its native rounded-window path because `setShape()` is not supported there.
 
-A pure `window-shape.js` module will build a rounded rectangle from horizontal scanline spans. The middle area is one rectangle; the top and bottom arcs are represented by one-pixel-high integer rectangles calculated from pixel-center circle geometry. This produces a bounded set of rectangles for the current 16 DIP radius and can be tested without Electron.
+A pure `src/main/core/window-shape.js` module builds a rounded rectangle from horizontal scanline spans. The middle is represented by one rectangle; the top and bottom arcs use one-pixel-high integer rectangles calculated from pixel-center circle geometry. Width, height, and radius are normalized to finite positive integers, and radius is clamped to half the smaller dimension.
 
-The helper will:
+The bootstrap process installs a `browser-window-created` observer before `index.js` is loaded. Each new window is watched for navigation, but shape behavior is attached only when its URL matches the main React entry `renderer/dist/index.html`. This identifies the main window without modifying the large main-process entry or affecting login, settings, or platform-session windows. Once matched, the helper applies the shape from `getContentSize()` and reapplies it on every native `resize` event.
 
-- normalize width, height, and radius to finite positive integers;
-- clamp radius to half the smaller dimension;
-- generate rectangles entirely inside the current content size;
-- call `win.setShape(rectangles)` only on `win32` or `linux` and only when the API exists;
-- return a boolean indicating whether a native shape was applied.
+`setShape()` is wrapped as a safe capability: Windows/Linux call it when the method is present; macOS, unsupported runtimes, and window-manager failures return a no-op result instead of aborting startup. Electron content sizes are device-independent, so the fixed 16 DIP radius remains aligned across display scaling and window sizes.
 
-The main process will apply the shape immediately after creating the main window and again on every native `resize` event. Electron window/content dimensions are reported in device-independent coordinates, so recomputing from `getContentSize()` keeps the radius and clipping aligned across Windows scaling factors and window sizes.
-
-The React `#app` root will use the same `--radius-window` value and `overflow: hidden`. This prevents titlebar, scroll content, statusbar, pseudo-elements, and temporary layout content from painting outside the visual curve inside the shaped native region.
+The renderer imports a final `window-shape.css` override after the existing global stylesheet. It keeps outer roots transparent and sets `#app` to `border-radius: var(--radius-window)` with `overflow: hidden`, ensuring child content, status areas, pseudo-elements, and temporary layout output remain inside the same visual curve even though the earlier global rule sets radius to zero.
 
 ## Test strategy
 
-1. Pure geometry tests prove that center/top-center pixels are included, all four outer corner pixels are excluded, every rectangle remains within bounds, and small windows clamp safely.
-2. Application tests prove that Windows/Linux call `setShape()` with the current content size while macOS and unsupported windows are no-ops.
-3. Integration guards prove `src/main/index.js` applies the shape at creation and resize, and `renderer/src/styles.css` clips `#app` with the shared radius.
-4. The complete repository suite, renderer build, and Electron/Xvfb smoke remain required. The existing smoke exercises actual application creation and resize-related rendering; the geometry helper supplies deterministic platform-independent verification where Xvfb cannot visually validate Windows DWM composition.
+1. Pure geometry tests prove all four outer corner pixels are excluded, center and edge-center pixels remain included, rectangles stay bounded/integer/positive, symmetry is maintained, and small dimensions clamp safely.
+2. Capability tests prove Windows/Linux call `setShape()` with the current content size while macOS and unsupported windows are safe no-ops.
+3. Observer tests prove non-main navigation is ignored, the main renderer is shaped once, resize recomputes the shape, and repeated navigation does not install duplicate resize handlers.
+4. Integration guards prove bootstrap installs the observer before loading `index.js`, and the final CSS override is imported after `styles.css`.
+5. The complete repository suite, renderer build, and Electron/Xvfb smoke remain required. Xvfb verifies real application startup and resize-related rendering; pure geometry tests supply deterministic cross-platform coverage where CI cannot inspect Windows compositor pixels directly.
 
 ## Scope boundary
 
-This change affects the main window only. Login/settings window styling, acrylic material, opacity controls, layout resizing semantics, theme behavior, shadows, and card rounding are unchanged.
+This change affects the main window only. Login/settings/session windows, acrylic material, opacity controls, layout resizing semantics, theme behavior, shadows, card rounding, and persisted bounds are unchanged.
