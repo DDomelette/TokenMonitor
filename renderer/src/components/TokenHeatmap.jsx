@@ -2,7 +2,7 @@
 // 颜色用主题 primary(#74B8FC)的 5 档透明度;hover tooltip 显示日期与用量。
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getHeatmap, onProvidersChanged } from '../api.js';
-import { buildWeeks, colorLevel, formatToken, isoWeekKey } from '../lib/heatmap.js';
+import { buildSundayWeekTotals, buildWeeks, colorLevel, formatToken, sundayWeekKey } from '../lib/heatmap.js';
 
 const CELL = 12;
 const GAP = 2;
@@ -86,17 +86,8 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
     return labels;
   }, [weeks, year]);
 
-  // 每周模式:按 ISO 周求和
-  const weekTotals = useMemo(() => {
-    const totals = {};
-    Object.keys(days).forEach((date) => {
-      const total = Number(days[date]) || 0;
-      if (total <= 0) return;
-      const key = isoWeekKey(new Date(date + 'T00:00:00'));
-      totals[key] = (totals[key] || 0) + total;
-    });
-    return totals;
-  }, [days]);
+  // 每周模式:按当前可视列的周日至周六区间求和
+  const weekTotals = useMemo(() => buildSundayWeekTotals(days), [days]);
   const maxWeek = Math.max(0, ...Object.values(weekTotals));
 
   // 累计模式:从年初逐日累加
@@ -250,7 +241,10 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
         {visibleWeeks.map((col, i) => {
           const c = start + i;
           const date = lastInYearDate(c);
-          const total = date && weekTotals[isoWeekKey(new Date(date + 'T00:00:00'))] ? weekTotals[isoWeekKey(new Date(date + 'T00:00:00'))] : 0;
+          const weekKey = col[0]
+            ? sundayWeekKey(new Date(col[0].date + 'T00:00:00'))
+            : null;
+          const total = weekKey ? weekTotals[weekKey] || 0 : 0;
           const level = colorLevel(total, maxWeek);
           return (
             <div
@@ -306,9 +300,12 @@ export default function TokenHeatmap({ provider = 'all', year = new Date().getFu
     </div>
   );
 
-  // 浮层头部右侧的总量:每日=当日合计;每周=该 ISO 周合计;累计=年初至该日累计
+  // 浮层头部右侧的总量:每日=当日合计;每周=所在可视列合计;累计=年初至该日累计
   function tipTotal(date) {
-    if (mode === 'weekly') return weekTotals[isoWeekKey(new Date(date + 'T00:00:00'))] || 0;
+    if (mode === 'weekly') {
+      const key = sundayWeekKey(new Date(date + 'T00:00:00'));
+      return key ? weekTotals[key] || 0 : 0;
+    }
     if (mode === 'cumulative') return cumByDate[date] || 0;
     return Number(days[date]) || 0;
   }
