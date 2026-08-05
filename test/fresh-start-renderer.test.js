@@ -49,6 +49,7 @@ test('bootstrap checks the renderer build before store recovery can load the mai
   assert.ok(checkIndex < recoveryIndex, 'renderer preflight must run before store recovery loads main');
   assert.ok(recoveryIndex < loadMainIndex, 'main loading must remain behind store recovery');
   assert.match(source, /RENDERER_BUILD_MISSING/);
+  assert.match(source, /action: 'npm run build:renderer'/);
 });
 
 test('CI and quick-start documentation verify a build from an absent renderer dist', () => {
