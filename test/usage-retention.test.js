@@ -119,25 +119,24 @@ test('DeepSeek persistence filters expired days without clearing fetched-month m
   assert.doesNotMatch(source, /delete\(FETCHED_MONTHS_KEY\)|set\(FETCHED_MONTHS_KEY, \[\]\)/);
 });
 
-test('setting changes, startup, and heatmap reads all use the same retention boundary', () => {
-  const mainSource = fs.readFileSync(
-    path.resolve(__dirname, '../src/main/index.js'),
+test('retention setting changes and startup cleanup use the same physical boundary', () => {
+  const writerSource = fs.readFileSync(
+    path.resolve(__dirname, '../src/main/core/settings-write.js'),
     'utf8'
   );
-  const ipcSource = fs.readFileSync(
-    path.resolve(__dirname, '../src/main/ipc.js'),
+  const bootstrapSource = fs.readFileSync(
+    path.resolve(__dirname, '../src/main/bootstrap.js'),
     'utf8'
   );
 
-  assert.match(mainSource, /const \{ pruneUsageDaily \} = require\('\.\/core\/usage-retention'\);/);
-  assert.match(mainSource, /case 'data\.historyDays':\s*pruneUsageDaily\(store\);\s*break;/);
+  assert.match(writerSource, /const \{ pruneUsageDaily \} = require\('\.\/usage-retention'\);/);
   assert.match(
-    mainSource,
-    /app\.whenReady\(\)\.then\(\(\) => \{\s*migrateLegacyKeys\(store\);\s*pruneUsageDaily\(store\);[\s\S]*?startSchedulerRuntime\(\);/
+    writerSource,
+    /deps\.store\.set\(targetKey, payload\.value\);\s*if \(targetKey === 'data\.historyDays'\) \{\s*pruneUsageDaily\(deps\.store\);\s*\}/
   );
-  assert.match(ipcSource, /const \{ filterUsageDaily \} = require\('\.\/core\/usage-retention'\);/);
+  assert.match(bootstrapSource, /const \{ pruneUsageDaily \} = require\('\.\/core\/usage-retention'\);/);
   assert.match(
-    ipcSource,
-    /const usageDaily = filterUsageDaily\(deps\.store\.get\('usageDaily'\) \|\| \{\}, deps\.store\.get\('data\.historyDays'\)\);/
+    bootstrapSource,
+    /loadMain:\s*\(\) => \{\s*pruneUsageDaily\(storeModule\);\s*return require\('\.\/index'\);\s*\}/
   );
 });
