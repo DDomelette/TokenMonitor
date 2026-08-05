@@ -1,9 +1,12 @@
-// localLog 通道核心:增量文件扫描 + 按日聚合(纯函数可测)。
+// localLog 通道核心:异步增量文件扫描 + 按日聚合(纯函数可测)。
 const fs = require('fs');
 const path = require('path');
 
+const fsp = fs.promises;
 const MIN_TIMESTAMP_MS = Date.UTC(2000, 0, 1);
 const MAX_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_SCAN_CHUNK_BYTES = 64 * 1024;
+const DEFAULT_SCAN_BUDGET_BYTES = 4 * 1024 * 1024;
 
 function incrementDiagnostic(diagnostics, key) {
   if (!diagnostics || typeof diagnostics !== 'object') return;
@@ -23,6 +26,24 @@ function normalizeTimestampMs(value, nowMs) {
   return ts;
 }
 
+function positiveInteger(value, fallback) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : fallback;
+}
+
+function defaultYieldToLoop() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+async function pathExists(targetPath) {
+  try {
+    await fsp.access(targetPath);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 function pad2(value) {
   return String(value).padStart(2, '0');
 }
@@ -38,26 +59,37 @@ function localDayStr(tsMs) {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
-function walkFiles(root, match) {
+async function walkFiles(root, match) {
   const out = [];
-  const walk = (dir) => {
+
+  async function walk(dir) {
     let entries;
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
-    entries.forEach((entry) => {
+    try {
+      entries = await fsp.readdir(dir, { withFileTypes: true });
+    } catch (_) {
+      return;
+    }
+
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
       const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (match.test(entry.name)) out.push(full);
-    });
-  };
-  walk(root);
+      if (entry.isDirectory()) {
+        await walk(full);
+        continue;
+      }
+      match.lastIndex = 0;
+      if (match.test(entry.name)) out.push(full);
+    }
+  }
+
+  if (root) await walk(root);
   return out;
 }
 
-// 增量扫描:只读自上次 offset 起的新字节。游标存 { path: { offset, mtimeMs } }(store 键 cursorKey)。
-// 文件截断(stat.size < offset)或轮换(mtime 变小)→ offset 回退 0。末尾无换行的不完整行不消费,等补齐后再读。
-// 注意:offset 是字节偏移,消费长度必须按 Buffer.byteLength 计算,不能按字符数。
-// 返回 UsageRecord[] 行记录(带 provider 标记)。完整但无效的行仍会推进游标。
-function scanFiles({
+// 异步增量扫描:游标存 { path: { offset, mtimeMs } }。每次只分配固定块,并限制单轮总读取量。
+// 文件截断或轮换时从头重读;游标只提交到已完整解析(或明确跳过)的换行符之后。
+// 若预算在一行中间耗尽,为避免该行永久饥饿,只继续到该行的下一个换行符后停止。
+async function scanFiles({
   root,
   match,
   cursorStore,
@@ -65,62 +97,120 @@ function scanFiles({
   providerId,
   parseLine,
   diagnostics,
-  nowMs
+  nowMs,
+  chunkBytes,
+  maxBytesPerScan,
+  yieldToLoop
 }) {
   const records = [];
-  if (!root || !fs.existsSync(root)) return records;
+  if (!root || !(await pathExists(root))) return records;
 
   const evaluationNowMs = evaluationTimeMs(nowMs);
+  const readChunkBytes = positiveInteger(chunkBytes, DEFAULT_SCAN_CHUNK_BYTES);
+  let remainingBudget = positiveInteger(maxBytesPerScan, DEFAULT_SCAN_BUDGET_BYTES);
+  const yieldBlock = typeof yieldToLoop === 'function' ? yieldToLoop : defaultYieldToLoop;
   const cursors = cursorStore.get(cursorKey) || {};
-  const files = walkFiles(root, match);
+  const files = await walkFiles(root, match);
 
-  files.forEach((filePath) => {
-    const cursor = cursors[filePath] || { offset: 0, mtimeMs: 0 };
-    let stat;
-    try { stat = fs.statSync(filePath); } catch (e) { return; }
+  try {
+    for (const filePath of files) {
+      if (remainingBudget <= 0) break;
 
-    let offset = cursor.offset || 0;
-    // 截断(文件变小)或轮换(mtime 回退)→ 从头重读
-    if (stat.size < offset || (cursor.mtimeMs && stat.mtimeMs < cursor.mtimeMs)) offset = 0;
-
-    if (stat.size <= offset) {
-      cursors[filePath] = { offset: offset, mtimeMs: stat.mtimeMs };
-      return;
-    }
-
-    const fd = fs.openSync(filePath, 'r');
-    const buf = Buffer.alloc(stat.size - offset);
-    fs.readSync(fd, buf, 0, buf.length, offset);
-    fs.closeSync(fd);
-
-    const text = buf.toString('utf8');
-    let consumText = text;
-    if (!text.endsWith('\n')) {
-      const lastNl = text.lastIndexOf('\n');
-      if (lastNl === -1) {
-        // 整个 chunk 都是不完整行,不消费
-        cursors[filePath] = { offset: offset, mtimeMs: stat.mtimeMs };
-        return;
+      const cursor = cursors[filePath] || { offset: 0, mtimeMs: 0 };
+      let stat;
+      try {
+        stat = await fsp.stat(filePath);
+      } catch (_) {
+        continue;
       }
-      consumText = text.slice(0, lastNl + 1);
+
+      let offset = Number(cursor.offset) || 0;
+      if (stat.size < offset || (cursor.mtimeMs && stat.mtimeMs < cursor.mtimeMs)) {
+        offset = 0;
+      }
+
+      if (stat.size <= offset) {
+        cursors[filePath] = { offset, mtimeMs: stat.mtimeMs };
+        continue;
+      }
+
+      let committedOffset = offset;
+      let readPosition = offset;
+      let pending = Buffer.alloc(0);
+      let handle = null;
+      let failure = null;
+
+      try {
+        handle = await fsp.open(filePath, 'r');
+
+        while (readPosition < stat.size) {
+          if (remainingBudget <= 0 && pending.length === 0) break;
+
+          const fileRemaining = stat.size - readPosition;
+          const budgetAllowance = remainingBudget > 0
+            ? remainingBudget
+            : readChunkBytes;
+          const readSize = Math.min(readChunkBytes, fileRemaining, budgetAllowance);
+          if (readSize <= 0) break;
+
+          const buffer = Buffer.alloc(readSize);
+          const result = await handle.read(buffer, 0, readSize, readPosition);
+          if (!result.bytesRead) break;
+
+          const chunk = buffer.subarray(0, result.bytesRead);
+          readPosition += result.bytesRead;
+          remainingBudget = Math.max(0, remainingBudget - result.bytesRead);
+          pending = pending.length
+            ? Buffer.concat([pending, chunk])
+            : Buffer.from(chunk);
+
+          let lineStart = 0;
+          while (true) {
+            const newlineIndex = pending.indexOf(0x0a, lineStart);
+            if (newlineIndex < 0) break;
+
+            const line = pending.subarray(lineStart, newlineIndex).toString('utf8');
+            if (line) {
+              const record = parseLine(line, diagnostics, evaluationNowMs);
+              if (record) records.push(Object.assign({ provider: providerId }, record));
+            }
+
+            committedOffset += newlineIndex + 1 - lineStart;
+            lineStart = newlineIndex + 1;
+          }
+
+          if (lineStart > 0) {
+            pending = Buffer.from(pending.subarray(lineStart));
+          }
+          cursors[filePath] = { offset: committedOffset, mtimeMs: stat.mtimeMs };
+
+          await yieldBlock();
+          if (remainingBudget <= 0 && pending.length === 0) break;
+        }
+      } catch (error) {
+        failure = error;
+      } finally {
+        if (handle) {
+          try {
+            await handle.close();
+          } catch (closeError) {
+            if (!failure) failure = closeError;
+          }
+        }
+      }
+
+      cursors[filePath] = { offset: committedOffset, mtimeMs: stat.mtimeMs };
+      if (failure) throw failure;
     }
-    // '\n' 是单字节,不会落在多字节字符中间,前缀的 UTF-8 字节数即精确消费偏移
-    const consumedBytes = Buffer.byteLength(consumText, 'utf8');
+  } catch (error) {
+    cursorStore.set(cursorKey, cursors);
+    throw error;
+  }
 
-    consumText.split('\n').forEach((line) => {
-      if (!line) return;
-      const rec = parseLine(line, diagnostics, evaluationNowMs);
-      if (rec) records.push(Object.assign({ provider: providerId }, rec));
-    });
-
-    cursors[filePath] = { offset: offset + consumedBytes, mtimeMs: stat.mtimeMs };
-  });
-
-  Object.keys(cursors).forEach((p) => {
-    if (!fs.existsSync(p)) delete cursors[p];
-  });
+  for (const cursorPath of Object.keys(cursors)) {
+    if (!(await pathExists(cursorPath))) delete cursors[cursorPath];
+  }
   cursorStore.set(cursorKey, cursors);
-
   return records;
 }
 
@@ -157,5 +247,7 @@ module.exports = {
   normalizeTimestampMs,
   incrementDiagnostic,
   MIN_TIMESTAMP_MS,
-  MAX_FUTURE_SKEW_MS
+  MAX_FUTURE_SKEW_MS,
+  DEFAULT_SCAN_CHUNK_BYTES,
+  DEFAULT_SCAN_BUDGET_BYTES
 };
