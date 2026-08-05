@@ -48,4 +48,8 @@ test('dead legacy chart components are removed', () => {
     fs.existsSync(path.join(root, 'src/renderer/js/components/cost-line.js')),
     false
   );
+  assert.equal(
+    fs.existsSync(path.join(root, 'src/renderer/js/components/drag-sort.js')),
+    false
+  );
 });
