@@ -24,12 +24,7 @@
   box-shadow: var(--shadow-window);
 }
 
-:root[data-theme='dark'] .component-surface,
-:root[data-theme='dark'] .quota-card,
-:root[data-theme='dark'] .stat-card,
-:root[data-theme='dark'] .chart-widget,
-:root[data-theme='dark'] .provider-bar,
-:root[data-theme='dark'] .token-heatmap {
+:root[data-theme='dark'] .component-surface {
   background: var(--bg-card);
   border-color: var(--border);
   color: var(--text-primary);
