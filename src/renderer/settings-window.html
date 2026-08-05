@@ -254,6 +254,14 @@
     justify-content: flex-end;
     flex-shrink: 0;
   }
+  .settings-save-error {
+    align-self: center;
+    margin-right: auto;
+    max-width: 190px;
+    color: #c43b3b;
+    font-size: 12px;
+    line-height: 1.3;
+  }
   .btn {
     font-size: 13px;
     padding: 6px 16px;
@@ -263,6 +271,10 @@
     font-family: inherit;
     font-weight: 500;
     transition: all 200ms ease-out;
+  }
+  .btn:disabled {
+    cursor: wait;
+    opacity: 0.6;
   }
   .btn-secondary { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
   .btn-secondary:hover { border-color: var(--primary); color: var(--primary); }
@@ -294,6 +306,7 @@
     </div>
     <div class="settings-body" id="settingsBody"></div>
     <div class="settings-footer">
+      <span class="settings-save-error" id="settingsSaveError" role="alert" hidden></span>
       <button class="btn btn-secondary" id="resetBtn">恢复默认</button>
       <button class="btn btn-primary" id="settingsDoneBtn">关闭</button>
     </div>
