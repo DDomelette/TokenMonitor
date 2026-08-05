@@ -32,23 +32,27 @@ jobs:
                   raise SystemExit('IPC import anchor not found')
               source = source.replace(import_anchor, import_anchor + import_line, 1)
 
-          close_block = """  ipcMain.on('window:close', () => {\n    if (deps.getLoginWindow()) deps.getLoginWindow().close();\n  });\n"""
-          skip_block = """
-
-  ipcMain.on('login:skip', () => {
-    try {
-      skipDeepseekLogin({
-        getLoginWindow: deps.getLoginWindow,
-        getMainWindow: deps.getMainWindow,
-        createMainWindow: deps.createMainWindow
-      });
-    } catch (error) {
-      console.error('[login:skip]', JSON.stringify({
-        code: error && error.code ? error.code : 'MAIN_WINDOW_UNAVAILABLE'
-      }));
-    }
-  });
-"""
+          close_block = (
+              "  ipcMain.on('window:close', () => {\n"
+              "    if (deps.getLoginWindow()) deps.getLoginWindow().close();\n"
+              "  });\n"
+          )
+          skip_block = (
+              "\n"
+              "  ipcMain.on('login:skip', () => {\n"
+              "    try {\n"
+              "      skipDeepseekLogin({\n"
+              "        getLoginWindow: deps.getLoginWindow,\n"
+              "        getMainWindow: deps.getMainWindow,\n"
+              "        createMainWindow: deps.createMainWindow\n"
+              "      });\n"
+              "    } catch (error) {\n"
+              "      console.error('[login:skip]', JSON.stringify({\n"
+              "        code: error && error.code ? error.code : 'MAIN_WINDOW_UNAVAILABLE'\n"
+              "      }));\n"
+              "    }\n"
+              "  });\n"
+          )
           if "ipcMain.on('login:skip'" not in source:
               if close_block not in source:
                   raise SystemExit('IPC close-handler anchor not found')
