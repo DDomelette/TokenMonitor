@@ -11,6 +11,16 @@ var windowDefinitions = [
   { group: '窗口', key: 'window.layoutLocked', type: 'toggle', label: '锁定布局', default: true }
 ];
 
+var networkDefinitions = [
+  {
+    group: '网络',
+    key: 'providers.proxyUrl',
+    type: 'proxy',
+    label: '网络代理',
+    default: ''
+  }
+];
+
 var componentDefinitions = window.ComponentRegistry.list().map(function (component) {
   return {
     group: '组件',
@@ -28,4 +38,8 @@ var tailDefinitions = [
   { group: '关于', key: 'apiKey', type: 'credential', label: 'API Key', default: '' }
 ];
 
-window.SettingsDefinitions = windowDefinitions.concat(componentDefinitions, tailDefinitions);
+window.SettingsDefinitions = windowDefinitions.concat(
+  networkDefinitions,
+  componentDefinitions,
+  tailDefinitions
+);

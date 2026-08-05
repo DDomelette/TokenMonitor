@@ -2,6 +2,10 @@
 // 所有可见轮询状态转换都会广播;相同 channel 的重复错误保持静默。
 const { httpGet } = require('./http');
 const { summarizeProviderError } = require('./provider-error-summary');
+const {
+  SYSTEM_PROXY_VALUE,
+  resolveElectronSystemProxy
+} = require('./proxy-settings');
 
 const DEFAULT_INTERVALS = { usage: 10 * 1000, quota: 60 * 1000, balance: 60 * 1000, localLog: 60 * 1000 };
 
@@ -10,14 +14,16 @@ function isAuthError(err) {
   return /unauthoriz|401|403|登录|expired|invalid token/i.test(msg);
 }
 
-function startScheduler({ registry, store, broadcast, intervals, onStateChange }) {
+function startScheduler({ registry, store, broadcast, intervals, onStateChange, getProxyInput }) {
   const enabled = intervals === false ? false : Object.assign({}, DEFAULT_INTERVALS, intervals || {});
   const timers = [];
   const states = Object.create(null);
   const inflight = new Set();
 
   function getProxyUrl() {
-    return store.get('providers.proxyUrl') || null;
+    if (typeof getProxyInput === 'function') return getProxyInput();
+    const stored = store.get('providers.proxyUrl') || null;
+    return stored === SYSTEM_PROXY_VALUE ? resolveElectronSystemProxy : stored;
   }
 
   function ctxFor(provider) {

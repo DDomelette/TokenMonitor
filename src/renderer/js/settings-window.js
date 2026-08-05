@@ -24,6 +24,14 @@
     return path.split('.').reduce(function (o, k) { return (o && o[k] !== undefined) ? o[k] : undefined; }, obj);
   }
 
+  function escapeAttr(value) {
+    return String(value === undefined || value === null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
   function showSaveError(message) {
     var errorEl = document.getElementById('settingsSaveError');
     if (!errorEl) return;
@@ -119,6 +127,68 @@
     });
   }
 
+  function proxyModeFromValue(value) {
+    if (value === 'system') return 'system';
+    return value ? 'custom' : 'direct';
+  }
+
+  function showProxyFeedback(message, isError) {
+    var feedback = document.getElementById('proxyFeedback');
+    if (!feedback) return;
+    feedback.textContent = message || '';
+    feedback.style.color = isError ? '#c43b3b' : 'var(--text-secondary)';
+    feedback.hidden = !message;
+  }
+
+  function syncProxyControls() {
+    var mode = document.getElementById('proxyModeSelect');
+    var input = document.getElementById('proxyUrlInput');
+    if (!mode || !input) return;
+    var custom = mode.value === 'custom';
+    input.disabled = !custom;
+    input.placeholder = custom ? 'http://127.0.0.1:7890' : '仅自定义模式需要地址';
+    showProxyFeedback('', false);
+  }
+
+  function setProxyPending(pending) {
+    var mode = document.getElementById('proxyModeSelect');
+    var input = document.getElementById('proxyUrlInput');
+    var button = document.getElementById('proxySaveBtn');
+    if (mode) mode.disabled = pending;
+    if (input) input.disabled = pending || !mode || mode.value !== 'custom';
+    if (button) {
+      button.disabled = pending;
+      button.textContent = pending ? '保存中…' : '应用';
+    }
+  }
+
+  function submitProxySetting() {
+    var mode = document.getElementById('proxyModeSelect');
+    var input = document.getElementById('proxyUrlInput');
+    if (!mode || !input) return;
+
+    var candidate = '';
+    if (mode.value === 'system') candidate = 'system';
+    if (mode.value === 'custom') candidate = input.value.trim();
+    if (mode.value === 'custom' && !candidate) {
+      showProxyFeedback('请输入 HTTP 代理地址。', true);
+      return;
+    }
+
+    setProxyPending(true);
+    showProxyFeedback('', false);
+    window.api.invoke('settings:save', {
+      key: 'providers.proxyUrl',
+      value: candidate
+    }).then(function () {
+      showProxyFeedback('代理设置已保存，将在下一次请求生效。', false);
+    }).catch(function () {
+      showProxyFeedback('代理设置无效，已保留原值。', true);
+    }).then(function () {
+      setProxyPending(false);
+    });
+  }
+
   function render(def, val, placeholder) {
     var v = val !== undefined ? val : def.default;
     switch (def.type) {
@@ -141,6 +211,20 @@
               return '<div class="custom-select-option' + (String(v) === String(o.value) ? ' selected' : '') + '" data-value="' + o.value + '">' + o.label + '</div>';
             }).join('') +
           '</div>' +
+        '</div>';
+      }
+      case 'proxy': {
+        var proxyMode = proxyModeFromValue(v);
+        var proxyUrl = proxyMode === 'custom' ? v : '';
+        return '<div style="display:flex;flex-direction:column;gap:6px;width:100%;">' +
+          '<select class="text-input" id="proxyModeSelect">' +
+            '<option value="direct"' + (proxyMode === 'direct' ? ' selected' : '') + '>直连</option>' +
+            '<option value="system"' + (proxyMode === 'system' ? ' selected' : '') + '>系统代理</option>' +
+            '<option value="custom"' + (proxyMode === 'custom' ? ' selected' : '') + '>自定义 HTTP 代理</option>' +
+          '</select>' +
+          '<input type="text" class="text-input" id="proxyUrlInput" value="' + escapeAttr(proxyUrl) + '" autocomplete="off" spellcheck="false">' +
+          '<button type="button" class="btn btn-primary" id="proxySaveBtn">应用</button>' +
+          '<span id="proxyFeedback" role="status" hidden style="font-size:12px;line-height:1.3;"></span>' +
         '</div>';
       }
       case 'credential':
@@ -170,7 +254,8 @@
           if (d.key === 'apiKey' && settings.providers && settings.providers.deepseek && settings.providers.deepseek.apiKeySet) {
             placeholder = '已保存,输入新 Key 以更换';
           }
-          return '<div class="setting-row' + (d.type === 'slider' || d.type === 'credential' ? ' vertical' : '') + '"><div><span class="setting-label">' + d.label + '</span></div>' + render(d, getNested(settings, d.key), placeholder) + '</div>';
+          var vertical = d.type === 'slider' || d.type === 'credential' || d.type === 'proxy';
+          return '<div class="setting-row' + (vertical ? ' vertical' : '') + '"><div><span class="setting-label">' + d.label + '</span></div>' + render(d, getNested(settings, d.key), placeholder) + '</div>';
         }).join('') + '</div>';
     });
     return html;
@@ -192,6 +277,15 @@
     var deepseekApiKeySaveBtn = document.getElementById('deepseekApiKeySaveBtn');
     if (deepseekApiKeySaveBtn) {
       deepseekApiKeySaveBtn.addEventListener('click', submitDeepseekApiKey);
+    }
+
+    var proxyModeSelect = document.getElementById('proxyModeSelect');
+    if (proxyModeSelect) {
+      proxyModeSelect.addEventListener('change', syncProxyControls);
+    }
+    var proxySaveBtn = document.getElementById('proxySaveBtn');
+    if (proxySaveBtn) {
+      proxySaveBtn.addEventListener('click', submitProxySetting);
     }
 
     document.querySelectorAll('input[data-key]').forEach(function (el) {
@@ -260,6 +354,7 @@
   function renderAll(settings) {
     document.getElementById('settingsBody').innerHTML = buildSessionSection() + buildPanel(settings);
     bindEvents();
+    syncProxyControls();
     updateSessionSection();
     applyInitialTheme(settings);
   }

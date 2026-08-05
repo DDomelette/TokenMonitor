@@ -1,5 +1,13 @@
 const { isWritableSettingKey, resolveWritableSettingKey } = require('./settings-security');
+const { normalizeStoredProxyValue } = require('./proxy-settings');
 const { pruneUsageDaily } = require('./usage-retention');
+
+function normalizeSettingValue(targetKey, value) {
+  if (targetKey === 'providers.proxyUrl') {
+    return normalizeStoredProxyValue(value);
+  }
+  return value;
+}
 
 function saveSetting(deps, payload) {
   if (!deps || !deps.store || typeof deps.store.set !== 'function') {
@@ -14,13 +22,14 @@ function saveSetting(deps, payload) {
   }
 
   const targetKey = resolveWritableSettingKey(key);
-  deps.store.set(targetKey, payload.value);
+  const value = normalizeSettingValue(targetKey, payload.value);
+  deps.store.set(targetKey, value);
   if (targetKey === 'data.historyDays') {
     pruneUsageDaily(deps.store);
   }
 
   if (typeof deps.applySetting === 'function') {
-    deps.applySetting(targetKey, payload.value);
+    deps.applySetting(targetKey, value);
   }
   if (typeof deps.broadcastSettings === 'function') {
     deps.broadcastSettings();
