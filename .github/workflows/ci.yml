@@ -35,8 +35,11 @@ jobs:
       - name: Run automated tests
         run: npm test
 
-      - name: Build renderer
-        run: npm run build:renderer
+      - name: Verify fresh-start renderer preparation
+        run: |
+          rm -rf renderer/dist
+          npm run prestart
+          test -f renderer/dist/index.html
 
       - name: Install Electron runtime dependencies
         run: |
