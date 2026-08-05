@@ -97,7 +97,7 @@ test('both local-log providers filter rolled-up records before merging while kee
     assert.match(source, /require\('\.\.\/\.\.\/core\/usage-retention'\)/);
     assert.match(
       source,
-      /filterUsageDaily\(\s*rollupDaily\(records,\s*diagnostics,\s*nowMs\),\s*store\.get\('data\.historyDays'\)\s*\)/
+      /filterUsageDaily\(\s*rollupDaily\(records,\s*diagnostics,\s*nowMs\),\s*store\.get\('data\.historyDays'\),\s*nowMs\s*\)/
     );
     assert.match(source, /scanFiles\(\{/);
     assert.match(source, /cursorKey:\s*CURSOR_KEY/);
