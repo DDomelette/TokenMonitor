@@ -1,4 +1,5 @@
 const DEFAULT_WINDOW_RADIUS = 16;
+const MAIN_RENDERER_PATH = /\/renderer\/dist\/index\.html(?:[?#].*)?$/;
 
 function positiveInteger(value) {
   const number = Number(value);
@@ -86,8 +87,42 @@ function applyRoundedWindowShape(win, options) {
   }
 }
 
+function isMainRendererUrl(url) {
+  return MAIN_RENDERER_PATH.test(String(url || '').replace(/\\/g, '/'));
+}
+
+function installRoundedMainWindowShapeObserver(app, options) {
+  if (!app || typeof app.on !== 'function') return false;
+  const opts = options || {};
+
+  app.on('browser-window-created', function (_event, win) {
+    if (!win || !win.webContents || typeof win.webContents.on !== 'function') return;
+    let attached = false;
+
+    function applyCurrentShape() {
+      applyRoundedWindowShape(win, opts);
+    }
+
+    function attachForUrl(_navigationEvent, url) {
+      if (attached || !isMainRendererUrl(url)) return;
+      attached = true;
+      applyCurrentShape();
+      if (typeof win.on === 'function') win.on('resize', applyCurrentShape);
+    }
+
+    win.webContents.on('did-start-navigation', attachForUrl);
+    win.webContents.on('did-navigate', attachForUrl);
+    if (typeof win.webContents.getURL === 'function') {
+      attachForUrl(null, win.webContents.getURL());
+    }
+  });
+
+  return true;
+}
+
 module.exports = {
   DEFAULT_WINDOW_RADIUS,
   buildRoundedWindowShape,
-  applyRoundedWindowShape
+  applyRoundedWindowShape,
+  installRoundedMainWindowShapeObserver
 };
