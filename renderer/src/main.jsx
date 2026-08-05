@@ -4,5 +4,6 @@ import App from './App.jsx';
 import './styles.css';
 import './window-shape.css';
 import './theme.css';
+import './layout-lock.css';
 
 createRoot(document.getElementById('root')).render(<App />);

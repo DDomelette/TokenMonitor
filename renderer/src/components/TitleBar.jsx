@@ -4,7 +4,7 @@
 import React, { useState } from 'react';
 import { send } from '../api.js';
 
-export default function TitleBar({ editing, onToggleLayoutEdit }) {
+export default function TitleBar({ editing, layoutLocked, onToggleLayoutEdit }) {
   const [spinning, setSpinning] = useState(false);
   const [gearTap, setGearTap] = useState(false);
 
@@ -41,10 +41,12 @@ export default function TitleBar({ editing, onToggleLayoutEdit }) {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
         </button>
         <button
-          className={'titlebar-btn titlebar-btn-layout' + (editing ? ' active' : '')}
-          title={editing ? '完成布局编排' : '编辑布局'}
+          className={'titlebar-btn titlebar-btn-layout' + (editing && !layoutLocked ? ' active' : '')}
+          title={layoutLocked ? '布局已锁定' : (editing ? '完成布局编排' : '编辑布局')}
           aria-label="编辑布局"
-          aria-pressed={editing ? 'true' : 'false'}
+          aria-pressed={editing && !layoutLocked ? 'true' : 'false'}
+          aria-disabled={layoutLocked ? 'true' : 'false'}
+          disabled={layoutLocked}
           onClick={onToggleLayoutEdit}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="7" rx="2" /><rect x="3" y="14" width="8" height="6" rx="1.5" /><rect x="13" y="14" width="8" height="6" rx="1.5" /></svg>
