@@ -56,3 +56,30 @@ jobs:
           name: component-visibility-screenshots
           path: artifacts/component-visibility/*.png
           if-no-files-found: warn
+
+  mac-package:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            renderer/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install renderer dependencies
+        run: npm --prefix renderer ci
+
+      - name: Build unsigned macOS package
+        run: npm run build:mac

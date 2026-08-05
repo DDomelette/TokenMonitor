@@ -1,6 +1,6 @@
-// 生成 Token Monitor 商标(T 形圆角方块)的 PNG 图标,零依赖(手写 PNG 编码 + 解析几何光栅化)。
-// 用法: node scripts/generate-logo.js
-// 输出: src/renderer/assets/tray-icon.png(64x64)、src/renderer/assets/icon.png(256x256)
+// 生成 Token Monitor 商标(T 形圆角方块)的 PNG 与 ICNS 图标,零依赖。
+// 用法: node scripts/generate-logo.js [--output-root <目录>]
+// 输出: src/renderer/assets/tray-icon.png、src/renderer/assets/icon.png、assets/icon.icns
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
@@ -16,6 +16,16 @@ const BLOCKS = [
   { x: 76, y: 0, w: 32, h: 32, c: [97, 171, 236] },   // 上排右(最深)
   { x: 38, y: 38, w: 32, h: 38, c: [121, 185, 240] }, // 竖列上
   { x: 38, y: 82, w: 32, h: 38, c: [109, 179, 238] }  // 竖列下
+];
+
+const ICNS_ENTRIES = [
+  { type: 'icp4', size: 16 },
+  { type: 'icp5', size: 32 },
+  { type: 'icp6', size: 64 },
+  { type: 'ic07', size: 128 },
+  { type: 'ic08', size: 256 },
+  { type: 'ic09', size: 512 },
+  { type: 'ic10', size: 1024 }
 ];
 
 function inside(px, py, blk) {
@@ -44,7 +54,9 @@ function render(size) {
           const ly = ((y + (sy + 0.5) / SS) - offY) / scale;
           const blk = BLOCKS.find((candidate) => inside(lx, ly, candidate));
           if (blk) {
-            r += blk.c[0]; g += blk.c[1]; b += blk.c[2];
+            r += blk.c[0];
+            g += blk.c[1];
+            b += blk.c[2];
             covered += 1;
           }
         }
@@ -104,12 +116,73 @@ function encodePNG(width, height, rgba) {
   return Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', Buffer.alloc(0))]);
 }
 
-const outDir = path.join(__dirname, '..', 'src', 'renderer', 'assets');
-[
-  { size: 64, name: 'tray-icon.png' },
-  { size: 256, name: 'icon.png' }
-].forEach(({ size, name }) => {
-  const png = encodePNG(size, size, render(size));
-  fs.writeFileSync(path.join(outDir, name), png);
-  console.log(name, size + 'x' + size, png.length, 'bytes');
-});
+function encodeICNSEntry(type, data) {
+  if (!/^[\x20-\x7e]{4}$/.test(type)) throw new Error(`Invalid ICNS entry type: ${type}`);
+  const header = Buffer.alloc(8);
+  header.write(type, 0, 4, 'ascii');
+  header.writeUInt32BE(data.length + header.length, 4);
+  return Buffer.concat([header, data]);
+}
+
+function encodeICNS(entries) {
+  const encoded = entries.map(({ type, data }) => encodeICNSEntry(type, data));
+  const totalLength = 8 + encoded.reduce((sum, entry) => sum + entry.length, 0);
+  const header = Buffer.alloc(8);
+  header.write('icns', 0, 4, 'ascii');
+  header.writeUInt32BE(totalLength, 4);
+  return Buffer.concat([header, ...encoded]);
+}
+
+function parseOutputRoot(args) {
+  const index = args.indexOf('--output-root');
+  if (index < 0) return path.resolve(__dirname, '..');
+  if (!args[index + 1] || args[index + 1].startsWith('--')) {
+    throw new Error('--output-root requires a path');
+  }
+  return path.resolve(args[index + 1]);
+}
+
+function generateLogoAssets(outputRoot) {
+  const rendererDir = path.join(outputRoot, 'src', 'renderer', 'assets');
+  const packagingDir = path.join(outputRoot, 'assets');
+  fs.mkdirSync(rendererDir, { recursive: true });
+  fs.mkdirSync(packagingDir, { recursive: true });
+
+  const pngBySize = new Map();
+  ICNS_ENTRIES.forEach(({ size }) => {
+    pngBySize.set(size, encodePNG(size, size, render(size)));
+  });
+
+  const trayPath = path.join(rendererDir, 'tray-icon.png');
+  const appIconPath = path.join(rendererDir, 'icon.png');
+  const icnsPath = path.join(packagingDir, 'icon.icns');
+  const trayPng = pngBySize.get(64);
+  const appIconPng = pngBySize.get(256);
+  const icns = encodeICNS(ICNS_ENTRIES.map(({ type, size }) => ({
+    type,
+    data: pngBySize.get(size)
+  })));
+
+  fs.writeFileSync(trayPath, trayPng);
+  fs.writeFileSync(appIconPath, appIconPng);
+  fs.writeFileSync(icnsPath, icns);
+
+  console.log('tray-icon.png', '64x64', trayPng.length, 'bytes');
+  console.log('icon.png', '256x256', appIconPng.length, 'bytes');
+  console.log('icon.icns', ICNS_ENTRIES.length, 'sizes', icns.length, 'bytes');
+
+  return { trayPath, appIconPath, icnsPath };
+}
+
+if (require.main === module) {
+  generateLogoAssets(parseOutputRoot(process.argv.slice(2)));
+}
+
+module.exports = {
+  ICNS_ENTRIES,
+  encodeICNS,
+  encodePNG,
+  generateLogoAssets,
+  parseOutputRoot,
+  render
+};
