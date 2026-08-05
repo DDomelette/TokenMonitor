@@ -10,13 +10,14 @@ function isAuthError(err) {
   return /unauthoriz|401|403|登录|expired|invalid token/i.test(msg);
 }
 
-function startScheduler({ registry, store, broadcast, intervals, onStateChange }) {
+function startScheduler({ registry, store, broadcast, intervals, onStateChange, getProxyInput }) {
   const enabled = intervals === false ? false : Object.assign({}, DEFAULT_INTERVALS, intervals || {});
   const timers = [];
   const states = Object.create(null);
   const inflight = new Set();
 
   function getProxyUrl() {
+    if (typeof getProxyInput === 'function') return getProxyInput();
     return store.get('providers.proxyUrl') || null;
   }
 
