@@ -133,7 +133,7 @@ test('rollupDaily skips invalid timestamps instead of assigning them to now', ()
   assert.equal(diagnostics.invalidTimestamp, 5);
 });
 
-test('Kimi scanning counts invalid timestamp lines once and advances the cursor', () => {
+test('Kimi scanning counts invalid timestamp lines once and advances the cursor', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-invalid-ts-'));
   const file = path.join(root, 'wire.jsonl');
   const nowMs = Date.now();
@@ -156,7 +156,7 @@ test('Kimi scanning counts invalid timestamp lines once and advances the cursor'
     ];
     fs.writeFileSync(file, lines.join('\n') + '\n');
 
-    const first = readKimiLocalLog(
+    const first = await readKimiLocalLog(
       { store },
       { diagnostics, nowMs }
     );
@@ -170,7 +170,7 @@ test('Kimi scanning counts invalid timestamp lines once and advances the cursor'
       total: 17
     });
 
-    const second = readKimiLocalLog(
+    const second = await readKimiLocalLog(
       { store },
       { diagnostics, nowMs }
     );

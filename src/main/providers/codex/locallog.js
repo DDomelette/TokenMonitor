@@ -1,5 +1,4 @@
 // Codex rollout-*.jsonl 行解析 + 本地日志通道读取。
-const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {
@@ -48,9 +47,8 @@ function parseRolloutLine(line, diagnostics, nowMs) {
   }
 }
 
-// 增量扫描本机 codex 日志,返回新增 UsageRecord[];并按日聚合增量合并进 store 键 'usageDaily'。
-// ctx = { store, ... }。root 可通过 store 键 'providers.codex.localLogRoot' 覆盖(测试用)。
-function readLocalLog(ctx, opts) {
+// 异步增量扫描本机 codex 日志,返回新增 UsageRecord[];并按日聚合增量合并进 store 键 'usageDaily'。
+async function readLocalLog(ctx, opts) {
   const store = ctx && ctx.store;
   const diagnostics = opts && opts.diagnostics;
   const requestedNowMs = opts && opts.nowMs;
@@ -61,8 +59,7 @@ function readLocalLog(ctx, opts) {
     ? parsedNowMs
     : Date.now();
   const root = (store && store.get('providers.codex.localLogRoot')) || DEFAULT_ROOT();
-  if (!fs.existsSync(root)) return [];
-  const records = scanFiles({
+  const records = await scanFiles({
     root: root,
     match: MATCH,
     cursorStore: store,
@@ -70,7 +67,10 @@ function readLocalLog(ctx, opts) {
     providerId: 'codex',
     parseLine: parseRolloutLine,
     diagnostics: diagnostics,
-    nowMs: nowMs
+    nowMs: nowMs,
+    chunkBytes: opts && opts.chunkBytes,
+    maxBytesPerScan: opts && opts.maxBytesPerScan,
+    yieldToLoop: opts && opts.yieldToLoop
   });
   if (records.length && store) {
     const daily = filterUsageDaily(

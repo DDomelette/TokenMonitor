@@ -58,7 +58,7 @@ function kimiTotal(store) {
     .reduce((sum, value) => sum + (Number(value && value.total) || 0), 0);
 }
 
-test('settings reset preserves Kimi migration state and history no longer present on disk', (t) => {
+test('settings reset preserves Kimi migration state and history no longer present on disk', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-kimi-reset-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   writeKimiRecord(root);
@@ -78,7 +78,7 @@ test('settings reset preserves Kimi migration state and history no longer presen
     'window.opacity': 55
   });
 
-  const firstRecords = readLocalLog({ store });
+  const firstRecords = await readLocalLog({ store });
   assert.equal(firstRecords.length, 1);
   assert.equal(kimiTotal(store), 109);
   assert.equal(store.get('usageDaily')[legacyHistoryKey].total, 99);
@@ -90,9 +90,8 @@ test('settings reset preserves Kimi migration state and history no longer presen
   for (let resetCount = 0; resetCount < 2; resetCount += 1) {
     resetSettingsStore(store);
 
-    // The localLogRoot override is test-only configuration and is intentionally reset.
     store.set('providers.kimi.localLogRoot', root);
-    const repeatedRecords = readLocalLog({ store });
+    const repeatedRecords = await readLocalLog({ store });
 
     assert.equal(repeatedRecords.length, 0);
     assert.deepEqual(kimiHistory(store), expectedHistory);

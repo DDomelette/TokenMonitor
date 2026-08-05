@@ -17,7 +17,7 @@ function makeStore(initial) {
   };
 }
 
-function withCountedNow(run) {
+async function withCountedNow(run) {
   const originalNow = Date.now;
   let reads = 0;
   Date.now = () => {
@@ -25,14 +25,14 @@ function withCountedNow(run) {
     return NOW_MS;
   };
   try {
-    const result = run();
+    const result = await run();
     return { result, reads };
   } finally {
     Date.now = originalNow;
   }
 }
 
-test('Codex local-log read snapshots one evaluation time for scan, rollup, and retention', () => {
+test('Codex local-log read snapshots one evaluation time for scan, rollup, and retention', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-codex-now-'));
   const file = path.join(root, 'rollout-test.jsonl');
   const line = JSON.stringify({
@@ -58,7 +58,7 @@ test('Codex local-log read snapshots one evaluation time for scan, rollup, and r
 
   try {
     fs.writeFileSync(file, line + '\n');
-    const { result, reads } = withCountedNow(() => codex.readLocalLog({ store }));
+    const { result, reads } = await withCountedNow(() => codex.readLocalLog({ store }));
     assert.equal(result.length, 1);
     assert.equal(reads, 1);
   } finally {
@@ -66,7 +66,7 @@ test('Codex local-log read snapshots one evaluation time for scan, rollup, and r
   }
 });
 
-test('Kimi local-log read snapshots one evaluation time for scan, rollup, and retention', () => {
+test('Kimi local-log read snapshots one evaluation time for scan, rollup, and retention', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-kimi-now-'));
   const file = path.join(root, 'wire.jsonl');
   const line = JSON.stringify({
@@ -88,7 +88,7 @@ test('Kimi local-log read snapshots one evaluation time for scan, rollup, and re
 
   try {
     fs.writeFileSync(file, line + '\n');
-    const { result, reads } = withCountedNow(() => kimi.readLocalLog({ store }));
+    const { result, reads } = await withCountedNow(() => kimi.readLocalLog({ store }));
     assert.equal(result.length, 1);
     assert.equal(reads, 1);
   } finally {
