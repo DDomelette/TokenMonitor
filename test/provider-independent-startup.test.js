@@ -205,9 +205,23 @@ test('login, preload, IPC, and main startup use the dedicated provider-independe
 
   assert.equal(login.includes("window.api.send('login:skip')"), true);
   assert.equal(login.includes("window.api.send('window:close')"), false);
-  assert.match(preload, /'login:skip'/);
-  assert.match(ipc, /ipcMain\.on\('login:skip'[\s\S]*deps\.continueWithoutDeepseek\(\)/);
-  assert.match(main, /chooseInitialWindow\([\s\S]*providerSnapshot:\s*scheduler\.getSnapshot\(\)/);
-  assert.match(main, /initializeMainRenderer\(/);
-  assert.match(main, /continueWithoutDeepseek/);
+  assert.equal(preload.includes("'login:skip'"), true);
+
+  const skipStart = ipc.indexOf("ipcMain.on('login:skip'");
+  const providerHandlers = ipc.indexOf('/* ======== Dashboard / Providers ======== */', skipStart);
+  assert.ok(skipStart >= 0, 'main process must register login:skip');
+  assert.ok(providerHandlers > skipStart, 'login:skip must be inside the login IPC section');
+  assert.equal(
+    ipc.slice(skipStart, providerHandlers).includes('deps.continueWithoutDeepseek();'),
+    true
+  );
+
+  const readyStart = main.indexOf('app.whenReady().then');
+  const windowClose = main.indexOf("app.on('window-all-closed'", readyStart);
+  assert.ok(readyStart >= 0 && windowClose > readyStart);
+  const readyBlock = main.slice(readyStart, windowClose);
+  assert.equal(readyBlock.includes('chooseInitialWindow({'), true);
+  assert.equal(readyBlock.includes('providerSnapshot: scheduler.getSnapshot()'), true);
+  assert.equal(main.includes('initializeMainRenderer({'), true);
+  assert.equal(main.includes('function continueWithoutDeepseek()'), true);
 });
