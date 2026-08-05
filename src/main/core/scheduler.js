@@ -151,13 +151,14 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange, 
     touch(provider.id);
   }
 
-  function recordChannelRecovery(provider, channel) {
+  function recordChannelRecovery(provider, channel, notify = true) {
     const st = ensureState(provider);
-    if (!st.channelErrors[channel]) return;
+    if (!st.channelErrors[channel]) return false;
 
     delete st.channelErrors[channel];
     refreshFailureSummary(st);
-    touch(provider.id);
+    if (notify) touch(provider.id);
+    return true;
   }
 
   async function runOnce(providerId, channel, fn) {
@@ -207,9 +208,11 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange, 
 
   async function pollLocalLog(provider) {
     try {
-      // readLocalLog 自行增量合并进 store 键 'usageDaily';正常轮询无需广播。
-      await provider.readLocalLog(ctxFor(provider));
-      recordChannelRecovery(provider, 'localLog');
+      // Provider 先把增量合并进 usageDaily,随后按真实新增记录决定是否刷新界面。
+      const records = await provider.readLocalLog(ctxFor(provider));
+      const changed = Array.isArray(records) && records.length > 0;
+      const recovered = recordChannelRecovery(provider, 'localLog', false);
+      if (changed || recovered) touch(provider.id);
     } catch (error) {
       recordFailure(provider, 'localLog', error);
     }
