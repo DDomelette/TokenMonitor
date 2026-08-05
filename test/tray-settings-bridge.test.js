@@ -42,7 +42,10 @@ test('App installs the tray settings bridge once and returns its cleanup functio
     'utf8'
   );
 
-  assert.match(source, /import \{ on, send \} from '\.\/api\.js';/);
+  const apiImport = /import \{([^}]*)\} from '\.\/api\.js';/.exec(source);
+  assert.ok(apiImport, 'App must import the renderer API');
+  assert.match(apiImport[1], /\bon\b/);
+  assert.match(apiImport[1], /\bsend\b/);
   assert.match(source, /import \{ installSettingsOpenBridge \} from '\.\/settings-bridge\.js';/);
   assert.match(
     source,
