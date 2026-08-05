@@ -21,8 +21,11 @@ test('session expiry detection matches real unauthorized errors', () => {
   assert.match(scheduler, /unauthoriz|401|403|expired/i);
 });
 
-test('expiry is not auto-reopened; it drives the provider auth status', () => {
-  assert.match(scheduler, /authStatus === 'expired'/);
+test('expiry is not auto-reopened; protected success drives provider auth recovery', () => {
+  assert.match(scheduler, /if \(auth && st\.authStatus !== 'expired'\)/);
+  assert.match(scheduler, /st\.authStatus = 'expired'/);
+  assert.match(scheduler, /if \(st\.authStatus !== 'ok'\)/);
+  assert.match(scheduler, /st\.authStatus = 'ok'/);
   assert.doesNotMatch(main, /sessionReopenPending/);
 });
 
