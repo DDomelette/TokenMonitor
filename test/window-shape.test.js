@@ -172,9 +172,18 @@ test('bootstrap installs the main-window shape observer before loading index.js'
   );
 });
 
-test('React root clips all child content to the shared window radius', () => {
+test('React root imports a final clipping override with the shared window radius', () => {
+  const mainSource = fs.readFileSync(
+    path.resolve(__dirname, '../renderer/src/main.jsx'),
+    'utf8'
+  );
+  assert.match(
+    mainSource,
+    /import '\.\/styles\.css';\s*import '\.\/window-shape\.css';/
+  );
+
   const source = fs.readFileSync(
-    path.resolve(__dirname, '../renderer/src/styles.css'),
+    path.resolve(__dirname, '../renderer/src/window-shape.css'),
     'utf8'
   );
   const appBlock = /#app\s*\{([\s\S]*?)\}/.exec(source);
