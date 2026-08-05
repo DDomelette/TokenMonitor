@@ -113,7 +113,7 @@ test('settings window loads the keyed helper before the event script', () => {
 
   assert.match(
     html,
-    /<script src="js\/settings-debounce\.js"><\/script>\s*<script src="js\/settings-window\.js"><\/script>/
+    /<script src="js\/settings-debounce\.js"><\/script>\s*(?:<script src="js\/[\w.-]+\.js"><\/script>\s*)*<script src="js\/settings-window\.js"><\/script>/
   );
 });
 
@@ -130,7 +130,7 @@ test('input and custom-select handlers share the keyed queue without a global ti
   );
   assert.match(
     source,
-    /function handleSelectChange\(key, value\) \{\s*settingsUpdateQueue\.schedule\(key, value\);\s*\}/
+    /function handleSelectChange\(key, value\) \{\s*settingsUpdateQueue\.schedule\(key, value\);[\s\S]*?\n  \}/
   );
   assert.match(
     source,

@@ -331,6 +331,10 @@
 
   function handleSelectChange(key, value) {
     settingsUpdateQueue.schedule(key, value);
+    // 主题模式与跟随系统开关联动,避免手动选择被 followSystemTheme 主开关覆盖
+    ThemeModeLink.linkedWrites(key, value).forEach(function (linked) {
+      settingsUpdateQueue.schedule(linked.key, linked.value);
+    });
   }
 
   function handleChange(el) {
