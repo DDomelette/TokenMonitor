@@ -23,14 +23,15 @@ function ensureMainWindow(options) {
 }
 
 function skipDeepseekLogin(options) {
+  const mainWindow = ensureMainWindow(options);
+  if (typeof mainWindow.show === 'function') mainWindow.show();
+  if (typeof mainWindow.focus === 'function') mainWindow.focus();
+
   const loginWindow = options.getLoginWindow();
   if (isUsableWindow(loginWindow) && typeof loginWindow.close === 'function') {
     loginWindow.close();
   }
 
-  const mainWindow = ensureMainWindow(options);
-  if (typeof mainWindow.show === 'function') mainWindow.show();
-  if (typeof mainWindow.focus === 'function') mainWindow.focus();
   return mainWindow;
 }
 
