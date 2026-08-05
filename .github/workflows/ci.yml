@@ -41,6 +41,13 @@ jobs:
           npm run prestart
           test -f renderer/dist/index.html
 
+      - name: Verify macOS icon generation
+        run: |
+          rm -f assets/icon.icns
+          npm run generate:icons
+          test -s assets/icon.icns
+          node -e "const fs=require('fs');const icon=fs.readFileSync('assets/icon.icns');if(icon.subarray(0,4).toString('ascii')!=='icns'||icon.readUInt32BE(4)!==icon.length)process.exit(1)"
+
       - name: Install Electron runtime dependencies
         run: |
           sudo apt-get update
