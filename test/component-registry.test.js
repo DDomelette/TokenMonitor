@@ -18,7 +18,9 @@ function componentSettingDefinitions() {
     }
   };
   vm.runInNewContext(source, context, { filename: 'settings-definitions.js' });
-  return context.window.SettingsDefinitions.filter((definition) => definition.group === '组件');
+  return Array.from(context.window.SettingsDefinitions).filter(
+    (definition) => definition.group === '组件'
+  );
 }
 
 test('component ids and settings keys are unique', () => {
