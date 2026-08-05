@@ -381,15 +381,28 @@
     updateSessionSection();
   }).catch(function () {});
 
-  // 主题与主窗口保持一致:React 主窗口目前只有浅色一套样式(无 body.dark 处理),
-  // 设置窗口若跟随系统变暗会与主窗口割裂。在主窗口支持暗色前,设置窗口固定浅色,
-  // 忽略系统暗色与 theme:changed。
-  function applyInitialTheme() {
-    document.body.classList.remove('dark');
+  // 主题与主窗口一致:followSystemTheme 为主开关(语义同 renderer/src/theme-sync.js),
+  // 依据持久化设置 + 系统暗色媒体查询解析;theme:changed 仅作唤醒信号,负载不作权威。
+  var themeSettings = null;
+  var systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+
+  function applyTheme() {
+    var windowValues = (themeSettings && themeSettings.window) || {};
+    var theme = ThemeModeLink.resolveTheme(windowValues, systemThemeMedia.matches);
+    document.body.classList.toggle('dark', theme === 'dark');
+  }
+
+  function applyInitialTheme(settings) {
+    themeSettings = settings || themeSettings;
+    applyTheme();
   }
 
   window.api.on('theme:changed', function () {
-    document.body.classList.remove('dark');
+    applyTheme();
+  });
+
+  systemThemeMedia.addEventListener('change', function () {
+    applyTheme();
   });
 
   var resizeState = null;
