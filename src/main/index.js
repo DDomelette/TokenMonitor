@@ -10,6 +10,13 @@ const kimiProvider = require('./providers/kimi');
 const { startScheduler } = require('./core/scheduler');
 const setupIPC = require('./ipc');
 const { captureSession } = require('./providers/deepseek/session');
+const {
+  clearSession,
+  expireSession,
+  getSessionSnapshot,
+  getTraySessionLabel,
+  restoreSession
+} = require('./core/session-state');
 
 let mainWindow = null;
 let loginWindow = null;
@@ -21,6 +28,8 @@ let moveDebounce = null;
 
 const runtime = {
   sessionToken: null,
+  sessionStatus: 'missing',
+  sessionError: null,
   proxyStatus: { running: false, port: 0, error: '未获取数据' }
 };
 
@@ -75,7 +84,7 @@ function broadcastSettings() {
 }
 
 function broadcastSessionState() {
-  var payload = { loggedIn: !!runtime.sessionToken, error: runtime.proxyStatus.error || null };
+  var payload = getSessionSnapshot(runtime);
   broadcastToWindows('session:changed', payload);
 }
 
@@ -208,16 +217,19 @@ function createSessionWindow() {
       });
       sessionWindow.on('closed', () => {
         sessionWindow = null;
-        if (!runtime.sessionToken) {
+        const snapshot = getSessionSnapshot(runtime);
+        if (!snapshot.loggedIn && snapshot.status !== 'expired') {
+          clearSession(runtime, '未登录 DeepSeek 平台');
           runtime.proxyStatus = { running: false, port: 0, error: '未登录 DeepSeek 平台' };
         }
         broadcastSessionState();
+        updateTrayMenu();
       });
       return sessionWindow;
     }
   })
     .then((token) => {
-      runtime.sessionToken = token;
+      restoreSession(runtime, token);
       store.set('providers.deepseek.sessionToken', token);
       runtime.proxyStatus = { running: true, port: 0, activeSince: Date.now() };
       broadcastSessionState();
@@ -225,8 +237,14 @@ function createSessionWindow() {
       if (scheduler) scheduler.poll('deepseek', 'usage');
     })
     .catch((err) => {
-      runtime.proxyStatus = { running: false, port: 0, error: err.message || '未登录 DeepSeek 平台' };
+      const snapshot = getSessionSnapshot(runtime);
+      const message = err.message || '未登录 DeepSeek 平台';
+      if (!snapshot.loggedIn && snapshot.status !== 'expired') {
+        clearSession(runtime, message);
+      }
+      runtime.proxyStatus = { running: false, port: 0, error: message };
       broadcastSessionState();
+      updateTrayMenu();
     });
 }
 
@@ -253,7 +271,6 @@ function createTray() {
 
 function updateTrayMenu() {
   if (!tray) return;
-  const loggedIn = !!runtime.sessionToken;
   const contextMenu = Menu.buildFromTemplate([
     {
       label: '显示/隐藏悬浮窗',
@@ -263,7 +280,7 @@ function updateTrayMenu() {
       }
     },
     {
-      label: loggedIn ? '重新登录平台' : '登录平台获取用量',
+      label: getTraySessionLabel(getSessionSnapshot(runtime)),
       click: () => createSessionWindow()
     },
     { type: 'separator' },
@@ -455,6 +472,8 @@ function startSchedulerRuntime() {
     onStateChange: (providerId, state) => {
       if (providerId !== 'deepseek' || !state) return;
       if (state.authStatus === 'expired' && state.lastError) {
+        expireSession(runtime, '会话已过期，请重新登录');
+        store.delete('providers.deepseek.sessionToken');
         runtime.proxyStatus = { running: false, port: 0, error: '会话已过期，请重新登录' };
         updateTrayMenu();
         broadcastSessionState();
@@ -504,16 +523,20 @@ app.whenReady().then(() => {
       mainWindow.webContents.send('settings:loaded', store.sanitizeSettings(store.store));
       scheduler.poll('deepseek', 'balance');
 
-      runtime.sessionToken = store.get('providers.deepseek.sessionToken') || null;
-      if (runtime.sessionToken) {
+      const storedSessionToken = store.get('providers.deepseek.sessionToken') || null;
+      restoreSession(runtime, storedSessionToken);
+      if (getSessionSnapshot(runtime).loggedIn) {
         console.log('[session] startup with stored token, starting usage timer');
         scheduler.poll('deepseek', 'usage');
         runtime.proxyStatus = { running: true, port: 0, activeSince: Date.now() };
       } else {
         console.log('[session] startup without token, opening platform login window');
+        clearSession(runtime, '请登录平台获取用量');
         runtime.proxyStatus = { running: false, port: 0, error: '请登录平台获取用量' };
         createSessionWindow();
       }
+      broadcastSessionState();
+      updateTrayMenu();
     });
   } else {
     createLoginWindow();
