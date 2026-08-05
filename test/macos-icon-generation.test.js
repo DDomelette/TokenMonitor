@@ -81,7 +81,7 @@ test('macOS packaging generates the configured icon before electron-builder runs
   );
 
   const builder = read('electron-builder.yml');
-  assert.match(builder, /mac:\n(?:.*\n)*?  icon: assets\/icon\.icns\n/);
+  assert.match(builder, /mac:\r?\n(?:.*\r?\n)*?  icon: assets\/icon\.icns\r?\n/);
 });
 
 test('CI performs a clean macOS package build instead of only checking a path string', () => {
