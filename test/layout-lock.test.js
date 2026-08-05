@@ -98,7 +98,7 @@ test('App owns the lock, exits editing safely, and passes effective editing to b
   assert.match(source, /const effectiveEditing = editing && !layoutLocked;/);
   assert.match(source, /if \(!layoutLocked\) setEditing\(\(current\) => !current\);/);
   assert.match(source, /<TitleBar[\s\S]*?editing=\{effectiveEditing\}[\s\S]*?layoutLocked=\{layoutLocked\}/);
-  assert.match(source, /<Dashboard editing=\{effectiveEditing\} \/>/);
+  assert.match(source, /<Dashboard\b[^>]*editing=\{effectiveEditing\}[^>]*\/>/);
 });
 
 test('TitleBar disables the layout edit control and never renders it active while locked', () => {
