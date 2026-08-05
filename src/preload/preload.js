@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('api', {
   invoke: (channel, ...args) => {
     const validChannels = [
       'get:settings',
+      'settings:save',
       'get:dashboard',
       'get:providers',
       'get:heatmap',
