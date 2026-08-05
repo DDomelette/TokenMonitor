@@ -42,6 +42,18 @@ export function summarizeProviderHealth(snapshot) {
     };
   }
 
+  const allMissing = providers.length > 0
+    && providers.every((provider) => provider && provider.authStatus === 'missing');
+
+  if (allMissing) {
+    return {
+      mode: 'missing',
+      running: false,
+      text: '未配置可用凭证',
+      lastFetchedAt
+    };
+  }
+
   if (lastFetchedAt) {
     return {
       mode: 'online',
@@ -52,9 +64,9 @@ export function summarizeProviderHealth(snapshot) {
   }
 
   return {
-    mode: 'offline',
+    mode: 'loading',
     running: false,
-    text: '未获取数据',
+    text: '正在获取数据',
     lastFetchedAt: null
   };
 }
