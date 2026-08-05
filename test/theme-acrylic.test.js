@@ -85,3 +85,36 @@ test('settings and login windows treat acrylic-dark as dark', () => {
   assert.match(settings, /theme === 'dark' \|\| theme === 'acrylic-dark'/);
   assert.match(login, /theme === 'dark' \|\| theme === 'acrylic-dark'/);
 });
+
+test('acrylic cards float above the window with a layered drop shadow', () => {
+  const css = fs.readFileSync(path.join(root, 'renderer/src/theme.css'), 'utf8');
+
+  // 亮调:卡片在磨砂底上投出柔和阴影,避免与窗口底"割裂"
+  assert.match(css, /\[data-theme='acrylic-light'\][\s\S]*?--shadow-card: 0 4px 16px rgba\(0, 0, 0, 0\.10\), 0 1px 3px rgba\(0, 0, 0, 0\.08\)/);
+  // 暗调:阴影更深,拉开卡片与深色磨砂底的层次
+  assert.match(css, /\[data-theme='acrylic-dark'\][\s\S]*?--shadow-card: 0 6px 20px rgba\(0, 0, 0, 0\.45\), 0 1px 3px rgba\(0, 0, 0, 0\.30\)/);
+  // 亮调卡片基础样式无阴影,亚克力亮调需显式消费 --shadow-card,并加玻璃内高光与背景模糊
+  assert.match(css, /:root\[data-theme='acrylic-light'\] \.component-surface \{[^}]*box-shadow: var\(--shadow-card\), inset 0 1px 0 rgba\(255, 255, 255, 0\.35\)/);
+  assert.match(css, /:root\[data-theme='acrylic-light'\] \.component-surface \{[^}]*backdrop-filter: blur\(16px\) saturate\(140%\)/);
+  assert.match(css, /:root\[data-theme='acrylic-dark'\] \.component-surface \{[^}]*box-shadow: var\(--shadow-card\), inset 0 1px 0 rgba\(255, 255, 255, 0\.08\)/);
+});
+
+test('settings window follows the acrylic theme like the main window', () => {
+  const js = fs.readFileSync(path.join(root, 'src/renderer/js/settings-window.js'), 'utf8');
+  const css = fs.readFileSync(path.join(root, 'src/renderer/css/main.css'), 'utf8');
+
+  assert.match(js, /document\.body\.dataset\.theme = theme;/);
+  assert.match(css, /body\[data-theme='acrylic-light'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.35\)/);
+  assert.match(css, /body\[data-theme='acrylic-light'\] #app \{\s*background: rgba\(255, 255, 255, 0\.12\)/);
+  assert.match(css, /body\[data-theme='acrylic-dark'\][\s\S]*?--bg-window-dark: rgba\(20, 22, 28, 0\.22\)/);
+  assert.match(css, /body\[data-theme='acrylic-dark'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.06\)/);
+});
+
+test('login window follows the acrylic theme like the main window', () => {
+  const js = fs.readFileSync(path.join(root, 'src/renderer/js/login.js'), 'utf8');
+  const html = fs.readFileSync(path.join(root, 'src/renderer/login.html'), 'utf8');
+
+  assert.match(js, /document\.body\.dataset\.theme = theme;/);
+  assert.match(html, /body\[data-theme='acrylic-light'\] \.container \{\s*background: rgba\(255, 255, 255, 0\.12\)/);
+  assert.match(html, /body\[data-theme='acrylic-dark'\] \.container \{\s*background: rgba\(20, 22, 28, 0\.22\)/);
+});
