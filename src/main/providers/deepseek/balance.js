@@ -1,5 +1,9 @@
 // DeepSeek 余额采集:网络传输统一委托给主进程 HTTP 客户端。
 const { httpGet: defaultHttpGet } = require('../../core/http');
+const {
+  SYSTEM_PROXY_VALUE,
+  resolveElectronSystemProxy
+} = require('../../core/proxy-settings');
 
 const BALANCE_URL = 'https://api.deepseek.com/user/balance';
 const BALANCE_TIMEOUTS = Object.freeze({ requestTimeoutMs: 10000 });
@@ -30,6 +34,11 @@ function parseBalanceData(data) {
   return null;
 }
 
+function proxyInputFor(value) {
+  if (value === SYSTEM_PROXY_VALUE) return resolveElectronSystemProxy;
+  return value || null;
+}
+
 async function fetchBalance(apiKey, options = {}) {
   const request = options.httpGet || defaultHttpGet;
   try {
@@ -39,7 +48,7 @@ async function fetchBalance(apiKey, options = {}) {
         'Accept': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
-      options.proxyUrl || null,
+      proxyInputFor(options.proxyUrl),
       BALANCE_TIMEOUTS
     );
     return parseBalanceData(data);
