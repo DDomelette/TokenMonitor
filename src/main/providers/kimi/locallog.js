@@ -2,7 +2,12 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { scanFiles, rollupDaily } = require('../../core/locallog');
+const {
+  scanFiles,
+  rollupDaily,
+  normalizeTimestampMs,
+  incrementDiagnostic
+} = require('../../core/locallog');
 const { filterUsageDaily } = require('../../core/usage-retention');
 
 // ~/.kimi-code/sessions/**/wire.jsonl
@@ -14,17 +19,22 @@ const MIGRATION_KEY = 'localLogMigrations.kimiTotalIncludesCached';
 
 // 解析单行:usage.record 行,input=inputOther,cached=inputCacheRead,output=output,ts 取 data.time(epoch ms)。
 // total 含缓存读取(与 codex total_tokens / deepseek 平台口径一致),历史旧口径数据由下方迁移重建。
-function parseWireLine(line) {
+function parseWireLine(line, diagnostics, nowMs) {
   if (!line) return null;
   try {
     const data = JSON.parse(line);
     if (!data || data.type !== 'usage.record' || !data.usage) return null;
+    const ts = normalizeTimestampMs(data.time, nowMs);
+    if (ts === null) {
+      incrementDiagnostic(diagnostics, 'invalidTimestamp');
+      return null;
+    }
     const usage = data.usage;
     const input = usage.inputOther || 0;
     const cached = usage.inputCacheRead || 0;
     const output = usage.output || 0;
     return {
-      ts: Number(data.time) || null,
+      ts: ts,
       model: data.model || null,
       usage: {
         input: input,
@@ -42,6 +52,14 @@ function parseWireLine(line) {
 // ctx = { store, ... }。root 可通过 store 键 'providers.kimi.localLogRoot' 覆盖(测试用)。
 function readLocalLog(ctx, opts) {
   const store = ctx && ctx.store;
+  const diagnostics = opts && opts.diagnostics;
+  const requestedNowMs = opts && opts.nowMs;
+  const parsedNowMs = Number(requestedNowMs);
+  const nowMs = requestedNowMs !== null
+    && requestedNowMs !== undefined
+    && Number.isFinite(parsedNowMs)
+    ? parsedNowMs
+    : Date.now();
   const root = (store && store.get('providers.kimi.localLogRoot')) || DEFAULT_ROOT();
   if (store && !store.get(MIGRATION_KEY)) {
     const usageDaily = store.get('usageDaily') || {};
@@ -59,10 +77,16 @@ function readLocalLog(ctx, opts) {
     cursorStore: store,
     cursorKey: CURSOR_KEY,
     providerId: 'kimi',
-    parseLine: parseWireLine
+    parseLine: parseWireLine,
+    diagnostics: diagnostics,
+    nowMs: nowMs
   });
   if (records.length && store) {
-    const daily = filterUsageDaily(rollupDaily(records), store.get('data.historyDays'));
+    const daily = filterUsageDaily(
+      rollupDaily(records, diagnostics, nowMs),
+      store.get('data.historyDays'),
+      nowMs
+    );
     const usageDaily = store.get('usageDaily') || {};
     Object.keys(daily).forEach((key) => {
       const prev = usageDaily[key] || { input: 0, cached: 0, output: 0, total: 0 };

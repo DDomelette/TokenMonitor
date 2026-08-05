@@ -2,7 +2,12 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { scanFiles, rollupDaily } = require('../../core/locallog');
+const {
+  scanFiles,
+  rollupDaily,
+  normalizeTimestampMs,
+  incrementDiagnostic
+} = require('../../core/locallog');
 const { filterUsageDaily } = require('../../core/usage-retention');
 
 // ~/.codex/sessions/**/rollout-*.jsonl
@@ -11,7 +16,7 @@ const MATCH = /rollout-.*\.jsonl$/;
 const CURSOR_KEY = 'localLogCursors.codex';
 
 // 解析单行:取 payload.info.last_token_usage,timestamp 取 data.timestamp。
-function parseRolloutLine(line) {
+function parseRolloutLine(line, diagnostics, nowMs) {
   if (!line) return null;
   try {
     const data = JSON.parse(line);
@@ -20,8 +25,14 @@ function parseRolloutLine(line) {
     if (!payload || payload.type !== 'token_count' || !payload.info) return null;
     const last = payload.info.last_token_usage;
     if (!last) return null;
-    const ts = data.timestamp ? new Date(data.timestamp).getTime() : null;
-    if (!ts) return null;
+    const parsedTimestamp = data.timestamp === null || data.timestamp === undefined
+      ? null
+      : new Date(data.timestamp).getTime();
+    const ts = normalizeTimestampMs(parsedTimestamp, nowMs);
+    if (ts === null) {
+      incrementDiagnostic(diagnostics, 'invalidTimestamp');
+      return null;
+    }
     return {
       ts: ts,
       usage: {
@@ -41,6 +52,14 @@ function parseRolloutLine(line) {
 // ctx = { store, ... }。root 可通过 store 键 'providers.codex.localLogRoot' 覆盖(测试用)。
 function readLocalLog(ctx, opts) {
   const store = ctx && ctx.store;
+  const diagnostics = opts && opts.diagnostics;
+  const requestedNowMs = opts && opts.nowMs;
+  const parsedNowMs = Number(requestedNowMs);
+  const nowMs = requestedNowMs !== null
+    && requestedNowMs !== undefined
+    && Number.isFinite(parsedNowMs)
+    ? parsedNowMs
+    : Date.now();
   const root = (store && store.get('providers.codex.localLogRoot')) || DEFAULT_ROOT();
   if (!fs.existsSync(root)) return [];
   const records = scanFiles({
@@ -49,10 +68,16 @@ function readLocalLog(ctx, opts) {
     cursorStore: store,
     cursorKey: CURSOR_KEY,
     providerId: 'codex',
-    parseLine: parseRolloutLine
+    parseLine: parseRolloutLine,
+    diagnostics: diagnostics,
+    nowMs: nowMs
   });
   if (records.length && store) {
-    const daily = filterUsageDaily(rollupDaily(records), store.get('data.historyDays'));
+    const daily = filterUsageDaily(
+      rollupDaily(records, diagnostics, nowMs),
+      store.get('data.historyDays'),
+      nowMs
+    );
     const usageDaily = store.get('usageDaily') || {};
     Object.keys(daily).forEach((key) => {
       const prev = usageDaily[key] || { input: 0, cached: 0, output: 0, total: 0 };
