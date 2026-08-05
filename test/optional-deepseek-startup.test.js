@@ -95,6 +95,23 @@ test('skipping DeepSeek replaces a destroyed main window before showing it', () 
   assert.equal(result.focused, true);
 });
 
+test('a failed main-window creation leaves the optional DeepSeek prompt open', () => {
+  const { skipDeepseekLogin } = loadPolicy();
+  const login = makeWindow();
+
+  assert.throws(
+    () => skipDeepseekLogin({
+      getLoginWindow: () => login,
+      getMainWindow: () => null,
+      createMainWindow() {
+        throw Object.assign(new Error('renderer unavailable'), { code: 'CREATE_MAIN_FAILED' });
+      }
+    }),
+    (error) => error && error.code === 'CREATE_MAIN_FAILED'
+  );
+  assert.equal(login.closed, false);
+});
+
 test('login skip uses a dedicated allow-listed IPC path and delegates to the window policy', () => {
   const loginSource = read('src/renderer/js/login.js');
   const preloadSource = read('src/preload/preload.js');
