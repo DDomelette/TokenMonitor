@@ -12,7 +12,8 @@ const preload = fs.readFileSync(path.join(root, 'src/preload/preload.js'), 'utf8
 const stylesCss = fs.readFileSync(path.join(root, 'renderer/src/styles.css'), 'utf8');
 
 test('expired session marks authStatus expired and surfaces the relogin error', () => {
-  assert.match(scheduler, /setAuth\(provider\.id, 'expired'\)/);
+  assert.match(scheduler, /const auth = isAuthError\(error\)/);
+  assert.match(scheduler, /if \(auth && st\.authStatus !== 'expired'\) \{\s*st\.authStatus = 'expired';/);
   assert.match(main, /会话已过期，请重新登录/);
 });
 
