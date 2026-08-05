@@ -53,7 +53,13 @@ function parseWireLine(line, diagnostics, nowMs) {
 function readLocalLog(ctx, opts) {
   const store = ctx && ctx.store;
   const diagnostics = opts && opts.diagnostics;
-  const nowMs = opts && opts.nowMs;
+  const requestedNowMs = opts && opts.nowMs;
+  const parsedNowMs = Number(requestedNowMs);
+  const nowMs = requestedNowMs !== null
+    && requestedNowMs !== undefined
+    && Number.isFinite(parsedNowMs)
+    ? parsedNowMs
+    : Date.now();
   const root = (store && store.get('providers.kimi.localLogRoot')) || DEFAULT_ROOT();
   if (store && !store.get(MIGRATION_KEY)) {
     const usageDaily = store.get('usageDaily') || {};
@@ -78,7 +84,8 @@ function readLocalLog(ctx, opts) {
   if (records.length && store) {
     const daily = filterUsageDaily(
       rollupDaily(records, diagnostics, nowMs),
-      store.get('data.historyDays')
+      store.get('data.historyDays'),
+      nowMs
     );
     const usageDaily = store.get('usageDaily') || {};
     Object.keys(daily).forEach((key) => {
