@@ -189,6 +189,82 @@
     });
   }
 
+  function showHistorySyncProgress(message) {
+    var el = document.getElementById('historySyncProgress');
+    if (!el) return;
+    el.textContent = message || '';
+    el.hidden = !message;
+  }
+
+  function setHistorySyncPending(pending) {
+    var btn = document.getElementById('historySyncBtn');
+    if (btn) {
+      btn.disabled = pending;
+      btn.textContent = pending ? '同步中…' : '同步历史数据';
+    }
+  }
+
+  function formatHistorySyncSummary(summary) {
+    var lines = [];
+    if (summary.deepseek && summary.deepseek.skipped) {
+      lines.push('DeepSeek:未登录平台,仅同步了本机数据');
+    } else if (summary.deepseek) {
+      var ds = summary.deepseek;
+      lines.push('DeepSeek:同步 ' + ds.monthsFetched + ' 个月' +
+        (ds.monthsFailed && ds.monthsFailed.length ? ',' + ds.monthsFailed.length + ' 个月失败(' + ds.monthsFailed.join('、') + ')' : '') +
+        (ds.earliestDate ? ',最早 ' + ds.earliestDate : ''));
+    }
+    ['codex', 'kimi'].forEach(function (pid) {
+      var r = summary[pid];
+      if (!r) return;
+      var label = pid === 'codex' ? 'Codex' : 'Kimi';
+      lines.push(label + ':重建 ' + r.daysRebuilt + ' 天' + (r.earliestDate ? ',最早 ' + r.earliestDate : ''));
+    });
+    return lines.join('\n');
+  }
+
+  function showHistorySyncResult(summary) {
+    var el = document.getElementById('historySyncResult');
+    var hint = summary.retentionHint || null;
+    if (el) {
+      var text = formatHistorySyncSummary(summary);
+      if (hint) {
+        text += '\n当前历史保留 ' + hint.historyDays + ' 天,早于 ' + hint.earliestDate +
+          ' 的数据会被自动清理,建议调到 ≥ ' + hint.suggestedDays + ' 天';
+      }
+      el.textContent = text;
+      el.hidden = !text;
+    }
+    var btn = document.getElementById('historySyncRetentionBtn');
+    if (btn) {
+      if (hint) {
+        btn.hidden = false;
+        btn.textContent = '调整为 ' + hint.suggestedDays + ' 天';
+        btn.onclick = function () {
+          window.api.invoke('settings:save', { key: 'data.historyDays', value: hint.suggestedDays }).then(function () {
+            btn.hidden = true;
+            showHistorySyncProgress('历史保留天数已调整为 ' + hint.suggestedDays + ' 天,可再次同步补齐被清理的数据。');
+          });
+        };
+      } else {
+        btn.hidden = true;
+      }
+    }
+  }
+
+  function submitHistorySync() {
+    setHistorySyncPending(true);
+    showHistorySyncProgress('正在同步…');
+    window.api.invoke('sync:history').then(function (summary) {
+      showHistorySyncResult(summary || {});
+      showHistorySyncProgress('');
+    }).catch(function () {
+      showHistorySyncProgress('同步失败,请稍后重试。');
+    }).then(function () {
+      setHistorySyncPending(false);
+    });
+  }
+
   function render(def, val, placeholder) {
     var v = val !== undefined ? val : def.default;
     switch (def.type) {
@@ -233,6 +309,13 @@
           '<button type="button" class="btn btn-primary" id="deepseekApiKeySaveBtn">验证并保存</button>' +
           '<span id="deepseekApiKeyFeedback" role="status" hidden style="font-size:12px;line-height:1.3;"></span>' +
         '</div>';
+      case 'historySync':
+        return '<div style="display:flex;flex-direction:column;gap:6px;width:100%;">' +
+          '<button type="button" class="btn btn-primary" id="historySyncBtn">同步历史数据</button>' +
+          '<span id="historySyncProgress" role="status" hidden style="font-size:12px;line-height:1.3;"></span>' +
+          '<span id="historySyncResult" role="status" hidden style="font-size:12px;line-height:1.5;white-space:pre-line;"></span>' +
+          '<button type="button" class="btn" id="historySyncRetentionBtn" hidden></button>' +
+        '</div>';
       case 'password':
         return '<input type="password" class="text-input" data-key="' + def.key + '" value="' + v + '"' + (placeholder ? ' placeholder="' + placeholder + '"' : '') + '>';
       default:
@@ -254,7 +337,7 @@
           if (d.key === 'apiKey' && settings.providers && settings.providers.deepseek && settings.providers.deepseek.apiKeySet) {
             placeholder = '已保存,输入新 Key 以更换';
           }
-          var vertical = d.type === 'slider' || d.type === 'credential' || d.type === 'proxy';
+          var vertical = d.type === 'slider' || d.type === 'credential' || d.type === 'proxy' || d.type === 'historySync';
           return '<div class="setting-row' + (vertical ? ' vertical' : '') + '"><div><span class="setting-label">' + d.label + '</span></div>' + render(d, getNested(settings, d.key), placeholder) + '</div>';
         }).join('') + '</div>';
     });
@@ -286,6 +369,11 @@
     var proxySaveBtn = document.getElementById('proxySaveBtn');
     if (proxySaveBtn) {
       proxySaveBtn.addEventListener('click', submitProxySetting);
+    }
+
+    var historySyncBtn = document.getElementById('historySyncBtn');
+    if (historySyncBtn) {
+      historySyncBtn.addEventListener('click', submitHistorySync);
     }
 
     document.querySelectorAll('input[data-key]').forEach(function (el) {
@@ -374,6 +462,12 @@
   window.api.on('session:changed', function (state) {
     sessionState = state || { loggedIn: false, error: null };
     updateSessionSection();
+  });
+
+  window.api.on('sync:progress', function (p) {
+    if (!p) return;
+    var stageLabel = { deepseek: 'DeepSeek', codex: 'Codex', kimi: 'Kimi' }[p.stage] || p.stage;
+    showHistorySyncProgress('正在同步 ' + stageLabel + ' ' + (p.detail || '') + ' …');
   });
 
   window.api.invoke('get:session-state').then(function (state) {
