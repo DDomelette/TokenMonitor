@@ -97,3 +97,13 @@ export function formatToken(n) {
   if (value >= 10000) return (value / 10000).toLocaleString('en-US') + '万';
   return value.toLocaleString('en-US');
 }
+
+// 方块堆积列(每周/累计模式):列内方块数 ∝ 值,scale = 列最大值 / MAX_HEATMAP_BLOCKS
+export const MAX_HEATMAP_BLOCKS = 10;
+
+export function blockCount(value, scale) {
+  const v = Number(value) || 0;
+  const s = Number(scale) || 0;
+  if (v <= 0 || s <= 0) return 0;
+  return Math.max(1, Math.min(MAX_HEATMAP_BLOCKS, Math.round(v / s)));
+}
