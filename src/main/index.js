@@ -507,6 +507,8 @@ function resolveEffectiveTheme() {
 // Accent 可用时不再使用 backgroundMaterial(DWMWA_SYSTEMBACKDROP_TYPE):
 // 后者失焦必退化为纯色,且两套背景机制不应叠加在同一窗口上
 function useAccentBackdrop() {
+  // 应急/诊断开关:DSM_DISABLE_ACCENT=1 时退回官方 backgroundMaterial 路径
+  if (process.env.DSM_DISABLE_ACCENT) return false;
   return isAccentSupported();
 }
 
