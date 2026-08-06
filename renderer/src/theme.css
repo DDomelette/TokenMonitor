@@ -103,7 +103,8 @@
 :root[data-theme='acrylic-light'] {
   color-scheme: light;
   --bg-window: rgba(255, 255, 255, 0.08);
-  --bg-card: rgba(255, 255, 255, 0.28);
+  --bg-card: rgba(255, 255, 255, 0.55);
+  --text-secondary: #4B5563;
   --border: rgba(0, 0, 0, 0.10);
   --shadow-window: 0 12px 34px rgba(0, 0, 0, 0.18);
   /* 分层投影:卡片像浮在磨砂底上,避免与窗口底割裂 */
@@ -138,4 +139,23 @@
 :root[data-theme='acrylic-dark'] .component-surface {
   box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(16px) saturate(140%);
+}
+
+/* 亚克力亮调:窗口底 0.08 近全透,透出的桌面偏灰黑——标题栏/状态栏文字图标改白色 */
+:root[data-theme='acrylic-light'] .titlebar-text,
+:root[data-theme='acrylic-light'] .statusbar {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+:root[data-theme='acrylic-light'] .statusbar {
+  border-top-color: rgba(255, 255, 255, 0.15);
+}
+
+:root[data-theme='acrylic-light'] .titlebar-btn {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+:root[data-theme='acrylic-light'] .titlebar-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #FFFFFF;
 }
