@@ -81,3 +81,56 @@ test('已在 fetchedMonths 中的月份直接跳过不重复请求', async () =>
   assert.deepEqual(calls, ['2026-6', '2026-5', '2026-4']);
   assert.equal(r.earliestDate, '2026-06-17');
 });
+
+test('重扫:清该 provider 前缀键与游标,循环扫描直到无新增,覆盖同名键', async () => {
+  const store = makeStore({
+    usageDaily: {
+      'codex:2026-06-17': { input: 0, cached: 0, output: 0, total: 999 },
+      'kimi:2026-06-17': { input: 0, cached: 0, output: 0, total: 5 }
+    },
+    'localLogCursors.codex': { '/x/rollout-a.jsonl': { offset: 123, mtimeMs: 1 } }
+  });
+  let pass = 0;
+  const readLocalLog = async () => {
+    pass++;
+    if (pass === 1) {
+      store.data.usageDaily['codex:2026-06-17'] = { input: 10, cached: 0, output: 40, total: 50 };
+      store.data.usageDaily['codex:2026-06-18'] = { input: 1, cached: 0, output: 1, total: 2 };
+      return [{}, {}];
+    }
+    return [];
+  };
+  const r = await rescanLocalLogs({
+    providerId: 'codex', readLocalLog, readStore: store.get, writeStore: store.set
+  });
+  assert.equal(store.data.usageDaily['codex:2026-06-17'].total, 50);
+  assert.equal(store.data.usageDaily['kimi:2026-06-17'].total, 5);
+  assert.deepEqual(store.data['localLogCursors.codex'], {});
+  assert.equal(r.daysRebuilt, 2);
+  assert.equal(r.earliestDate, '2026-06-17');
+  assert.equal(r.passes, 2);
+  assert.equal(r.records, 2);
+});
+
+test('重扫:日志为空时 daysRebuilt=0,不视为错误', async () => {
+  const store = makeStore({});
+  const readLocalLog = async () => [];
+  const r = await rescanLocalLogs({
+    providerId: 'kimi', readLocalLog, readStore: store.get, writeStore: store.set
+  });
+  assert.equal(r.daysRebuilt, 0);
+  assert.equal(r.earliestDate, null);
+  assert.equal(r.passes, 1);
+});
+
+test('日边界:rollupDaily 聚合键为本地(北京)日历日', () => {
+  const { rollupDaily } = require('../src/main/core/locallog');
+  const ts = Date.UTC(2026, 5, 17, 16, 30); // UTC 16:30,北京时间为次日 00:30
+  ['codex', 'kimi'].forEach((pid) => {
+    const daily = rollupDaily([{ provider: pid, ts, usage: { input: 1, cached: 0, output: 1, total: 2 } }]);
+    const d = new Date(ts);
+    const key = pid + ':' + d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    assert.ok(daily[key], pid + ' 应按本地日历日聚合,实际键:' + Object.keys(daily).join(','));
+  });
+});
