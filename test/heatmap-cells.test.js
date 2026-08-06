@@ -120,3 +120,11 @@ test('TokenHeatmap portals the tooltip to document.body so it escapes the module
   assert.match(heatmapJsx, /createPortal/);
   assert.match(heatmapJsx, /document\.body/);
 });
+
+test('TokenHeatmap renders weekly/cumulative as stacked block columns', () => {
+  assert.match(heatmapJsx, /blockCount/);
+  assert.match(heatmapJsx, /heatmap-grid-blocks/);
+  assert.match(heatmapJsx, /heatmap-block-col/);
+  assert.match(heatmapJsx, /当周使用了/);
+  assert.match(heatmapJsx, /当周累计使用/);
+});
