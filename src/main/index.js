@@ -12,6 +12,13 @@ const { wakeMostRelevantWindow } = require('./core/startup-windows');
 const setupIPC = require('./ipc');
 const { captureSession } = require('./providers/deepseek/session');
 const {
+  isAcrylicTheme,
+  tintForTheme,
+  isAccentSupported,
+  applyAccent,
+  clearAccent
+} = require('./windows-backdrop');
+const {
   clearSession,
   expireSession,
   getSessionSnapshot,
@@ -99,7 +106,7 @@ function createMainWindow() {
     backgroundColor: '#00000000',
     roundedCorners: true,
     // DWM 磨砂透明:替代整窗 setOpacity(分层窗口缩放会露黑边)
-    backgroundMaterial: 'acrylic',
+    ...windowMaterialOptions(),
     alwaysOnTop: store.get('window.alwaysOnTop'),
     // 原生缩放:Chromium 在系统缩放循环中拉伸旧帧,不会露出黑色欠采样区(同 VSCode)
     resizable: true,
@@ -162,6 +169,10 @@ function createMainWindow() {
     persistMainWindowBounds();
   });
 
+  applyBackdropTo(mainWindow);
+  mainWindow.on('blur', function () { notifyFocusState(mainWindow, false); });
+  mainWindow.on('focus', function () { notifyFocusState(mainWindow, true); });
+
   nativeTheme.on('updated', () => {
     if (store.get('window.followSystemTheme')) {
       const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
@@ -170,6 +181,7 @@ function createMainWindow() {
         loginWindow.webContents.send('theme:changed', theme);
       }
     }
+    applyBackdropToAll();
   });
 }
 
@@ -181,7 +193,7 @@ function createLoginWindow() {
     transparent: false,
     backgroundColor: '#00000000',
     roundedCorners: true,
-    backgroundMaterial: 'acrylic',
+    ...windowMaterialOptions(),
     resizable: false,
     alwaysOnTop: true,
     center: true,
@@ -192,6 +204,9 @@ function createLoginWindow() {
     }
   });
   loginWindow.loadFile(path.join(__dirname, '..', 'renderer', 'login.html'));
+  applyBackdropTo(loginWindow);
+  loginWindow.on('blur', function () { notifyFocusState(loginWindow, false); });
+  loginWindow.on('focus', function () { notifyFocusState(loginWindow, true); });
   loginWindow.on('closed', () => {
     loginWindow = null;
   });
@@ -413,7 +428,7 @@ function createSettingsWindow() {
     transparent: false,
     backgroundColor: '#00000000',
     roundedCorners: true,
-    backgroundMaterial: 'acrylic',
+    ...windowMaterialOptions(),
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -427,6 +442,9 @@ function createSettingsWindow() {
   });
   settingsWindow.setMenu(null);
   settingsWindow.loadFile(path.join(__dirname, '..', 'renderer', 'settings-window.html'));
+  applyBackdropTo(settingsWindow);
+  settingsWindow.on('blur', function () { notifyFocusState(settingsWindow, false); });
+  settingsWindow.on('focus', function () { notifyFocusState(settingsWindow, true); });
   settingsWindow.on('closed', () => { settingsWindow = null; });
 }
 
@@ -468,6 +486,59 @@ function applyTheme() {
   if (loginWindow && !loginWindow.isDestroyed()) {
     loginWindow.webContents.send('theme:changed', isDark ? 'dark' : 'light');
   }
+  applyBackdropToAll();
+}
+
+/* ======== Accent 亚克力背景(失焦不褪色) ======== */
+
+// 记录 Accent 已在哪些窗口生效:主题切换时决定 enable/clear,
+// 也用于失焦实心化(路线 B)与 Accent 持久透明的互斥
+const accentAppliedWindows = new WeakSet();
+
+// 与渲染端 resolveTheme 同语义:跟随系统主开关优先,亚克力为显式手动模式
+function resolveEffectiveTheme() {
+  var follow = store.get('window.followSystemTheme');
+  if (follow === undefined) follow = true;
+  var mode = store.get('window.darkMode') || 'system';
+  if (follow || mode === 'system') return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+  return mode;
+}
+
+// Accent 可用时不再使用 backgroundMaterial(DWMWA_SYSTEMBACKDROP_TYPE):
+// 后者失焦必退化为纯色,且两套背景机制不应叠加在同一窗口上
+function useAccentBackdrop() {
+  return isAccentSupported();
+}
+
+function windowMaterialOptions() {
+  return useAccentBackdrop() ? {} : { backgroundMaterial: 'acrylic' };
+}
+
+function applyBackdropTo(win) {
+  if (!win || win.isDestroyed() || !useAccentBackdrop()) return;
+  var theme = resolveEffectiveTheme();
+  if (isAcrylicTheme(theme)) {
+    if (applyAccent(win, { argb: tintForTheme(theme) })) {
+      accentAppliedWindows.add(win);
+    } else {
+      // Accent 失败回退官方材质;失焦退化由渲染端失焦实心化兜底
+      try { win.setBackgroundMaterial('acrylic'); } catch (_) {}
+    }
+  } else if (accentAppliedWindows.has(win)) {
+    if (clearAccent(win)) accentAppliedWindows.delete(win);
+  }
+}
+
+function applyBackdropToAll() {
+  applyBackdropTo(mainWindow);
+  applyBackdropTo(settingsWindow);
+  applyBackdropTo(loginWindow);
+}
+
+// 路线 B:失焦实心化只在 Accent 未生效时下发,避免盖住 Accent 的持久透明
+function notifyFocusState(win, focused) {
+  if (!win || win.isDestroyed() || accentAppliedWindows.has(win)) return;
+  win.webContents.send('window:focus-state', focused);
 }
 
 /* ======== 调度器 ======== */

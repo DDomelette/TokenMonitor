@@ -18,7 +18,8 @@
   "dependencies": {
     "echarts": "^5.5.0",
     "electron-store": "^8.1.0",
-    "gridstack": "^12.3.3"
+    "gridstack": "^12.3.3",
+    "koffi": "^3.1.4"
   },
   "devDependencies": {
     "electron": "^40.0.0",

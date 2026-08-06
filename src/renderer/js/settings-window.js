@@ -393,6 +393,11 @@
     document.body.dataset.theme = theme;
   }
 
+  // 失焦实心化(Accent 未生效时主进程才下发)
+  window.api.on('window:focus-state', function (focused) {
+    document.body.dataset.windowActive = String(focused !== false);
+  });
+
   function applyInitialTheme(settings) {
     themeSettings = settings || themeSettings;
     applyTheme();

@@ -145,6 +145,13 @@
   body[data-theme='acrylic-dark'] .container {
     background: rgba(20, 22, 28, 0.15);
   }
+  /* 失焦实心化:退回实底 */
+  body[data-theme='acrylic-light'][data-window-active='false'] .container {
+    background: rgba(255, 255, 255, 0.93);
+  }
+  body[data-theme='acrylic-dark'][data-window-active='false'] .container {
+    background: rgba(30, 32, 38, 0.94);
+  }
 </style>
 </head>
 <body>

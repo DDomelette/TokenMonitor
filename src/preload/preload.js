@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('api', {
       'login:error',
       'open:settings',
       'theme:changed',
+      'window:focus-state',
       'window:bounds-changed',
       'session:changed',
       'providers:changed'
