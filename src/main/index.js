@@ -105,6 +105,9 @@ function createMainWindow() {
     transparent: false,
     backgroundColor: '#00000000',
     roundedCorners: true,
+    // 先隐后显:Accent/DWM 磨砂要在窗口首次合成前就位;对已可见窗口
+    // 应用 SWCA,DWM 不重算模糊区,表现是纯色,要等 resize 才突变透明
+    show: false,
     // DWM 磨砂透明:替代整窗 setOpacity(分层窗口缩放会露黑边)
     ...windowMaterialOptions(),
     alwaysOnTop: store.get('window.alwaysOnTop'),
@@ -170,6 +173,7 @@ function createMainWindow() {
   });
 
   applyBackdropTo(mainWindow);
+  revealWhenReady(mainWindow);
   mainWindow.on('blur', function () { notifyFocusState(mainWindow, false); });
   mainWindow.on('focus', function () { notifyFocusState(mainWindow, true); });
 
@@ -197,6 +201,7 @@ function createLoginWindow() {
     resizable: false,
     alwaysOnTop: true,
     center: true,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'preload.js'),
       contextIsolation: true,
@@ -205,6 +210,7 @@ function createLoginWindow() {
   });
   loginWindow.loadFile(path.join(__dirname, '..', 'renderer', 'login.html'));
   applyBackdropTo(loginWindow);
+  revealWhenReady(loginWindow);
   loginWindow.on('blur', function () { notifyFocusState(loginWindow, false); });
   loginWindow.on('focus', function () { notifyFocusState(loginWindow, true); });
   loginWindow.on('closed', () => {
@@ -434,6 +440,7 @@ function createSettingsWindow() {
     maximizable: false,
     alwaysOnTop: true,
     useContentSize: true,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'preload.js'),
       contextIsolation: true,
@@ -443,6 +450,7 @@ function createSettingsWindow() {
   settingsWindow.setMenu(null);
   settingsWindow.loadFile(path.join(__dirname, '..', 'renderer', 'settings-window.html'));
   applyBackdropTo(settingsWindow);
+  revealWhenReady(settingsWindow);
   settingsWindow.on('blur', function () { notifyFocusState(settingsWindow, false); });
   settingsWindow.on('focus', function () { notifyFocusState(settingsWindow, true); });
   settingsWindow.on('closed', () => { settingsWindow = null; });
@@ -490,6 +498,21 @@ function applyTheme() {
 }
 
 /* ======== Accent 亚克力背景(失焦不褪色) ======== */
+
+// 先隐后显的配套:窗口创建时 show:false,Accent/DWM 磨砂在隐藏态就位,
+// 首帧合成即带磨砂。渲染就绪后 reveal;ready-to-show 不触发时 5s 兜底,
+// 避免加载异常导致窗口永远不出现
+function revealWhenReady(win) {
+  if (!win || win.isDestroyed()) return;
+  var revealed = false;
+  function reveal() {
+    if (revealed || win.isDestroyed()) return;
+    revealed = true;
+    win.show();
+  }
+  win.once('ready-to-show', reveal);
+  setTimeout(reveal, 5000);
+}
 
 // 记录 Accent 已在哪些窗口生效:主题切换时决定 enable/clear,
 // 也用于失焦实心化(路线 B)与 Accent 持久透明的互斥

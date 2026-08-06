@@ -75,6 +75,24 @@ test('main process wires the accent backdrop and focus-state channel', () => {
   assert.match(main, /'window:focus-state'/);
 });
 
+test('windows apply the accent while hidden, then reveal on ready-to-show', () => {
+  const main = fs.readFileSync(path.join(root, 'src/main/index.js'), 'utf8');
+
+  // 对已可见窗口应用 SWCA,DWM 不重算模糊区(纯色,resize 才突变透明);
+  // 三个亚克力窗口都必须先隐后显:创建时 show:false,就绪后 reveal
+  const creators = ['createMainWindow', 'createLoginWindow', 'createSettingsWindow'];
+  for (const name of creators) {
+    const start = main.indexOf(`function ${name}(`);
+    assert.ok(start >= 0, `${name} must exist`);
+    const body = main.slice(start, main.indexOf('\nfunction ', start + 1));
+    assert.match(body, /show:\s*false/, `${name} must create the window hidden`);
+    assert.match(body, /revealWhenReady\(/, `${name} must reveal after backdrop is applied`);
+  }
+  // reveal 依赖 ready-to-show,并有不触发时的兜底,避免窗口永远不出现
+  assert.match(main, /ready-to-show/);
+  assert.match(main, /setTimeout\(reveal,\s*\d+\)/);
+});
+
 test('preload and packaging expose what the accent path needs', () => {
   const preload = fs.readFileSync(path.join(root, 'src/preload/preload.js'), 'utf8');
   const builder = fs.readFileSync(path.join(root, 'electron-builder.yml'), 'utf8');
