@@ -22,6 +22,10 @@ var networkDefinitions = [
   }
 ];
 
+var historyDefinitions = [
+  { group: '历史数据', key: 'history.sync', type: 'historySync', label: '用量历史同步', default: '' }
+];
+
 var componentDefinitions = window.ComponentRegistry.list().map(function (component) {
   return {
     group: '组件',
@@ -41,6 +45,7 @@ var tailDefinitions = [
 
 window.SettingsDefinitions = windowDefinitions.concat(
   networkDefinitions,
+  historyDefinitions,
   componentDefinitions,
   tailDefinitions
 );

@@ -22,7 +22,7 @@ test('legacy settings:update delegates to the acknowledged settings writer', () 
 test('heatmap reads a defensively filtered usage snapshot', () => {
   assert.match(
     ipcSource,
-    /const \{ filterUsageDaily \} = require\('\.\/core\/usage-retention'\);/
+    /const \{ filterUsageDaily(, retentionStartDay)? \} = require\('\.\/core\/usage-retention'\);/
   );
   assert.match(
     ipcSource,
