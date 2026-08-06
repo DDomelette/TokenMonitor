@@ -301,13 +301,13 @@ body:not(.dark) {
 
 /* ======== 亚克力主题:与主窗口一致的高透磨砂 ======== */
 body[data-theme='acrylic-light'] {
-  --bg-card: rgba(255, 255, 255, 0.35);
+  --bg-card: rgba(255, 255, 255, 0.28);
 }
 body[data-theme='acrylic-light'] #app {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
 }
 /* acrylic-dark 时 body.dark 已生效,这里只把暗色底/卡片换成半透变体 */
 body[data-theme='acrylic-dark'] {
-  --bg-window-dark: rgba(20, 22, 28, 0.22);
-  --bg-card: rgba(255, 255, 255, 0.06);
+  --bg-window-dark: rgba(20, 22, 28, 0.15);
+  --bg-card: rgba(255, 255, 255, 0.05);
 }
