@@ -35,6 +35,7 @@ export function installThemeSync(options) {
   const mediaQuery = opts.mediaQuery;
   const root = opts.root;
   const body = opts.body;
+  const onWindowFocusState = opts.onWindowFocusState;
   const dispatchThemeApplied = typeof opts.dispatchThemeApplied === 'function'
     ? opts.dispatchThemeApplied
     : () => {};
@@ -77,6 +78,15 @@ export function installThemeSync(options) {
     });
     if (typeof offSettings === 'function') unsubscribers.push(offSettings);
     if (typeof offTheme === 'function') unsubscribers.push(offTheme);
+  }
+
+  if (typeof onWindowFocusState === 'function') {
+    const offFocus = onWindowFocusState((focused) => {
+      if (disposed) return;
+      // Accent 生效时主进程不下发该通道;到达这里的失焦必为材质退化,切换实心兜底样式
+      if (root && root.dataset) root.dataset.windowActive = String(focused !== false);
+    });
+    if (typeof offFocus === 'function') unsubscribers.push(offFocus);
   }
 
   const onSystemThemeChange = (event) => {

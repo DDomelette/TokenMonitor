@@ -159,3 +159,32 @@
   background: rgba(255, 255, 255, 0.15);
   color: #FFFFFF;
 }
+
+/* ======== 失焦实心化(Accent 不可用时的设计化兜底) ======== */
+/* Accent 生效时主进程不下发焦点通道,dataset.windowActive 不会出现,亚克力保持透明 */
+:root[data-theme='acrylic-light'][data-window-active='false'] {
+  --bg-window: rgba(246, 247, 249, 0.93);
+  --text-secondary: #6B7280;
+}
+
+:root[data-theme='acrylic-light'][data-window-active='false'] .titlebar-text,
+:root[data-theme='acrylic-light'][data-window-active='false'] .statusbar {
+  color: #8A919F;
+}
+
+:root[data-theme='acrylic-light'][data-window-active='false'] .statusbar {
+  border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+:root[data-theme='acrylic-light'][data-window-active='false'] .titlebar-btn {
+  color: #5B6372;
+}
+
+:root[data-theme='acrylic-light'][data-window-active='false'] .titlebar-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #1F2329;
+}
+
+:root[data-theme='acrylic-dark'][data-window-active='false'] {
+  --bg-window: rgba(30, 32, 38, 0.94);
+}

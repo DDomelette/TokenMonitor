@@ -24,6 +24,7 @@ export default function App() {
     mediaQuery: window.matchMedia('(prefers-color-scheme: dark)'),
     root: document.documentElement,
     body: document.body,
+    onWindowFocusState: (cb) => on('window:focus-state', cb),
     dispatchThemeApplied: (theme) => window.dispatchEvent(
       new CustomEvent('tokenmonitor:theme-applied', { detail: { theme } })
     )

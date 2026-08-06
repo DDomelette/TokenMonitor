@@ -134,3 +134,53 @@ test('acrylic-light keeps text and titlebar icons readable on the gray-dark back
   assert.match(mainCss, /body\[data-theme='acrylic-light'\][\s\S]*?--text-primary: #F3F4F6/);
   assert.match(mainCss, /body\[data-theme='acrylic-light'\][\s\S]*?--text-secondary: rgba\(255, 255, 255, 0\.75\)/);
 });
+
+test('theme-sync tracks window focus state for the inactive fallback', async () => {
+  const { installThemeSync } = await import('../renderer/src/theme-sync.js');
+  const rootEl = { dataset: {}, style: {}, classList: { toggle() {}, contains: () => false } };
+  const bodyEl = { dataset: {}, style: {}, classList: { toggle() {}, contains: () => false } };
+  let focusListener = null;
+
+  installThemeSync({
+    getSettings: async () => ({ window: {} }),
+    mediaQuery: { matches: false, addEventListener() {}, removeEventListener() {} },
+    root: rootEl,
+    body: bodyEl,
+    onWindowFocusState(cb) { focusListener = cb; return () => {}; }
+  });
+
+  assert.equal(typeof focusListener, 'function');
+  focusListener(false);
+  assert.equal(rootEl.dataset.windowActive, 'false');
+  focusListener(true);
+  assert.equal(rootEl.dataset.windowActive, 'true');
+});
+
+test('acrylic themes ship a deliberate inactive solid fallback', () => {
+  const css = fs.readFileSync(path.join(root, 'renderer/src/theme.css'), 'utf8');
+
+  // Accent 不可用时失焦会退化为纯色:主动切成接近常规主题的实底,而不是被动显示 DWM fallback
+  assert.match(css, /\[data-theme='acrylic-light'\]\[data-window-active='false'\][\s\S]*?--bg-window: rgba\(246, 247, 249, 0\.93\)/);
+  assert.match(css, /\[data-theme='acrylic-dark'\]\[data-window-active='false'\][\s\S]*?--bg-window: rgba\(30, 32, 38, 0\.94\)/);
+  // 亮色实底下铬层文字图标回到深灰
+  assert.match(css, /\[data-theme='acrylic-light'\]\[data-window-active='false'\][\s\S]*?\.titlebar-btn \{[^}]*color: #5B6372/i);
+});
+
+test('settings and login windows ship the same inactive fallback', () => {
+  const mainCss = fs.readFileSync(path.join(root, 'src/renderer/css/main.css'), 'utf8');
+  const loginHtml = fs.readFileSync(path.join(root, 'src/renderer/login.html'), 'utf8');
+  const settings = fs.readFileSync(path.join(root, 'src/renderer/js/settings-window.js'), 'utf8');
+  const login = fs.readFileSync(path.join(root, 'src/renderer/js/login.js'), 'utf8');
+
+  // 设置窗口:失焦实底 + 文字回到深色系
+  assert.match(mainCss, /body\[data-theme='acrylic-light'\]\[data-window-active='false'\][\s\S]*?--text-primary: #1A1A2E/);
+  assert.match(mainCss, /body\[data-theme='acrylic-light'\]\[data-window-active='false'\] #app \{\s*background: rgba\(255, 255, 255, 0\.93\)/);
+  // 登录窗口:失焦实底
+  assert.match(loginHtml, /body\[data-theme='acrylic-light'\]\[data-window-active='false'\] \.container \{\s*background: rgba\(255, 255, 255, 0\.93\)/);
+  assert.match(loginHtml, /body\[data-theme='acrylic-dark'\]\[data-window-active='false'\] \.container \{\s*background: rgba\(30, 32, 38, 0\.94\)/);
+  // 两个窗口都监听焦点通道
+  assert.match(settings, /window:focus-state/);
+  assert.match(settings, /dataset\.windowActive/);
+  assert.match(login, /window:focus-state/);
+  assert.match(login, /dataset\.windowActive/);
+});

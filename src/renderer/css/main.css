@@ -314,3 +314,15 @@ body[data-theme='acrylic-dark'] {
   --bg-window-dark: rgba(20, 22, 28, 0.15);
   --bg-card: rgba(255, 255, 255, 0.05);
 }
+
+/* ======== 失焦实心化:退回接近常规主题的实底与深文字 ======== */
+body[data-theme='acrylic-light'][data-window-active='false'] {
+  --text-primary: #1A1A2E;
+  --text-secondary: #6B7280;
+}
+body[data-theme='acrylic-light'][data-window-active='false'] #app {
+  background: rgba(255, 255, 255, 0.93);
+}
+body[data-theme='acrylic-dark'][data-window-active='false'] {
+  --bg-window-dark: rgba(30, 32, 38, 0.92);
+}
