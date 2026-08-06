@@ -6,9 +6,13 @@ const { sanitizeSettings, isWritableSettingKey, resolveWritableSettingKey } = re
 const { resetSettingsStore } = require('./core/settings-reset');
 const { saveSetting } = require('./core/settings-write');
 const { replaceDeepseekApiKey } = require('./core/api-key-replacement');
-const { filterUsageDaily } = require('./core/usage-retention');
+const { filterUsageDaily, retentionStartDay } = require('./core/usage-retention');
 const { getSessionSnapshot } = require('./core/session-state');
 const { skipDeepseekLogin } = require('./core/startup-windows');
+const { syncDeepSeekHistory, rescanLocalLogs } = require('./core/history-sync');
+const { UsageFetcher } = require('./providers/deepseek/usage');
+const { httpGet } = require('./core/http');
+const { SYSTEM_PROXY_VALUE, resolveElectronSystemProxy } = require('./core/proxy-settings');
 
 function deepseekApiKeyCtx(deps, apiKey) {
   return {
@@ -127,6 +131,71 @@ module.exports = function setupIPC(deps) {
     const result = buildHeatmap(byProvider, provider || 'all', year || new Date().getFullYear());
     result.details = { byProvider: byProvider, cachedByProvider: cachedByProvider, deepseekModels: deepseekModels };
     return result;
+  });
+
+  /* ======== History Sync ======== */
+
+  ipcMain.handle('sync:history', async (event) => {
+    const sendProgress = (p) => {
+      try {
+        event.sender.send('sync:progress', p);
+      } catch (e) { /* 设置窗口已关闭,进度丢弃 */ }
+    };
+    const readStore = (k) => deps.store.get(k);
+    const writeStore = (k, v) => deps.store.set(k, v);
+    const summary = {};
+
+    const token = deps.store.get('providers.deepseek.sessionToken');
+    if (token) {
+      const storedProxy = deps.store.get('providers.proxyUrl') || null;
+      const proxyUrl = storedProxy === SYSTEM_PROXY_VALUE ? resolveElectronSystemProxy : storedProxy;
+      const fetcher = new UsageFetcher();
+      summary.deepseek = await syncDeepSeekHistory({
+        fetchMonth: (year, month) =>
+          fetcher.fetchUsageAmount(token, month, year, { httpGet, proxyUrl }).then((r) => r.dailyData),
+        readStore,
+        writeStore,
+        onProgress: sendProgress
+      });
+    } else {
+      summary.deepseek = { skipped: true, reason: 'not-logged-in' };
+    }
+
+    for (const pid of ['codex', 'kimi']) {
+      const provider = deps.registry.get(pid);
+      if (!provider || typeof provider.readLocalLog !== 'function') {
+        summary[pid] = { daysRebuilt: 0, earliestDate: null, skipped: true };
+        continue;
+      }
+      summary[pid] = await rescanLocalLogs({
+        providerId: pid,
+        readLocalLog: () => provider.readLocalLog({ store: deps.store }),
+        readStore,
+        writeStore,
+        onProgress: sendProgress
+      });
+    }
+
+    // 历史保留提示:最早日期落在保留窗口外时给出建议天数(只提示不擅改)
+    const historyDays = deps.store.get('data.historyDays');
+    const earliest = [summary.deepseek, summary.codex, summary.kimi]
+      .map((r) => r && r.earliestDate)
+      .filter(Boolean)
+      .sort()[0] || null;
+    if (earliest && Number.isInteger(historyDays) && historyDays > 0 && earliest < retentionStartDay(historyDays)) {
+      const startMs = new Date(earliest + 'T12:00:00').getTime();
+      summary.retentionHint = {
+        historyDays,
+        earliestDate: earliest,
+        suggestedDays: Math.ceil((Date.now() - startMs) / 86400000) + 1
+      };
+    }
+
+    // 广播 providers:changed,渲染端 TokenHeatmap/ProviderBar 已订阅,会自动重取 get:heatmap
+    if (deps.scheduler && typeof deps.scheduler.pollAll === 'function') {
+      await deps.scheduler.pollAll();
+    }
+    return summary;
   });
 
   /* ======== Settings ======== */

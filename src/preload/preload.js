@@ -10,7 +10,8 @@ contextBridge.exposeInMainWorld('api', {
       'window:focus-state',
       'window:bounds-changed',
       'session:changed',
-      'providers:changed'
+      'providers:changed',
+      'sync:progress'
     ];
     if (validChannels.includes(channel)) {
       const listener = (event, ...args) => callback(...args);
@@ -53,7 +54,8 @@ contextBridge.exposeInMainWorld('api', {
       'get:heatmap',
       'get:bounds',
       'get:session-state',
-      'window:commit'
+      'window:commit',
+      'sync:history'
     ];
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args);
