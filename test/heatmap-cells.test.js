@@ -110,3 +110,13 @@ test('TokenHeatmap renders visual-week totals without ISO-week aggregation', () 
   assert.match(heatmapJsx, /heatmap-tooltip/);
   assert.match(heatmapJsx, /getHeatmap/);
 });
+
+test('TokenHeatmap portals the tooltip to document.body so it escapes the module card', () => {
+  // 模块卡片有 overflow:hidden + backdrop-filter(玻璃效果):
+  // backdrop-filter 会让卡片成为 position:fixed 后代的包含块,
+  // tooltip 若留在模块 DOM 内会被裁剪,且撑大卡片的 scrollHeight,
+  // 触发 Dashboard fitItems 自动撑高模块(下边框向下扩张)。
+  // 因此 tooltip 必须 portal 到 document.body
+  assert.match(heatmapJsx, /createPortal/);
+  assert.match(heatmapJsx, /document\.body/);
+});

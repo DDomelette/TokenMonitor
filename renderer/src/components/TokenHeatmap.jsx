@@ -1,6 +1,7 @@
 // GitHub 风格 Token 活动热力图:每日(53×7)/每周(53 列 1 行)/累计(高度条)三模式。
 // 颜色用主题 primary(#74B8FC)的 5 档透明度;hover tooltip 显示日期与用量。
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { getHeatmap, onProvidersChanged } from '../api.js';
 import { buildSundayWeekTotals, buildWeeks, colorLevel, formatToken, sundayWeekKey } from '../lib/heatmap.js';
 import {
@@ -357,21 +358,27 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
         ))}
         <span>多</span>
       </div>
-      {tip ? (
-        <div ref={tipRef} className={'heatmap-tooltip' + (tip.below ? ' below' : '') + (tip.fading ? ' fading' : '')} style={{ left: tip.x, top: tip.y }}>
-          <div className="heatmap-tooltip-head">
-            <span className="heatmap-tooltip-date">{dateLabel(tip.date)}</span>
-            <span className="heatmap-tooltip-total">{formatToken(tipTotal(tip.date))} Token</span>
-          </div>
-          {(tip.overrideLines || tipLines(tip.date)).map((l, i) => (
-            <div key={i} className="heatmap-tooltip-row">
-              <span className="heatmap-tooltip-label">{l.label}</span>
-              <span className="heatmap-tooltip-value">{l.value}</span>
-            </div>
-          ))}
-          {!(tip.overrideLines || tipLines(tip.date)).length ? <div className="heatmap-tooltip-row">无消耗</div> : null}
-        </div>
-      ) : null}
+      {tip
+        // portal 到 body:留在模块内会被卡片的 overflow:hidden 裁剪,
+        // 且 backdrop-filter 使 fixed 以卡片为包含块,撑大 scrollHeight
+        // 触发 Dashboard fitItems 自动撑高模块(下边框自行向下扩张)
+        ? createPortal(
+            <div ref={tipRef} className={'heatmap-tooltip' + (tip.below ? ' below' : '') + (tip.fading ? ' fading' : '')} style={{ left: tip.x, top: tip.y }}>
+              <div className="heatmap-tooltip-head">
+                <span className="heatmap-tooltip-date">{dateLabel(tip.date)}</span>
+                <span className="heatmap-tooltip-total">{formatToken(tipTotal(tip.date))} Token</span>
+              </div>
+              {(tip.overrideLines || tipLines(tip.date)).map((l, i) => (
+                <div key={i} className="heatmap-tooltip-row">
+                  <span className="heatmap-tooltip-label">{l.label}</span>
+                  <span className="heatmap-tooltip-value">{l.value}</span>
+                </div>
+              ))}
+              {!(tip.overrideLines || tipLines(tip.date)).length ? <div className="heatmap-tooltip-row">无消耗</div> : null}
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
