@@ -163,13 +163,25 @@ function createMainWindow() {
     }, 300);
   });
 
+  // SWCA 亚克力模糊随窗口尺寸每帧重算,边框拖拽缩放时造成严重卡顿:
+  // 缩放期间挂起 Accent(窗口暂时实心),结束后恢复磨砂
+  var accentSuspendedForResize = false;
   mainWindow.on('resize', function () {
     sendMainWindowBounds();
+    if (!accentSuspendedForResize && accentAppliedWindows.has(mainWindow)) {
+      accentSuspendedForResize = true;
+      clearAccent(mainWindow);
+      accentAppliedWindows.delete(mainWindow);
+    }
   });
 
   // 原生缩放结束后持久化最终尺寸(原生缩放不经过 window:set-bounds / resize:end)
   mainWindow.on('resized', function () {
     persistMainWindowBounds();
+    if (accentSuspendedForResize) {
+      accentSuspendedForResize = false;
+      applyBackdropTo(mainWindow);
+    }
   });
 
   applyBackdropTo(mainWindow);
