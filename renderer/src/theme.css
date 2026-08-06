@@ -102,8 +102,8 @@
 /* ======== 亚克力主题:窗口高透透出 DWM 磨砂,卡片 Fluent 半透叠加层 ======== */
 :root[data-theme='acrylic-light'] {
   color-scheme: light;
-  --bg-window: rgba(255, 255, 255, 0.12);
-  --bg-card: rgba(255, 255, 255, 0.35);
+  --bg-window: rgba(255, 255, 255, 0.08);
+  --bg-card: rgba(255, 255, 255, 0.28);
   --border: rgba(0, 0, 0, 0.10);
   --shadow-window: 0 12px 34px rgba(0, 0, 0, 0.18);
   /* 分层投影:卡片像浮在磨砂底上,避免与窗口底割裂 */
@@ -112,8 +112,8 @@
 
 :root[data-theme='acrylic-dark'] {
   color-scheme: dark;
-  --bg-window: rgba(20, 22, 28, 0.22);
-  --bg-card: rgba(255, 255, 255, 0.06);
+  --bg-window: rgba(20, 22, 28, 0.15);
+  --bg-card: rgba(255, 255, 255, 0.05);
   --text-primary: #F3F4F6;
   --text-secondary: #A8B0BD;
   --text-inverse: #111827;

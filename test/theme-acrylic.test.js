@@ -67,8 +67,8 @@ test('acrylic themes ship semi-transparent window and card surfaces', () => {
   assert.match(css, /\[data-theme='acrylic-light'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.[1-6]/);
   assert.match(css, /\[data-theme='acrylic-dark'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.0/);
   // 窗口底色高透,透出 DWM acrylic 磨砂
-  assert.match(css, /\[data-theme='acrylic-light'\][\s\S]*?--bg-window: rgba\(255, 255, 255, 0\.[12]/);
-  assert.match(css, /\[data-theme='acrylic-dark'\][\s\S]*?--bg-window: rgba\(20, 22, 28, 0\.[23]/);
+  assert.match(css, /\[data-theme='acrylic-light'\][\s\S]*?--bg-window: rgba\(255, 255, 255, 0\.08\)/);
+  assert.match(css, /\[data-theme='acrylic-dark'\][\s\S]*?--bg-window: rgba\(20, 22, 28, 0\.15\)/);
 });
 
 test('settings offers acrylic as explicit theme-mode options', () => {
@@ -104,10 +104,10 @@ test('settings window follows the acrylic theme like the main window', () => {
   const css = fs.readFileSync(path.join(root, 'src/renderer/css/main.css'), 'utf8');
 
   assert.match(js, /document\.body\.dataset\.theme = theme;/);
-  assert.match(css, /body\[data-theme='acrylic-light'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.35\)/);
-  assert.match(css, /body\[data-theme='acrylic-light'\] #app \{\s*background: rgba\(255, 255, 255, 0\.12\)/);
-  assert.match(css, /body\[data-theme='acrylic-dark'\][\s\S]*?--bg-window-dark: rgba\(20, 22, 28, 0\.22\)/);
-  assert.match(css, /body\[data-theme='acrylic-dark'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.06\)/);
+  assert.match(css, /body\[data-theme='acrylic-light'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.28\)/);
+  assert.match(css, /body\[data-theme='acrylic-light'\] #app \{\s*background: rgba\(255, 255, 255, 0\.08\)/);
+  assert.match(css, /body\[data-theme='acrylic-dark'\][\s\S]*?--bg-window-dark: rgba\(20, 22, 28, 0\.15\)/);
+  assert.match(css, /body\[data-theme='acrylic-dark'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.05\)/);
 });
 
 test('login window follows the acrylic theme like the main window', () => {
@@ -115,6 +115,6 @@ test('login window follows the acrylic theme like the main window', () => {
   const html = fs.readFileSync(path.join(root, 'src/renderer/login.html'), 'utf8');
 
   assert.match(js, /document\.body\.dataset\.theme = theme;/);
-  assert.match(html, /body\[data-theme='acrylic-light'\] \.container \{\s*background: rgba\(255, 255, 255, 0\.12\)/);
-  assert.match(html, /body\[data-theme='acrylic-dark'\] \.container \{\s*background: rgba\(20, 22, 28, 0\.22\)/);
+  assert.match(html, /body\[data-theme='acrylic-light'\] \.container \{\s*background: rgba\(255, 255, 255, 0\.08\)/);
+  assert.match(html, /body\[data-theme='acrylic-dark'\] \.container \{\s*background: rgba\(20, 22, 28, 0\.15\)/);
 });
