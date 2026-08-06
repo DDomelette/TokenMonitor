@@ -91,4 +91,48 @@ async function syncDeepSeekHistory(options) {
   return { monthsFetched, monthsFailed, earliestDate };
 }
 
-module.exports = { syncDeepSeekHistory, MAX_MONTHS, EMPTY_STREAK_STOP, MONTH_GAP_MS, MAX_SCAN_PASSES };
+// 全量重扫本机日志:先删该 provider 的 usageDaily 键并清游标(增量合并会重复累加,
+// 必须先行清除,先例见 src/main/providers/kimi/locallog.js 的 MIGRATION_KEY 流程),
+// 再循环调用 readLocalLog 直到无新增(scanFiles 单轮有 4MB 预算,全量需多轮)。
+async function rescanLocalLogs(options) {
+  const providerId = options.providerId;
+  const readLocalLog = options.readLocalLog;
+  const readStore = options.readStore;
+  const writeStore = options.writeStore;
+  const onProgress = options.onProgress || null;
+  const maxPasses = options.maxPasses || MAX_SCAN_PASSES;
+
+  const prefix = providerId + ':';
+  const usageDaily = readStore('usageDaily') || {};
+  Object.keys(usageDaily).forEach((k) => {
+    if (k.indexOf(prefix) === 0) delete usageDaily[k];
+  });
+  writeStore('usageDaily', usageDaily);
+  writeStore('localLogCursors.' + providerId, {});
+
+  let passes = 0;
+  let records = 0;
+  while (passes < maxPasses) {
+    const batch = await readLocalLog();
+    passes++;
+    const n = Array.isArray(batch) ? batch.length : 0;
+    records += n;
+    if (onProgress) onProgress({ stage: providerId, detail: 'pass ' + passes + ', +' + n });
+    if (n === 0) break;
+  }
+
+  const after = readStore('usageDaily') || {};
+  const dayRe = new RegExp('^' + providerId + ':(\\d{4}-\\d{2}-\\d{2})$');
+  let daysRebuilt = 0;
+  let earliestDate = null;
+  Object.keys(after).forEach((k) => {
+    const m = dayRe.exec(k);
+    if (m) {
+      daysRebuilt++;
+      if (!earliestDate || m[1] < earliestDate) earliestDate = m[1];
+    }
+  });
+  return { daysRebuilt, earliestDate, passes, records };
+}
+
+module.exports = { syncDeepSeekHistory, rescanLocalLogs, MAX_MONTHS, EMPTY_STREAK_STOP, MONTH_GAP_MS, MAX_SCAN_PASSES };
