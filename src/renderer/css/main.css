@@ -302,6 +302,9 @@ body:not(.dark) {
 /* ======== 亚克力主题:与主窗口一致的高透磨砂 ======== */
 body[data-theme='acrylic-light'] {
   --bg-card: rgba(255, 255, 255, 0.28);
+  /* 文本直接落在透明窗口底(透出灰黑桌面)上,整体转白色系 */
+  --text-primary: #F3F4F6;
+  --text-secondary: rgba(255, 255, 255, 0.75);
 }
 body[data-theme='acrylic-light'] #app {
   background: rgba(255, 255, 255, 0.08);

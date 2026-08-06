@@ -118,3 +118,19 @@ test('login window follows the acrylic theme like the main window', () => {
   assert.match(html, /body\[data-theme='acrylic-light'\] \.container \{\s*background: rgba\(255, 255, 255, 0\.08\)/);
   assert.match(html, /body\[data-theme='acrylic-dark'\] \.container \{\s*background: rgba\(20, 22, 28, 0\.15\)/);
 });
+
+test('acrylic-light keeps text and titlebar icons readable on the gray-dark backdrop', () => {
+  const css = fs.readFileSync(path.join(root, 'renderer/src/theme.css'), 'utf8');
+
+  // 窗口底 0.08 近全透,透出的桌面偏灰黑:标题栏/状态栏文字与图标用白色
+  assert.match(css, /:root\[data-theme='acrylic-light'\] \.statusbar \{[^}]*color: rgba\(255, 255, 255, 0\.92\)/);
+  assert.match(css, /:root\[data-theme='acrylic-light'\] \.titlebar-btn \{\s*color: rgba\(255, 255, 255, 0\.85\)/);
+  // 卡片底回升到 0.55,深色次级文本在白色衬底上保持可读
+  assert.match(css, /\[data-theme='acrylic-light'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.55\)/);
+  assert.match(css, /\[data-theme='acrylic-light'\][\s\S]*?--text-secondary: #4B5563/);
+
+  // 设置窗口文本直接落在透明窗口底上,整体转白色系
+  const mainCss = fs.readFileSync(path.join(root, 'src/renderer/css/main.css'), 'utf8');
+  assert.match(mainCss, /body\[data-theme='acrylic-light'\][\s\S]*?--text-primary: #F3F4F6/);
+  assert.match(mainCss, /body\[data-theme='acrylic-light'\][\s\S]*?--text-secondary: rgba\(255, 255, 255, 0\.75\)/);
+});
