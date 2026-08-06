@@ -36,7 +36,7 @@ test('applyAccent enables the accent policy with the theme tint', () => {
   };
   const win = fakeWin();
 
-  assert.equal(backdrop.applyAccent(win, { api, argb: 0x14ffffff }), true);
+  assert.equal(backdrop.applyAccent(win, { api, argb: 0x14ffffff, platform: 'win32' }), true);
   assert.deepEqual(calls, [['enable', 0x1122334455667788n, 0x14ffffff]]);
 });
 
@@ -59,7 +59,7 @@ test('clearAccent disables the accent policy', () => {
     disable(hwnd) { calls.push(['disable', hwnd]); return true; }
   };
 
-  assert.equal(backdrop.clearAccent(fakeWin(), { api }), true);
+  assert.equal(backdrop.clearAccent(fakeWin(), { api, platform: 'win32' }), true);
   assert.deepEqual(calls, [['disable', 0x1122334455667788n]]);
   assert.equal(backdrop.clearAccent(fakeWin(), { api: null }), false);
   assert.equal(backdrop.clearAccent(fakeWin(), { api, platform: 'linux' }), false);
