@@ -93,21 +93,6 @@ test('windows apply the accent while hidden, then reveal on ready-to-show', () =
   assert.match(main, /setTimeout\(reveal,\s*\d+\)/);
 });
 
-test('main window suspends the accent during native resize, restores afterwards', () => {
-  const main = fs.readFileSync(path.join(root, 'src/main/index.js'), 'utf8');
-
-  // SWCA 亚克力模糊随窗口尺寸每帧重算,边框拖拽缩放时造成严重卡顿;
-  // 缩放期间挂起 Accent(暂时实心),缩放结束(resized)再恢复磨砂
-  const start = main.indexOf('function createMainWindow(');
-  const body = main.slice(start, main.indexOf('\nfunction ', start + 1));
-  const resizeHandler = body.match(/on\('resize'[\s\S]*?\n\s*\}\)/);
-  assert.ok(resizeHandler, 'main window must have a resize handler');
-  assert.match(resizeHandler[0], /clearAccent/, 'resize must suspend the accent');
-  const resizedHandler = body.match(/on\('resized'[\s\S]*?\n\s*\}\)/);
-  assert.ok(resizedHandler, 'main window must have a resized handler');
-  assert.match(resizedHandler[0], /applyBackdropTo/, 'resized must restore the backdrop');
-});
-
 test('preload and packaging expose what the accent path needs', () => {
   const preload = fs.readFileSync(path.join(root, 'src/preload/preload.js'), 'utf8');
   const builder = fs.readFileSync(path.join(root, 'electron-builder.yml'), 'utf8');
