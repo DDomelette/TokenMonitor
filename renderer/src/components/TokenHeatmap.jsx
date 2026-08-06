@@ -1,9 +1,9 @@
-// GitHub 风格 Token 活动热力图:每日(53×7)/每周(53 列 1 行)/累计(高度条)三模式。
+// GitHub 风格 Token 活动热力图:每日(53×7)/每周·累计(方块堆积列)三模式。
 // 颜色用主题 primary(#74B8FC)的 5 档透明度;hover tooltip 显示日期与用量。
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getHeatmap, onProvidersChanged } from '../api.js';
-import { buildSundayWeekTotals, buildWeeks, colorLevel, formatToken, sundayWeekKey } from '../lib/heatmap.js';
+import { buildSundayWeekTotals, buildWeeks, blockCount, colorLevel, formatToken, sundayWeekKey } from '../lib/heatmap.js';
 import {
   createLocalCalendarClock,
   findDayColumn,
@@ -14,6 +14,10 @@ import {
 const CELL = 12;
 const GAP = 2;
 const LEVEL_ALPHA = [0.06, 0.18, 0.38, 0.62, 0.9];
+const MAX_COL_BLOCKS = 10; // 与 lib/heatmap.js 的 MAX_HEATMAP_BLOCKS 对应
+const BLOCK_W = CELL + 6;
+const BLOCK_H = CELL;
+const COL_HEIGHT = MAX_COL_BLOCKS * BLOCK_H + (MAX_COL_BLOCKS - 1) * GAP;
 const PROVIDER_OPTS = [
   { id: 'all', label: '全部' },
   { id: 'deepseek', label: 'DeepSeek' },
@@ -74,7 +78,7 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
   const maxDaily = data.maxDaily || 0;
 
   // 自适应容器宽度:只保留最近若干周(结尾对齐本周);宽度足够时显示全年
-  const colWidth = mode === 'weekly' ? CELL + GAP + 6 : CELL + GAP;
+  const colWidth = mode === 'daily' ? CELL + GAP : CELL + GAP + 6;
   const availWidth = boxWidth > 0 ? boxWidth - 4 : window.innerWidth - 52;
   const maxCols = Math.max(4, Math.floor(availWidth / colWidth));
   const todayKey = localDayKey(clockDate);
@@ -140,7 +144,7 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
     }
   };
   const cancelTipHide = () => ['hide', 'fade'].forEach(clearTimer);
-  const showTip = (e, date, overrideLines) => {
+  const showTip = (e, date, overrideLines, headText) => {
     if (!date) return;
     ['settle', 'hide', 'fade'].forEach(clearTimer);
     lastTipX.current = e.clientX;
@@ -151,7 +155,8 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
       y: below ? r.bottom + 6 : r.top - 6,
       below: below,
       date: date,
-      overrideLines: overrideLines || null
+      overrideLines: overrideLines || null,
+      headText: headText || null
     };
     // 换格子时旧浮层立即开始淡出(内容不原地替换),新内容停稳后才淡入
     setTip((prev) => (prev && !prev.fading ? Object.assign({}, prev, { fading: true }) : prev));
@@ -248,54 +253,63 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
     );
   }
 
-  function renderWeekly() {
+  // 方块堆积列:每周/累计共用。列高固定(MAX_COL_BLOCKS),方块从底向上堆,空周整列可悬停
+  const blockScale = mode === 'weekly'
+    ? (maxWeek > 0 ? maxWeek / MAX_COL_BLOCKS : 0)
+    : (maxCum > 0 ? maxCum / MAX_COL_BLOCKS : 0);
+
+  function renderBlockColumns(valueForCol, headTextForCol) {
     return (
-      <div className="heatmap-grid heatmap-grid-weekly">
+      <div className="heatmap-grid heatmap-grid-blocks">
         {visibleWeeks.map((col, i) => {
           const c = start + i;
           const date = lastInYearDate(c);
-          const weekKey = col[0]
-            ? sundayWeekKey(new Date(col[0].date + 'T00:00:00'))
-            : null;
-          const total = weekKey ? weekTotals[weekKey] || 0 : 0;
-          const level = colorLevel(total, maxWeek);
+          const blocks = blockCount(valueForCol(c, col), blockScale);
           return (
             <div
               key={c}
-              className="heatmap-cell"
-              style={{
-                width: CELL + 6,
-                height: CELL + 6,
-                background: 'rgba(116,184,252,' + LEVEL_ALPHA[level] + ')'
-              }}
-              onMouseEnter={(e) => showTip(e, date)}
+              className="heatmap-block-col"
+              style={{ height: COL_HEIGHT }}
+              onMouseEnter={(e) => showTip(e, date, null, headTextForCol(c, col))}
               onMouseMove={moveTip} onMouseLeave={hideTip}
-            />
+            >
+              {Array.from({ length: blocks }).map((_, b) => (
+                <div
+                  key={b}
+                  className="heatmap-cell"
+                  style={{ width: BLOCK_W, height: BLOCK_H, background: 'rgba(116,184,252,0.55)' }}
+                />
+              ))}
+            </div>
           );
         })}
       </div>
     );
   }
 
+  function renderWeekly() {
+    return renderBlockColumns(
+      (c, col) => {
+        const weekKey = col[0] ? sundayWeekKey(new Date(col[0].date + 'T00:00:00')) : null;
+        return weekKey ? weekTotals[weekKey] || 0 : 0;
+      },
+      (c, col) => {
+        const weekKey = col[0] ? sundayWeekKey(new Date(col[0].date + 'T00:00:00')) : null;
+        return weekKey ? dateLabel(weekKey) + ' 当周使用了' : null;
+      }
+    );
+  }
+
   function renderCumulative() {
-    return (
-      <div className="heatmap-grid heatmap-grid-cumulative">
-        {visibleWeeks.map((col, i) => {
-          const c = start + i;
-          const date = lastInYearDate(c);
-          const cum = date && cumByDate[date] ? cumByDate[date] : 0;
-          const height = maxCum > 0 ? Math.max(2, Math.round((cum / maxCum) * 60)) : 2;
-          return (
-            <div
-              key={c}
-              className="heatmap-cum-bar"
-              style={{ height: height, background: 'rgba(116,184,252,0.55)' }}
-              onMouseEnter={(e) => showTip(e, date, cum > 0 ? [{ label: '累计消耗', value: formatToken(cum) + ' Token' }] : null)}
-              onMouseMove={moveTip} onMouseLeave={hideTip}
-            />
-          );
-        })}
-      </div>
+    return renderBlockColumns(
+      (c) => {
+        const date = lastInYearDate(c);
+        return date && cumByDate[date] ? cumByDate[date] : 0;
+      },
+      (c) => {
+        const date = lastInYearDate(c);
+        return date ? '截至 ' + date.slice(0, 4) + '年' + dateLabel(date) + ' 当周累计使用' : null;
+      }
     );
   }
 
@@ -365,7 +379,7 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
         ? createPortal(
             <div ref={tipRef} className={'heatmap-tooltip' + (tip.below ? ' below' : '') + (tip.fading ? ' fading' : '')} style={{ left: tip.x, top: tip.y }}>
               <div className="heatmap-tooltip-head">
-                <span className="heatmap-tooltip-date">{dateLabel(tip.date)}</span>
+                <span className="heatmap-tooltip-date">{tip.headText || dateLabel(tip.date)}</span>
                 <span className="heatmap-tooltip-total">{formatToken(tipTotal(tip.date))} Token</span>
               </div>
               {(tip.overrideLines || tipLines(tip.date)).map((l, i) => (
