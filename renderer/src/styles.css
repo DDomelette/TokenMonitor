@@ -321,6 +321,149 @@ body,
   width: 100%;
 }
 
+/* ======== Token 消耗速度曲线卡片 ======== */
+.token-speed-card {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.token-speed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.token-speed-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.token-speed-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  color: var(--text-secondary);
+}
+
+.token-speed-controls {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.token-speed-controls label {
+  display: flex;
+  min-width: 0;
+}
+
+.token-speed-select {
+  max-width: 112px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.3;
+  padding: 3px 18px 3px 6px;
+  outline: none;
+}
+
+.token-speed-select:focus-visible {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(116, 184, 252, 0.18);
+}
+
+.token-speed-legends {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.token-speed-legend {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 5px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.token-speed-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 7px;
+}
+
+.token-speed-legend strong {
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.token-speed-delta,
+.token-speed-status {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.token-speed-status {
+  opacity: 0.82;
+}
+
+.token-speed-chart {
+  flex: 1;
+  min-height: 54px;
+  width: 100%;
+}
+
+@container (max-width: 220px) {
+  .token-speed-card { gap: 2px; }
+  .token-speed-header { gap: 2px; }
+  .token-speed-title { gap: 4px; font-size: 10px; }
+  .token-speed-icon { width: 14px; height: 14px; flex-basis: 14px; }
+  .token-speed-controls { width: 100%; margin-left: 0; gap: 3px; }
+  .token-speed-controls label { flex: 1; }
+  .token-speed-select {
+    flex: 1;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    border-radius: 5px;
+    font-size: 8px;
+    padding: 1px 12px 1px 3px;
+  }
+  .token-speed-legends { gap: 2px 6px; }
+  .token-speed-legend { gap: 2px 3px; font-size: 8px; }
+  .token-speed-legend strong { font-size: 9px; }
+  .token-speed-delta,
+  .token-speed-status { display: none; }
+  .token-speed-dot { width: 5px; height: 5px; flex-basis: 5px; }
+  .token-speed-chart { min-height: 20px; }
+}
+
 /* gridstack 基础覆写:隐藏默认边框,内容占满(margin 由 --gs-item-margin-* 变量生效,勿再 inset:0 覆盖) */
 .grid-stack {
   background: transparent;

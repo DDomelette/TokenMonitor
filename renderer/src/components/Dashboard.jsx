@@ -19,6 +19,7 @@ import ChartWidget from './ChartWidget.jsx';
 import QuotaCard from './QuotaCard.jsx';
 import TokenHeatmap from './TokenHeatmap.jsx';
 import ProviderBar from './ProviderBar.jsx';
+import TokenSpeedCard from './TokenSpeedCard.jsx';
 
 const LABELS = {
   'balance-card': '余额',
@@ -33,9 +34,9 @@ const LABELS = {
 const FEE_IDS = ['balance-card', 'today-cost-card', 'cache-rate-card'];
 // 嵌入式板块:quota 卡与热力图也作为 grid item(自带标题,不再渲染 component-title)
 const QUOTA_IDS = ['quota-codex', 'quota-kimi'];
-const EMBED_IDS = QUOTA_IDS.concat(['token-heatmap']);
+const EMBED_IDS = QUOTA_IDS.concat(['token-heatmap', 'token-speed']);
 // 图表(echarts flex 填满可用高度,永不溢出)不参与自动撑高
-const CHART_IDS = ['model-bar', 'provider-bar', 'token-line', 'cost-line'];
+const CHART_IDS = ['model-bar', 'provider-bar', 'token-speed', 'token-line', 'cost-line'];
 // 各模块最小尺寸(grid 单位),防止编辑模式下压到不可用时手柄再也抓不到
 const MIN_SIZES = {
   'quota-codex': { w: 6, h: 5 },
@@ -45,6 +46,7 @@ const MIN_SIZES = {
   'cache-rate-card': { w: 4, h: 3 },
   'model-bar': { w: 4, h: 4 },
   'provider-bar': { w: 4, h: 4 },
+  'token-speed': { w: 4, h: 4 },
   'token-line': { w: 4, h: 4 },
   'cost-line': { w: 4, h: 4 },
   'token-heatmap': { w: 6, h: 10 }
@@ -73,6 +75,9 @@ function WidgetBody({ id, onContentChange }) {
   }
   if (id === 'token-heatmap') {
     return <TokenHeatmap />;
+  }
+  if (id === 'token-speed') {
+    return <TokenSpeedCard />;
   }
   if (id === 'provider-bar') {
     return <ProviderBar />;

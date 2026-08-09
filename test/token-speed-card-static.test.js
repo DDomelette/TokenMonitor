@@ -23,3 +23,15 @@ test('hook loads and subscribes to the dedicated speed snapshot', () => {
   assert.match(api, /get:token-speed/);
   assert.match(api, /token-speed:changed/);
 });
+
+test('Dashboard routes token-speed as an embedded chart widget', () => {
+  const dashboard = fs.readFileSync(path.join(root, 'renderer/src/components/Dashboard.jsx'), 'utf8');
+  const styles = fs.readFileSync(path.join(root, 'renderer/src/styles.css'), 'utf8');
+  assert.match(dashboard, /import TokenSpeedCard/);
+  assert.match(dashboard, /id === 'token-speed'/);
+  assert.match(dashboard, /CHART_IDS[\s\S]*?'token-speed'/);
+  assert.match(dashboard, /EMBED_IDS[\s\S]*?'token-speed'/);
+  assert.match(styles, /\.token-speed-card/);
+  assert.match(styles, /\.token-speed-controls/);
+  assert.match(styles, /\.token-speed-legend/);
+});

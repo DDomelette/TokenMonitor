@@ -71,14 +71,12 @@ export default function TokenSpeedCard() {
         <div className="token-speed-title"><SpeedIcon /><span>Token 消耗速度</span></div>
         <div className="token-speed-controls">
           <label>
-            <span className="sr-only">展示平台</span>
-            <select aria-label="展示平台" value={providerFilter} onChange={updateFilter}>
+            <select className="token-speed-select" aria-label="展示平台" value={providerFilter} onChange={updateFilter}>
               {FILTER_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
           <label>
-            <span className="sr-only">统计周期</span>
-            <select aria-label="统计周期" value={intervalSeconds} onChange={updateInterval}>
+            <select className="token-speed-select" aria-label="统计周期" value={intervalSeconds} onChange={updateInterval}>
               {INTERVAL_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
