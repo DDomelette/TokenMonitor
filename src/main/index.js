@@ -11,7 +11,11 @@ const kimiProvider = require('./providers/kimi');
 const { startScheduler } = require('./core/scheduler');
 const { createDiagnostics } = require('./core/diagnostics');
 const { validateEncryptionKey } = require('./core/encryption-key');
-const { normalizeStoredProxyValue } = require('./core/proxy-settings');
+const {
+  SYSTEM_PROXY_VALUE,
+  normalizeStoredProxyValue,
+  resolveElectronSystemProxy
+} = require('./core/proxy-settings');
 const { wakeMostRelevantWindow } = require('./core/startup-windows');
 const setupIPC = require('./ipc');
 const { captureSession } = require('./providers/deepseek/session');
@@ -38,6 +42,7 @@ let diagnosticsWindow = null;
 let tray = null;
 let scheduler = null;
 let diagnostics = null;
+let getProxyInput = null;
 let moveDebounce = null;
 
 const runtime = {
@@ -632,6 +637,7 @@ function startSchedulerRuntime() {
   scheduler = startScheduler({
     registry,
     store,
+    getProxyInput,
     broadcast: (channel, payload) => broadcastToWindows(channel, payload),
     onStateChange: (providerId, state) => {
       if (providerId !== 'deepseek' || !state) return;
@@ -691,7 +697,7 @@ function createDiagnosticsRuntime() {
     network: { store },
     providers: {
       store,
-      getProxyUrl: () => store.get('providers.proxyUrl') || null
+      getProxyUrl: getProxyInput
     },
     scheduler,
     controller: {
@@ -714,11 +720,20 @@ function createDiagnosticsRuntime() {
   });
 }
 
+function createRuntimeProxyInputGetter() {
+  return function readProxyInput() {
+    const stored = normalizeStoredProxyValue(store.get('providers.proxyUrl'));
+    if (!stored) return null;
+    return stored === SYSTEM_PROXY_VALUE ? resolveElectronSystemProxy : stored;
+  };
+}
+
 app.whenReady().then(() => {
   migrateLegacyKeys(store);
   registry.register(deepseekProvider);
   registry.register(codexProvider);
   registry.register(kimiProvider);
+  getProxyInput = createRuntimeProxyInputGetter();
   startSchedulerRuntime();
   diagnostics = createDiagnosticsRuntime();
 

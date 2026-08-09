@@ -24,18 +24,17 @@ function registerDiagnosticsIpc({ ipcMain, diagnostics, getDiagnosticsWindow, cr
     throw new TypeError('ipcMain is required');
   }
   if (registered.has(ipcMain)) return false;
-  registered.add(ipcMain);
 
-  ipcMain.on('open:diagnostics', () => {
+  const openDiagnostics = () => {
     try {
       createDiagnosticsWindow();
       return { ok: true };
     } catch (_) {
       return failure('DIAGNOSTICS_OPEN_FAILED');
     }
-  });
+  };
 
-  ipcMain.on('window:close-diagnostics', (event) => {
+  const closeDiagnostics = (event) => {
     const sender = activeSender(event, getDiagnosticsWindow);
     if (!sender) return failure('DIAGNOSTICS_SENDER_INVALID');
     try {
@@ -48,9 +47,9 @@ function registerDiagnosticsIpc({ ipcMain, diagnostics, getDiagnosticsWindow, cr
     } catch (_) {
       return failure('DIAGNOSTICS_CLOSE_FAILED');
     }
-  });
+  };
 
-  ipcMain.handle('diagnostics:run', async (event) => {
+  const runDiagnostics = async (event) => {
     const sender = activeSender(event, getDiagnosticsWindow);
     if (!sender) return failure('DIAGNOSTICS_SENDER_INVALID');
     try {
@@ -58,9 +57,9 @@ function registerDiagnosticsIpc({ ipcMain, diagnostics, getDiagnosticsWindow, cr
     } catch (_) {
       return failure('DIAGNOSTICS_RUN_FAILED');
     }
-  });
+  };
 
-  ipcMain.handle('diagnostics:copy-report', async (event, runId) => {
+  const copyDiagnostics = async (event, runId) => {
     const sender = activeSender(event, getDiagnosticsWindow);
     if (!sender) return failure('DIAGNOSTICS_SENDER_INVALID');
     try {
@@ -68,9 +67,9 @@ function registerDiagnosticsIpc({ ipcMain, diagnostics, getDiagnosticsWindow, cr
     } catch (_) {
       return failure('DIAGNOSTICS_COPY_FAILED');
     }
-  });
+  };
 
-  ipcMain.handle('diagnostics:open-guide', async (event, guideId) => {
+  const openDiagnosticsGuide = async (event, guideId) => {
     const sender = activeSender(event, getDiagnosticsWindow);
     if (!sender) return failure('DIAGNOSTICS_SENDER_INVALID');
     try {
@@ -78,7 +77,38 @@ function registerDiagnosticsIpc({ ipcMain, diagnostics, getDiagnosticsWindow, cr
     } catch (_) {
       return failure('DIAGNOSTICS_GUIDE_FAILED');
     }
-  });
+  };
+
+  const registrations = [
+    { type: 'on', channel: 'open:diagnostics', callback: openDiagnostics },
+    { type: 'on', channel: 'window:close-diagnostics', callback: closeDiagnostics },
+    { type: 'handle', channel: 'diagnostics:run', callback: runDiagnostics },
+    { type: 'handle', channel: 'diagnostics:copy-report', callback: copyDiagnostics },
+    { type: 'handle', channel: 'diagnostics:open-guide', callback: openDiagnosticsGuide }
+  ];
+  const completed = [];
+  try {
+    for (const registration of registrations) {
+      ipcMain[registration.type](registration.channel, registration.callback);
+      completed.push(registration);
+    }
+  } catch (error) {
+    for (let index = completed.length - 1; index >= 0; index -= 1) {
+      const registration = completed[index];
+      try {
+        if (registration.type === 'handle' && typeof ipcMain.removeHandler === 'function') {
+          ipcMain.removeHandler(registration.channel);
+        } else if (registration.type === 'on' && typeof ipcMain.removeListener === 'function') {
+          ipcMain.removeListener(registration.channel, registration.callback);
+        }
+      } catch (_) {
+        // Registration rollback is best-effort; the original failure remains authoritative.
+      }
+    }
+    throw error;
+  }
+
+  registered.add(ipcMain);
 
   return true;
 }

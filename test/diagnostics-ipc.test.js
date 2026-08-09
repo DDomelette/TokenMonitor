@@ -115,6 +115,57 @@ test('IPC routes only the exact active diagnostics webContents and remains stabl
   });
 });
 
+test('IPC registration rolls back partial listeners atomically and can retry after a registration failure', () => {
+  const on = new Map();
+  const handle = new Map();
+  const removed = [];
+  let registrationCall = 0;
+  let failAt = 3;
+  const ipcMain = {
+    on(channel, callback) {
+      registrationCall += 1;
+      if (registrationCall === failAt) throw new Error('registration failed');
+      on.set(channel, callback);
+    },
+    handle(channel, callback) {
+      registrationCall += 1;
+      if (registrationCall === failAt) throw new Error('registration failed');
+      handle.set(channel, callback);
+    },
+    removeListener(channel, callback) {
+      removed.push(['on', channel]);
+      if (on.get(channel) === callback) on.delete(channel);
+    },
+    removeHandler(channel) {
+      removed.push(['handle', channel]);
+      handle.delete(channel);
+    }
+  };
+  const dependencies = {
+    ipcMain,
+    diagnostics: { start() {}, copy() {}, openGuide() {} },
+    getDiagnosticsWindow: () => null,
+    createDiagnosticsWindow() {}
+  };
+
+  assert.throws(() => registerDiagnosticsIpc(dependencies), /registration failed/);
+  assert.deepEqual([...on.keys()], []);
+  assert.deepEqual([...handle.keys()], []);
+  assert.deepEqual(removed, [
+    ['on', 'window:close-diagnostics'],
+    ['on', 'open:diagnostics']
+  ]);
+
+  registrationCall = 0;
+  failAt = -1;
+  assert.equal(registerDiagnosticsIpc(dependencies), true);
+  assert.deepEqual([...on.keys()].sort(), ['open:diagnostics', 'window:close-diagnostics']);
+  assert.deepEqual([...handle.keys()].sort(), [
+    'diagnostics:copy-report', 'diagnostics:open-guide', 'diagnostics:run'
+  ]);
+  assert.equal(registerDiagnosticsIpc(dependencies), false);
+});
+
 test('main creates, reuses, broadcasts to, and disposes the diagnostics window by captured webContents id', async (t) => {
   const originalLoad = Module._load;
   const originalSetTimeout = global.setTimeout;
@@ -124,7 +175,15 @@ test('main creates, reuses, broadcasts to, and disposes the diagnostics window b
   let nativeThemeUpdated;
   let setupDependencies;
   let diagnosticsDependencies;
+  let schedulerDependencies;
+  let storedProxyValue = '';
+  const resolvedTargets = [];
   const disposed = [];
+  const realProxySettings = require('../src/main/core/proxy-settings');
+  const injectedSystemResolver = async (targetUrl) => {
+    resolvedTargets.push(targetUrl);
+    return 'http://system.proxy:8080';
+  };
 
   class FakeBrowserWindow {
     constructor(options) {
@@ -206,7 +265,7 @@ test('main creates, reuses, broadcasts to, and disposes the diagnostics window b
         'window.darkMode': 'system',
         'providers.deepseek.apiKey': 'configured',
         'data.historyDays': 7,
-        'providers.proxyUrl': ''
+        'providers.proxyUrl': storedProxyValue
       };
       return values[key];
     },
@@ -223,8 +282,15 @@ test('main creates, reuses, broadcasts to, and disposes the diagnostics window b
       if (request === './providers/registry') return { register() {}, list: () => [] };
       if (request === './providers/deepseek' || request === './providers/codex' || request === './providers/kimi') return {};
       if (request === './core/scheduler') return {
-        startScheduler() { sequence.push('scheduler'); return fakeScheduler; }
+        startScheduler(dependencies) {
+          sequence.push('scheduler');
+          schedulerDependencies = dependencies;
+          return fakeScheduler;
+        }
       };
+      if (request === './core/proxy-settings') return Object.assign({}, realProxySettings, {
+        resolveElectronSystemProxy: injectedSystemResolver
+      });
       if (request === './core/diagnostics') return {
         createDiagnostics(dependencies) {
           sequence.push('diagnostics');
@@ -262,6 +328,15 @@ test('main creates, reuses, broadcasts to, and disposes the diagnostics window b
   assert.equal(typeof setupDependencies.createDiagnosticsWindow, 'function');
   assert.equal(typeof setupDependencies.getDiagnosticsWindow, 'function');
   assert.equal(diagnosticsDependencies.scheduler, fakeScheduler);
+  assert.equal(diagnosticsDependencies.providers.getProxyUrl, schedulerDependencies.getProxyInput);
+  assert.equal(diagnosticsDependencies.providers.getProxyUrl(), null);
+  storedProxyValue = 'http://proxy.example:7890';
+  assert.equal(diagnosticsDependencies.providers.getProxyUrl(), 'http://proxy.example:7890');
+  storedProxyValue = 'system';
+  const systemProxy = diagnosticsDependencies.providers.getProxyUrl();
+  assert.equal(typeof systemProxy, 'function');
+  assert.equal(await systemProxy('https://target.example/path'), 'http://system.proxy:8080');
+  assert.deepEqual(resolvedTargets, ['https://target.example/path']);
 
   const before = windows.length;
   setupDependencies.createDiagnosticsWindow();

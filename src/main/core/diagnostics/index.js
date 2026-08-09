@@ -20,6 +20,7 @@ const SCHEDULER_GUIDES = Object.freeze({
   codex: 'codex-auth',
   kimi: 'kimi-auth'
 });
+const CONTROLLER_METHODS = Object.freeze(['start', 'copy', 'openGuide', 'dispose']);
 
 function ownValue(source, key) {
   if (!source || typeof source !== 'object') return undefined;
@@ -31,6 +32,57 @@ function ownValue(source, key) {
   } catch (_) {
     return undefined;
   }
+}
+
+function readDependency(source, key) {
+  try {
+    return source && (typeof source === 'object' || typeof source === 'function')
+      ? Reflect.get(source, key)
+      : undefined;
+  } catch (_) {
+    return undefined;
+  }
+}
+
+function validatedController(value) {
+  if (!value || (typeof value !== 'object' && typeof value !== 'function')) return null;
+  const api = {};
+  try {
+    for (const method of CONTROLLER_METHODS) {
+      const implementation = Reflect.get(value, method);
+      if (typeof implementation !== 'function') return null;
+      api[method] = implementation.bind(value);
+    }
+  } catch (_) {
+    return null;
+  }
+  return api;
+}
+
+function assembleController(dependencies, checks) {
+  const controllerDependencies = readDependency(dependencies, 'controller');
+  const options = Object.create(
+    controllerDependencies && typeof controllerDependencies === 'object'
+      ? controllerDependencies
+      : null
+  );
+  Object.defineProperty(options, 'checks', {
+    configurable: false,
+    enumerable: true,
+    writable: false,
+    value: checks
+  });
+  const customFactory = readDependency(dependencies, 'createController');
+  let api = null;
+  if (typeof customFactory === 'function') {
+    try {
+      api = validatedController(customFactory(options));
+    } catch (_) {
+      api = null;
+    }
+  }
+  if (!api) api = validatedController(createDiagnosticsController(options));
+  return Object.assign({}, api, { checks: Object.freeze(checks.slice()) });
 }
 
 function fallbackCheck(name, guideId = 'app-runtime', phase = 'local') {
@@ -207,14 +259,10 @@ function createDiagnostics(dependencies = {}) {
     createRunSnapshot('diagnostics-assembly-contract', checks);
   } catch (_) {
     const safeChecks = [fallbackCheck('registry'), fallbackSelfCheck(['assembly.registry'])];
-    const controllerFactory = typeof deps.createController === 'function' ? deps.createController : createDiagnosticsController;
-    const controller = controllerFactory(Object.assign({}, deps.controller || {}, { checks: safeChecks }));
-    return Object.assign(controller, { checks: Object.freeze(safeChecks.slice()) });
+    return assembleController(deps, safeChecks);
   }
 
-  const controllerFactory = typeof deps.createController === 'function' ? deps.createController : createDiagnosticsController;
-  const controller = controllerFactory(Object.assign({}, deps.controller || {}, { checks }));
-  return Object.assign(controller, { checks: Object.freeze(checks.slice()) });
+  return assembleController(deps, checks);
 }
 
 module.exports = { createDiagnostics, schedulerErrorCategory };

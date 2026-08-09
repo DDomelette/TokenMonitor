@@ -18,8 +18,12 @@ function ownValue(source, key) {
 }
 
 function senderId(sender) {
-  const id = ownValue(sender, 'id');
-  return Number.isSafeInteger(id) && id >= 0 ? id : null;
+  try {
+    const id = Reflect.get(sender, 'id');
+    return Number.isSafeInteger(id) && id >= 0 ? id : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 function senderIsLive(sender) {
@@ -60,29 +64,75 @@ function consumeThenable(value) {
   return true;
 }
 
+function dependency(source, key) {
+  try {
+    return source && (typeof source === 'object' || typeof source === 'function')
+      ? Reflect.get(source, key)
+      : undefined;
+  } catch (_) {
+    return undefined;
+  }
+}
+
+function copyEnvironment(source) {
+  const environment = {};
+  for (const key of ['appVersion', 'platform', 'release', 'arch', 'electron', 'homeDir']) {
+    const value = ownValue(source, key);
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      environment[key] = value;
+    }
+  }
+  return environment;
+}
+
 function createDiagnosticsController(dependencies = {}) {
   const deps = dependencies && typeof dependencies === 'object' ? dependencies : {};
-  const checks = Array.isArray(deps.checks) ? deps.checks.slice() : [];
-  const createSnapshot = typeof deps.createRunSnapshot === 'function' ? deps.createRunSnapshot : createRunSnapshot;
-  const execute = typeof deps.runDiagnostics === 'function' ? deps.runDiagnostics : runDiagnostics;
-  const sanitize = typeof deps.sanitizeDiagnosticResult === 'function'
-    ? deps.sanitizeDiagnosticResult
+  const configuredChecks = dependency(deps, 'checks');
+  const checks = Array.isArray(configuredChecks) ? configuredChecks.slice() : [];
+  const configuredCreateSnapshot = dependency(deps, 'createRunSnapshot');
+  const configuredExecute = dependency(deps, 'runDiagnostics');
+  const configuredSanitize = dependency(deps, 'sanitizeDiagnosticResult');
+  const configuredFormat = dependency(deps, 'formatDiagnosticReport');
+  const configuredUuid = dependency(deps, 'randomUUID');
+  const configuredSchedule = dependency(deps, 'setImmediate');
+  const createSnapshot = typeof configuredCreateSnapshot === 'function' ? configuredCreateSnapshot : createRunSnapshot;
+  const execute = typeof configuredExecute === 'function' ? configuredExecute : runDiagnostics;
+  const sanitize = typeof configuredSanitize === 'function'
+    ? configuredSanitize
     : sanitizeDiagnosticResult;
-  const format = typeof deps.formatDiagnosticReport === 'function'
-    ? deps.formatDiagnosticReport
+  const format = typeof configuredFormat === 'function'
+    ? configuredFormat
     : formatDiagnosticReport;
-  const uuid = typeof deps.randomUUID === 'function' ? deps.randomUUID : crypto.randomUUID;
-  const schedule = typeof deps.setImmediate === 'function' ? deps.setImmediate : setImmediate;
+  const uuid = typeof configuredUuid === 'function' ? configuredUuid : crypto.randomUUID;
+  const schedule = typeof configuredSchedule === 'function' ? configuredSchedule : setImmediate;
   const records = new Map();
 
-  function sanitizeOne(result) {
+  function sanitizeOne(result, environment) {
     try {
-      const value = sanitize(result);
+      const value = sanitize(result, environment);
       if (consumeThenable(value)) return null;
-      return value && typeof value === 'object' ? value : null;
+      if (!value || typeof value !== 'object') return null;
+      return sanitizeDiagnosticResult(value, environment);
     } catch (_) {
       return null;
     }
+  }
+
+  function cloneResult(result, environment) {
+    try {
+      return sanitizeDiagnosticResult(result, environment);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function cloneChecks(source, environment) {
+    const cloned = [];
+    for (const result of source) {
+      const copy = cloneResult(result, environment);
+      if (copy) cloned.push(copy);
+    }
+    return cloned;
   }
 
   function recordFor(sender, runId) {
@@ -94,9 +144,10 @@ function createDiagnosticsController(dependencies = {}) {
 
   function environmentSnapshot() {
     try {
-      const environment = typeof deps.safeEnvironment === 'function' ? deps.safeEnvironment() : {};
+      const safeEnvironment = dependency(deps, 'safeEnvironment');
+      const environment = typeof safeEnvironment === 'function' ? safeEnvironment() : {};
       if (consumeThenable(environment)) return {};
-      return environment && typeof environment === 'object' ? environment : {};
+      return environment && typeof environment === 'object' ? copyEnvironment(environment) : {};
     } catch (_) {
       return {};
     }
@@ -111,13 +162,17 @@ function createDiagnosticsController(dependencies = {}) {
     }
 
     const runId = uuid();
+    const environment = environmentSnapshot();
     const rawSnapshot = createSnapshot(runId, checks);
-    const sanitizedChecks = rawSnapshot.checks.map(sanitizeOne).filter(Boolean);
+    const rawChecks = ownValue(rawSnapshot, 'checks');
+    const sanitizedChecks = Array.isArray(rawChecks)
+      ? rawChecks.map((result) => sanitizeOne(result, environment)).filter(Boolean)
+      : [];
     const allowedIds = new Set(sanitizedChecks.map((check) => ownValue(check, 'id')).filter((value) => typeof value === 'string'));
     const record = {
       runId,
       checks: sanitizedChecks,
-      environment: environmentSnapshot(),
+      environment,
       sender,
       allowedIds
     };
@@ -126,29 +181,33 @@ function createDiagnosticsController(dependencies = {}) {
     const emit = (event) => {
       if (records.get(id) !== record || !senderIsLive(sender)) return;
       if (ownValue(event, 'runId') !== runId) return;
-      const safeCheck = sanitizeOne(ownValue(event, 'check'));
+      const safeCheck = sanitizeOne(ownValue(event, 'check'), record.environment);
       const checkId = ownValue(safeCheck, 'id');
       if (!safeCheck || typeof checkId !== 'string' || !record.allowedIds.has(checkId)) return;
       const index = record.checks.findIndex((check) => ownValue(check, 'id') === checkId);
       if (index < 0) return;
-      record.checks[index] = safeCheck;
+      const storedCheck = cloneResult(safeCheck, record.environment);
+      const sentCheck = cloneResult(safeCheck, record.environment);
+      if (!storedCheck || !sentCheck) return;
+      record.checks[index] = storedCheck;
       const completed = record.checks.reduce((count, check) => (
         TERMINAL.has(ownValue(check, 'status')) ? count + 1 : count
       ), 0);
       try {
-        sender.send('diagnostics:progress', {
+        const sendResult = sender.send('diagnostics:progress', {
           runId,
-          check: safeCheck,
+          check: sentCheck,
           completed,
           total: record.checks.length
         });
+        consumeThenable(sendResult);
       } catch (_) {
         // A closed renderer must never interrupt or leak a diagnostics run.
       }
     };
 
     try {
-      schedule(() => {
+      const scheduled = schedule(() => {
         if (records.get(id) !== record || !senderIsLive(sender)) return;
         try {
           const completion = execute({
@@ -162,22 +221,27 @@ function createDiagnosticsController(dependencies = {}) {
           // Runner construction and synchronous execution failures are isolated.
         }
       });
+      consumeThenable(scheduled);
     } catch (_) {
       // Scheduling failure leaves a stable pending snapshot that can still be copied.
     }
 
-    return { runId, checks: record.checks.slice() };
+    return { runId, checks: cloneChecks(record.checks, record.environment) };
   }
 
   async function copy(sender, runId) {
     const record = recordFor(sender, runId);
     if (!record) return invalidRun();
     try {
-      const report = await format({ runId: record.runId, checks: record.checks.slice() }, record.environment);
+      const report = await format(
+        { runId: record.runId, checks: cloneChecks(record.checks, record.environment) },
+        copyEnvironment(record.environment)
+      );
       if (typeof report !== 'string') throw new TypeError('Diagnostics report must be text');
       if (!recordFor(sender, runId)) return invalidRun();
-      if (!deps.clipboard || typeof deps.clipboard.writeText !== 'function') throw new Error('Clipboard unavailable');
-      await deps.clipboard.writeText(report);
+      const clipboard = dependency(deps, 'clipboard');
+      if (!clipboard || typeof clipboard.writeText !== 'function') throw new Error('Clipboard unavailable');
+      await clipboard.writeText(report);
       if (!recordFor(sender, runId)) return invalidRun();
       return { ok: true, length: report.length };
     } catch (_) {
@@ -191,11 +255,12 @@ function createDiagnosticsController(dependencies = {}) {
     if (!record || record.sender !== sender || !senderIsLive(sender)) return invalidRun();
     if (!GUIDE_IDS.has(guideId)) return { ok: false, errorCode: 'INVALID_GUIDE_ID' };
     try {
-      const opener = typeof deps.openGuide === 'function'
-        ? deps.openGuide
+      const configuredOpenGuide = dependency(deps, 'openGuide');
+      const opener = typeof configuredOpenGuide === 'function'
+        ? configuredOpenGuide
         : (value) => openGuide(value, {
-            shell: deps.shell,
-            environment: deps.guideEnvironment
+            shell: dependency(deps, 'shell'),
+            environment: dependency(deps, 'guideEnvironment')
           });
       const result = await opener(guideId);
       if (!records.has(id) || records.get(id) !== record || !senderIsLive(sender)) return invalidRun();

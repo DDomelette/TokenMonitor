@@ -40,6 +40,210 @@ function oneCheck() {
   }];
 }
 
+test('controller accepts Electron-style prototype id accessors while retaining exact sender ownership', async () => {
+  const scheduled = [];
+  let runnerOptions;
+  const senderPrototype = {
+    get id() { return 505; },
+    isDestroyed() { return false; }
+  };
+  const sender = Object.create(senderPrototype);
+  sender.sent = [];
+  sender.send = function (channel, payload) { this.sent.push({ channel, payload }); };
+  const controller = createDiagnosticsController({
+    checks: oneCheck(),
+    randomUUID: () => 'prototype-run',
+    setImmediate: (callback) => scheduled.push(callback),
+    runDiagnostics(options) { runnerOptions = options; return Promise.resolve([]); },
+    clipboard: { writeText() {} },
+    formatDiagnosticReport(snapshot) { return JSON.stringify(snapshot); },
+    openGuide: async () => ({ ok: true })
+  });
+
+  const started = controller.start(sender);
+  assert.equal(started.runId, 'prototype-run');
+  scheduled.shift()();
+  runnerOptions.emit({
+    runId: 'prototype-run',
+    check: {
+      id: 'probe.safe', group: 'Probe', title: 'Safe probe', status: 'pass',
+      summary: 'prototype sender accepted', errorCode: null, guideId: 'app-runtime', metadata: {}
+    }
+  });
+  assert.equal(sender.sent.length, 1);
+  assert.deepEqual(await controller.copy(sender, 'prototype-run'), {
+    ok: true,
+    length: JSON.stringify({
+      runId: 'prototype-run',
+      checks: [{
+        id: 'probe.safe', group: 'Probe', title: 'Safe probe', status: 'pass',
+        summary: 'prototype sender accepted', errorCode: '', guideId: 'app-runtime', metadata: {}
+      }]
+    }).length
+  });
+  assert.deepEqual(await controller.copy(Object.assign({}, sender), 'prototype-run'), {
+    ok: false,
+    errorCode: 'DIAGNOSTICS_RUN_INVALID'
+  });
+});
+
+test('home paths are redacted before every boundary and all returned, sent, and formatted snapshots are isolated', async () => {
+  const homeDir = 'C:\\Users\\Alice';
+  const scheduled = [];
+  let runnerOptions;
+  const sentBeforeMutation = [];
+  const formatterInputs = [];
+  const startOrder = [];
+  const sender = fakeSender(606);
+  sender.send = (channel, payload) => {
+    sentBeforeMutation.push(structuredClone({ channel, payload }));
+    payload.check.summary = 'sender-mutated';
+    payload.check.metadata.path = 'sender-mutated';
+  };
+  const controller = createDiagnosticsController({
+    checks: oneCheck(),
+    randomUUID: () => 'isolated-run',
+    setImmediate: (callback) => scheduled.push(callback),
+    createRunSnapshot: (runId) => {
+      startOrder.push('snapshot');
+      return {
+        runId,
+        checks: [{
+          id: 'probe.safe', group: 'Probe', title: 'Safe probe', status: 'pending',
+          summary: `${homeDir}\\pending.txt`, errorCode: null, guideId: 'app-runtime',
+          metadata: { path: `${homeDir}\\pending-meta.txt` }
+        }]
+      };
+    },
+    runDiagnostics(options) { runnerOptions = options; return Promise.resolve([]); },
+    sanitizeDiagnosticResult,
+    safeEnvironment: () => {
+      startOrder.push('environment');
+      return { homeDir, appVersion: '1.0.0' };
+    },
+    formatDiagnosticReport(snapshot) {
+      formatterInputs.push(structuredClone(snapshot));
+      snapshot.checks[0].summary = 'formatter-mutated';
+      snapshot.checks[0].metadata.path = 'formatter-mutated';
+      return JSON.stringify(snapshot);
+    },
+    clipboard: { writeText() {} },
+    openGuide: async () => ({ ok: true })
+  });
+
+  const started = controller.start(sender);
+  assert.deepEqual(startOrder, ['environment', 'snapshot']);
+  assert.doesNotMatch(JSON.stringify(started), /C:\\\\Users\\\\Alice/);
+  assert.match(started.checks[0].summary, /^~/);
+  started.checks[0].summary = 'caller-mutated';
+  started.checks[0].metadata.path = 'caller-mutated';
+
+  scheduled.shift()();
+  runnerOptions.emit({
+    runId: 'isolated-run',
+    check: {
+      id: 'probe.safe', group: 'Probe', title: 'Safe probe', status: 'pass',
+      summary: `${homeDir}\\progress.txt`, errorCode: null, guideId: 'app-runtime',
+      metadata: { path: `${homeDir}\\progress-meta.txt` }
+    }
+  });
+  assert.equal(sentBeforeMutation.length, 1);
+  assert.doesNotMatch(JSON.stringify(sentBeforeMutation[0]), /C:\\\\Users\\\\Alice/);
+  assert.match(sentBeforeMutation[0].payload.check.summary, /^~/);
+
+  await controller.copy(sender, 'isolated-run');
+  await controller.copy(sender, 'isolated-run');
+  assert.equal(formatterInputs.length, 2);
+  assert.doesNotMatch(JSON.stringify(formatterInputs), /C:\\\\Users\\\\Alice|caller-mutated|sender-mutated|formatter-mutated/);
+  assert.match(formatterInputs[0].checks[0].summary, /^~/);
+  assert.deepEqual(formatterInputs[1], formatterInputs[0]);
+});
+
+test('synchronous start consumes rejecting schedule and sender thenables without unhandled rejections', async () => {
+  let runnerOptions;
+  let scheduleThenCalls = 0;
+  let sendThenCalls = 0;
+  const scheduleThenable = {
+    then(resolve, reject) {
+      scheduleThenCalls += 1;
+      reject(new Error('schedule rejection secret'));
+      return scheduleThenable;
+    }
+  };
+  const sendThenable = {
+    then(resolve, reject) {
+      sendThenCalls += 1;
+      reject(new Error('send rejection secret'));
+      return sendThenable;
+    }
+  };
+  const sender = fakeSender(707);
+  sender.send = () => sendThenable;
+  const controller = createDiagnosticsController({
+    checks: oneCheck(),
+    randomUUID: () => 'thenable-run',
+    setImmediate(callback) {
+      callback();
+      return scheduleThenable;
+    },
+    runDiagnostics(options) { runnerOptions = options; return Promise.resolve([]); },
+    clipboard: { writeText() {} },
+    formatDiagnosticReport: () => 'report',
+    openGuide: async () => ({ ok: true })
+  });
+
+  const started = controller.start(sender);
+  assert.equal(started instanceof Promise, false);
+  runnerOptions.emit({
+    runId: 'thenable-run',
+    check: {
+      id: 'probe.safe', group: 'Probe', title: 'Safe probe', status: 'pass',
+      summary: 'done', errorCode: null, guideId: 'app-runtime', metadata: {}
+    }
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(scheduleThenCalls, 1);
+  assert.equal(sendThenCalls, 1);
+});
+
+test('copy relies on one standard await assimilation for formatter thenables and fails closed on a throwing then getter', async () => {
+  let thenCalls = 0;
+  let mode = 'resolving';
+  const resolvingThenable = {
+    then(resolve) {
+      thenCalls += 1;
+      resolve('safe report');
+      return resolvingThenable;
+    }
+  };
+  const throwingThenable = {};
+  Object.defineProperty(throwingThenable, 'then', {
+    get() { throw new Error('then getter secret'); }
+  });
+  const sender = fakeSender(708);
+  const controller = createDiagnosticsController({
+    checks: oneCheck(),
+    randomUUID: () => 'formatter-thenable-run',
+    setImmediate: () => {},
+    formatDiagnosticReport: () => mode === 'resolving' ? resolvingThenable : throwingThenable,
+    clipboard: { writeText() {} },
+    openGuide: async () => ({ ok: true })
+  });
+  controller.start(sender);
+
+  assert.deepEqual(await controller.copy(sender, 'formatter-thenable-run'), {
+    ok: true,
+    length: 'safe report'.length
+  });
+  assert.equal(thenCalls, 1);
+  mode = 'throwing';
+  assert.deepEqual(await controller.copy(sender, 'formatter-thenable-run'), {
+    ok: false,
+    errorCode: 'DIAGNOSTICS_REPORT_FAILED'
+  });
+  assert.equal(thenCalls, 1);
+});
+
 test('controller keeps sanitized runs owned by the exact live sender and ignores stale progress', async () => {
   const scheduled = [];
   const runs = [];
@@ -332,4 +536,69 @@ test('assembly orders all factories, keeps scheduler metadata fixed, and injects
   });
   assert.ok(resilient.checks.some((check) => check.id === 'assembly.storage'));
   assert.doesNotThrow(() => createRunSnapshot('resilient-contract', resilient.checks));
+});
+
+test('assembly validates custom controllers, falls back safely on throws or invalid APIs, and accepts frozen valid APIs', () => {
+  const baseDependencies = {
+    runtime: { platform: 'linux', buildPaths: {}, getWindows: () => ({}) },
+    scheduler: { getSnapshot: () => [] },
+    controller: {
+      randomUUID: () => 'fallback-run',
+      setImmediate: () => {},
+      clipboard: { writeText() {} },
+      openGuide: async () => ({ ok: true })
+    }
+  };
+  const requiredMethods = ['start', 'copy', 'openGuide', 'dispose'];
+
+  for (const createController of [
+    () => { throw new Error('custom controller secret'); },
+    () => ({ start() {} }),
+    () => null
+  ]) {
+    const diagnostics = createDiagnostics(Object.assign({}, baseDependencies, { createController }));
+    for (const method of requiredMethods) assert.equal(typeof diagnostics[method], 'function');
+    assert.doesNotThrow(() => createRunSnapshot('fallback-controller-contract', diagnostics.checks));
+  }
+
+  const calls = [];
+  const frozenController = Object.freeze({
+    start: () => { calls.push('start'); return { runId: 'custom', checks: [] }; },
+    copy: async () => { calls.push('copy'); return { ok: true, length: 0 }; },
+    openGuide: async () => { calls.push('guide'); return { ok: true }; },
+    dispose: () => { calls.push('dispose'); }
+  });
+  const diagnostics = createDiagnostics(Object.assign({}, baseDependencies, {
+    createController: () => frozenController
+  }));
+  assert.deepEqual(diagnostics.start(), { runId: 'custom', checks: [] });
+  diagnostics.copy();
+  diagnostics.openGuide();
+  diagnostics.dispose();
+  assert.deepEqual(calls, ['start', 'copy', 'guide', 'dispose']);
+  assert.ok(Object.isFrozen(diagnostics.checks));
+});
+
+test('assembly does not execute controller dependency getters while constructing a safe fallback controller', () => {
+  const controllerDependencies = {};
+  Object.defineProperties(controllerDependencies, {
+    clipboard: {
+      enumerable: true,
+      get() { throw new Error('clipboard getter secret'); }
+    },
+    formatDiagnosticReport: {
+      enumerable: true,
+      get() { throw new Error('formatter getter secret'); }
+    }
+  });
+  const diagnostics = createDiagnostics({
+    runtime: { platform: 'linux', buildPaths: {}, getWindows: () => ({}) },
+    scheduler: { getSnapshot: () => [] },
+    controller: controllerDependencies,
+    createController: () => { throw new Error('force fallback'); }
+  });
+  for (const method of ['start', 'copy', 'openGuide', 'dispose']) {
+    assert.equal(typeof diagnostics[method], 'function');
+  }
+  assert.doesNotThrow(() => createRunSnapshot('getter-safe-controller', diagnostics.checks));
 });
