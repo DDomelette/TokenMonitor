@@ -169,9 +169,18 @@ function createTokenSpeedTracker(options = {}) {
     const series = {};
 
     providerIds.forEach((providerId) => {
-      const points = states[providerId].points;
+      const state = states[providerId];
+      const points = state.points;
       const latestIndex = points.length - 1;
-      const latest = metricAt(points, latestIndex, windowMs);
+      const sampledMetric = metricAt(points, latestIndex, windowMs);
+      const latest = state.sourceStatus === 'unavailable'
+        ? {
+            status: 'unavailable',
+            deltaTokens: null,
+            tokensPerMinute: null
+          }
+        : sampledMetric;
+      if (latest.status === 'ok' && state.delayed) latest.quality = 'delayed';
       providers.push(Object.assign({ providerId }, latest));
 
       const firstDisplayIndex = Math.max(0, points.length - DISPLAY_POINTS);

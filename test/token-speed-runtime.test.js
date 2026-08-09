@@ -163,3 +163,22 @@ test('rebaseline updates raw counters without creating a speed spike', () => {
   h.runtime.rebaselineAll();
   assert.notEqual(h.runtime.getSnapshot().providers[0].deltaTokens, 99900);
 });
+
+test('source failures update availability without adding off-cycle samples', () => {
+  const h = runtimeHarness({
+    components: { tokenSpeed: true },
+    data: { tokenSpeed: { intervalSeconds: 30, providerFilter: 'deepseek' } },
+    usageDaily: { 'deepseek:2026-08-09': { total: 100 } }
+  });
+  h.runtime.start();
+  const before = h.runtime.getSnapshot();
+
+  h.runtime.markProviderUnavailable('deepseek', {
+    channel: 'usage',
+    observedAt: FIXED_NOW + 1234
+  });
+
+  const after = h.runtime.getSnapshot();
+  assert.equal(after.series.deepseek.length, before.series.deepseek.length);
+  assert.equal(after.providers[0].status, 'unavailable');
+});

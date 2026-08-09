@@ -172,9 +172,10 @@ function createTokenSpeedRuntime(options = {}) {
 
   function markProviderUnavailable(providerId, detail = {}) {
     if (!enabled || !PROVIDER_IDS.includes(providerId)) return false;
-    const at = Number.isFinite(Number(detail.observedAt)) ? Number(detail.observedAt) : now();
-    tracker.markUnavailable(providerId, { at, reason: detail.channel || 'source' });
-    tracker.sample(at);
+    tracker.markUnavailable(providerId, {
+      at: Number.isFinite(Number(detail.observedAt)) ? Number(detail.observedAt) : now(),
+      reason: detail.channel || 'source'
+    });
     broadcastSnapshot();
     return true;
   }
