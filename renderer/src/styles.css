@@ -440,7 +440,7 @@ body,
 }
 
 @container (max-width: 220px) {
-  .token-speed-card { gap: 2px; }
+  .token-speed-card { gap: 1px; }
   .token-speed-header { gap: 2px; }
   .token-speed-title { gap: 4px; font-size: 10px; }
   .token-speed-icon { width: 14px; height: 14px; flex-basis: 14px; }
@@ -455,12 +455,13 @@ body,
     font-size: 8px;
     padding: 1px 12px 1px 3px;
   }
-  .token-speed-legends { gap: 2px 6px; }
-  .token-speed-legend { gap: 2px 3px; font-size: 8px; }
-  .token-speed-legend strong { font-size: 9px; }
+  .token-speed-legends { flex-wrap: nowrap; justify-content: space-between; gap: 1px; }
+  .token-speed-legend { flex-wrap: nowrap; gap: 1px; font-size: 7px; }
+  .token-speed-provider { display: none; }
+  .token-speed-legend strong { font-size: 7px; letter-spacing: -0.2px; }
   .token-speed-delta,
   .token-speed-status { display: none; }
-  .token-speed-dot { width: 5px; height: 5px; flex-basis: 5px; }
+  .token-speed-dot { width: 4px; height: 4px; flex-basis: 4px; }
   .token-speed-chart { min-height: 20px; }
 }
 

@@ -35,3 +35,10 @@ test('Dashboard routes token-speed as an embedded chart widget', () => {
   assert.match(styles, /\.token-speed-controls/);
   assert.match(styles, /\.token-speed-legend/);
 });
+
+test('minimum card mode keeps the compact legend on one row so the curve remains visible', () => {
+  const styles = fs.readFileSync(path.join(root, 'renderer/src/styles.css'), 'utf8');
+  const compact = styles.slice(styles.indexOf('@container (max-width: 220px)'));
+  assert.match(compact, /\.token-speed-legends\s*\{[^}]*flex-wrap:\s*nowrap/);
+  assert.match(compact, /\.token-speed-provider\s*\{[^}]*display:\s*none/);
+});
