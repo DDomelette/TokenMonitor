@@ -61,6 +61,7 @@ function windowsDependencies(overrides = {}) {
   const window = fakeWindow(calls, overrides.windowOptions);
   const dependencies = Object.assign({
     platform: 'win32',
+    release: '10.0.19045',
     koffi: fakeKoffi(calls),
     BrowserWindow: function BrowserWindow(options) {
       calls.push(['window', options]);
@@ -200,4 +201,40 @@ test('Windows diagnostic checks project a shared snapshot with stable contracts 
     status: 'skipped',
     summary: '无法通过可靠的无副作用接口确认'
   });
+});
+
+test('Windows build gating uses an injected build first and fails closed for unknown or pre-Acrylic versions', async () => {
+  const cases = [
+    ['injected pre-Acrylic build', { getWindowsBuild: () => 16298 }, 'fail'],
+    ['injected minimum Acrylic build', { getWindowsBuild: () => 16299 }, 'pass'],
+    ['release pre-Acrylic build', { release: '10.0.16298' }, 'fail'],
+    ['release minimum Acrylic build', { release: '10.0.16299' }, 'pass'],
+    ['injected unknown build', { getWindowsBuild: () => 'unknown' }, 'fail'],
+    ['injected build error', { getWindowsBuild() { throw new Error('unavailable'); } }, 'fail'],
+    ['unknown release', { release: 'unknown' }, 'fail']
+  ];
+
+  for (const [name, overrides, expected] of cases) {
+    const { dependencies } = windowsDependencies(overrides);
+    const checks = createWindowsChecks(dependencies);
+    const result = await byId(checks, 'windows.platform-build').run();
+    assert.equal(result.status, expected, name);
+  }
+
+  const fromOs = windowsDependencies({ release: undefined, os: { release: () => '10.0.16299' } });
+  const fromOsResult = await byId(createWindowsChecks(fromOs.dependencies), 'windows.platform-build').run();
+  assert.equal(fromOsResult.status, 'pass');
+});
+
+test('default, null, and primitive capability inputs share a safe cached unsupported snapshot', async () => {
+  const first = collectWindowsCapabilities();
+  const second = collectWindowsCapabilities();
+  const nullInput = collectWindowsCapabilities(null);
+  const primitiveInput = collectWindowsCapabilities('not-dependencies');
+
+  assert.equal(first, second);
+  assert.equal(first, nullInput);
+  assert.equal(first, primitiveInput);
+  const snapshots = await Promise.all([first, nullInput, primitiveInput]);
+  assert.equal(snapshots.every((snapshot) => snapshot.supported === false), true);
 });

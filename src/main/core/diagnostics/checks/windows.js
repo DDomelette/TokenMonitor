@@ -12,7 +12,7 @@ function definition(id, title, guideId, run) {
   return { id, group: 'Windows', title, guideId, phase: 'windows', timeoutMs: TIMEOUT_MS, run };
 }
 
-function getDependencyKey(dependencies) {
+function normalizeDependencies(dependencies) {
   return dependencies && typeof dependencies === 'object' ? dependencies : defaultDependencies;
 }
 
@@ -90,11 +90,24 @@ function validNativeHandle(window) {
   }
 }
 
+function parseWindowsBuild(value) {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return value;
+  if (typeof value !== 'string') return null;
+  const segments = value.trim().split('.');
+  if (!segments.length || !segments.every((segment) => /^\d+$/.test(segment))) return null;
+  const build = Number(segments[segments.length - 1]);
+  return Number.isSafeInteger(build) ? build : null;
+}
+
 function windowsBuildSupported(dependencies) {
-  if (typeof dependencies.getWindowsBuild !== 'function') return true;
   try {
-    const build = Number(dependencies.getWindowsBuild());
-    return !Number.isFinite(build) || build >= 16299;
+    const version = typeof dependencies.getWindowsBuild === 'function'
+      ? dependencies.getWindowsBuild()
+      : typeof dependencies.release === 'string'
+        ? dependencies.release
+        : (dependencies.os || require('node:os')).release();
+    const build = parseWindowsBuild(version);
+    return build !== null && build >= 16299;
   } catch (_) {
     return false;
   }
@@ -195,9 +208,11 @@ async function createSnapshot(dependencies) {
   return snapshot;
 }
 
-function collectWindowsCapabilities(dependencies = {}) {
-  const key = getDependencyKey(dependencies);
-  if (!snapshots.has(key)) snapshots.set(key, createSnapshot(dependencies));
+function collectWindowsCapabilities(dependencies) {
+  const key = normalizeDependencies(dependencies);
+  if (!snapshots.has(key)) {
+    snapshots.set(key, Promise.resolve().then(() => createSnapshot(key)).catch(() => unsupportedSnapshot()));
+  }
   return snapshots.get(key);
 }
 
