@@ -20,7 +20,8 @@ function definition(id, title, guideId, phase, timeoutMs, run) {
 function safeDependency(dependencies, key, fallback) {
   try {
     const value = dependencies && typeof dependencies === 'object' ? dependencies[key] : undefined;
-    return value === undefined ? fallback : value;
+    if (value === undefined || consumeThenable(value)) return fallback;
+    return value;
   } catch (_) {
     return fallback;
   }
@@ -31,7 +32,8 @@ function consumeThenable(value) {
   try {
     const then = value.then;
     if (typeof then !== 'function') return false;
-    then.call(value, () => {}, () => {});
+    const returned = then.call(value, () => {}, () => {});
+    if (returned !== value) consumeReturnedThenable(returned);
     return true;
   } catch (_) {
     // An asynchronous value is never valid for synchronous configuration.
@@ -39,27 +41,62 @@ function consumeThenable(value) {
   }
 }
 
-function safeStoreValue(store, key) {
+function consumeReturnedThenable(value) {
+  if (!value || (typeof value !== 'object' && typeof value !== 'function')) return;
   try {
-    const get = store && typeof store.get === 'function' ? store.get : null;
-    return get ? get.call(store, key) : undefined;
+    const then = value.then;
+    if (typeof then === 'function') then.call(value, () => {}, () => {});
   } catch (_) {
-    return undefined;
+    // A returned thenable is never used as configuration.
   }
 }
 
-function safeSynchronousStoreValue(store, key) {
-  const value = safeStoreValue(store, key);
+function safeMethod(value, key) {
+  try {
+    const method = value && typeof value === 'object' ? value[key] : null;
+    return typeof method === 'function' ? method.bind(value) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function safeStoreValue(readStore, key) {
+  try { return readStore ? readStore(key) : undefined; } catch (_) { return undefined; }
+}
+
+function safeSynchronousStoreValue(readStore, key) {
+  const value = safeStoreValue(readStore, key);
   return consumeThenable(value) ? undefined : value;
 }
 
-async function safeConfiguredValue(dependencies, getterKey, storeKey) {
+function assimilateThenable(value) {
+  if (!value || (typeof value !== 'object' && typeof value !== 'function')) return Promise.resolve(value);
+  let then;
+  try { then = value.then; } catch (_) { return Promise.resolve(undefined); }
+  if (typeof then !== 'function') return Promise.resolve(value);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result) => {
+      if (!settled) {
+        settled = true;
+        resolve(result);
+      }
+    };
+    try {
+      const returned = then.call(value, finish, () => finish(undefined));
+      if (returned !== value) consumeReturnedThenable(returned);
+    } catch (_) {
+      finish(undefined);
+    }
+  });
+}
+
+async function safeConfiguredValue(getter, readStore, storeKey) {
   try {
-    const getter = safeDependency(dependencies, getterKey, null);
     const value = typeof getter === 'function'
       ? getter()
-      : safeStoreValue(safeDependency(dependencies, 'store', null), storeKey);
-    return await value;
+      : safeStoreValue(readStore, storeKey);
+    return await assimilateThenable(value);
   } catch (_) {
     return undefined;
   }
@@ -87,9 +124,11 @@ function safeNow(now) {
 }
 
 function validExpirySeconds(value) {
-  if (value === null || value === undefined || value === '' || typeof value === 'boolean') return null;
+  if (value === null || value === undefined || typeof value === 'boolean') return null;
   if (typeof value !== 'number' && typeof value !== 'string') return null;
-  const seconds = Number(value);
+  const normalized = typeof value === 'string' ? value.trim() : value;
+  if (normalized === '') return null;
+  const seconds = Number(normalized);
   return Number.isFinite(seconds) ? seconds : null;
 }
 
@@ -103,15 +142,14 @@ function readJsonSnapshot(fsApi, file) {
   }
 }
 
-async function safeProxy(dependencies) {
+async function safeProxy(getProxyUrl, readStore) {
   try {
-    const getProxyUrl = safeDependency(dependencies, 'getProxyUrl', null);
-    if (typeof getProxyUrl === 'function') return (await getProxyUrl()) || null;
+    if (typeof getProxyUrl === 'function') return (await assimilateThenable(getProxyUrl())) || null;
   } catch (_) {
     return null;
   }
   try {
-    return (await safeStoreValue(safeDependency(dependencies, 'store', null), 'providers.proxyUrl')) || null;
+    return (await assimilateThenable(safeStoreValue(readStore, 'providers.proxyUrl'))) || null;
   } catch (_) {
     return null;
   }
@@ -158,22 +196,37 @@ function createProviderChecks(dependencies = {}) {
   const deps = dependencies && typeof dependencies === 'object' ? dependencies : {};
   const fsApi = safeDependency(deps, 'fs', fs) || fs;
   const pathApi = safeDependency(deps, 'path', path) || path;
-  const now = typeof safeDependency(deps, 'now', null) === 'function' ? safeDependency(deps, 'now', null) : Date.now;
-  const fetchBalance = typeof safeDependency(deps, 'fetchBalance', null) === 'function' ? safeDependency(deps, 'fetchBalance', null) : defaultFetchBalance;
-  const UsageFetcher = typeof safeDependency(deps, 'UsageFetcher', null) === 'function' ? safeDependency(deps, 'UsageFetcher', null) : DefaultUsageFetcher;
-  const httpGet = typeof safeDependency(deps, 'httpGet', null) === 'function' ? safeDependency(deps, 'httpGet', null) : defaultHttpGet;
-  const tokenExpiryMs = typeof safeDependency(deps, 'tokenExpiryMs', null) === 'function' ? safeDependency(deps, 'tokenExpiryMs', null) : defaultTokenExpiryMs;
+  const configuredNow = safeDependency(deps, 'now', null);
+  const configuredFetchBalance = safeDependency(deps, 'fetchBalance', null);
+  const configuredUsageFetcher = safeDependency(deps, 'UsageFetcher', null);
+  const configuredHttpGet = safeDependency(deps, 'httpGet', null);
+  const configuredTokenExpiryMs = safeDependency(deps, 'tokenExpiryMs', null);
+  const configuredApiKey = safeDependency(deps, 'getDeepseekApiKey', null);
+  const configuredSessionToken = safeDependency(deps, 'getDeepseekSessionToken', null);
+  const configuredProxyUrl = safeDependency(deps, 'getProxyUrl', null);
+  const configuredRolloutParser = safeDependency(deps, 'parseRolloutLine', null);
+  const configuredWireParser = safeDependency(deps, 'parseWireLine', null);
+  const now = typeof configuredNow === 'function' ? configuredNow : Date.now;
+  const fetchBalance = typeof configuredFetchBalance === 'function' ? configuredFetchBalance : defaultFetchBalance;
+  const UsageFetcher = typeof configuredUsageFetcher === 'function' ? configuredUsageFetcher : DefaultUsageFetcher;
+  const httpGet = typeof configuredHttpGet === 'function' ? configuredHttpGet : defaultHttpGet;
+  const tokenExpiryMs = typeof configuredTokenExpiryMs === 'function' ? configuredTokenExpiryMs : defaultTokenExpiryMs;
   const store = safeDependency(deps, 'store', null);
-  const codexAuthPath = safePath(safeDependency(deps, 'codexAuthPath', undefined), DEFAULT_AUTH_PATH);
-  const codexSessionsRoot = safePath(safeDependency(deps, 'codexSessionsRoot', undefined) || safeSynchronousStoreValue(store, 'providers.codex.localLogRoot'), defaultCodexRoot);
-  const kimiCredPath = safePath(safeDependency(deps, 'kimiCredPath', undefined), DEFAULT_CRED_PATH);
-  const kimiSessionsRoot = safePath(safeDependency(deps, 'kimiSessionsRoot', undefined) || safeSynchronousStoreValue(store, 'providers.kimi.localLogRoot'), defaultKimiRoot);
+  const readStore = safeMethod(store, 'get');
+  const configuredCodexAuthPath = safeDependency(deps, 'codexAuthPath', undefined);
+  const configuredCodexSessionsRoot = safeDependency(deps, 'codexSessionsRoot', undefined);
+  const configuredKimiCredPath = safeDependency(deps, 'kimiCredPath', undefined);
+  const configuredKimiSessionsRoot = safeDependency(deps, 'kimiSessionsRoot', undefined);
+  const codexAuthPath = safePath(configuredCodexAuthPath, DEFAULT_AUTH_PATH);
+  const codexSessionsRoot = safePath(configuredCodexSessionsRoot || safeSynchronousStoreValue(readStore, 'providers.codex.localLogRoot'), defaultCodexRoot);
+  const kimiCredPath = safePath(configuredKimiCredPath, DEFAULT_CRED_PATH);
+  const kimiSessionsRoot = safePath(configuredKimiSessionsRoot || safeSynchronousStoreValue(readStore, 'providers.kimi.localLogRoot'), defaultKimiRoot);
 
   function deepseekApiKey() {
-    return safeConfiguredValue(deps, 'getDeepseekApiKey', 'providers.deepseek.apiKey');
+    return safeConfiguredValue(configuredApiKey, readStore, 'providers.deepseek.apiKey');
   }
   function deepseekSession() {
-    return safeConfiguredValue(deps, 'getDeepseekSessionToken', 'providers.deepseek.sessionToken');
+    return safeConfiguredValue(configuredSessionToken, readStore, 'providers.deepseek.sessionToken');
   }
   function codexSnapshot() {
     const raw = readJsonSnapshot(fsApi, codexAuthPath);
@@ -210,7 +263,7 @@ function createProviderChecks(dependencies = {}) {
       try { key = await deepseekApiKey(); } catch (_) { key = null; }
       if (typeof key !== 'string' || !key) return { status: 'skipped', summary: 'DeepSeek API key is not configured', metadata: { configured: false } };
       try {
-        await fetchBalance(key, { httpGet, proxyUrl: await safeProxy(deps) });
+        await fetchBalance(key, { httpGet, proxyUrl: await safeProxy(configuredProxyUrl, readStore) });
         return { status: 'pass', summary: 'DeepSeek API key was accepted', metadata: { configured: true } };
       } catch (_) {
         return { status: 'fail', summary: 'DeepSeek API key check failed', errorCode: 'DEEPSEEK_API_KEY_FAILED', metadata: { configured: true } };
@@ -223,7 +276,7 @@ function createProviderChecks(dependencies = {}) {
       try {
         const date = new Date(safeNow(now));
         const fetcher = new UsageFetcher();
-        await fetcher.fetchUsageAmount(token, date.getMonth() + 1, date.getFullYear(), { httpGet, proxyUrl: await safeProxy(deps) });
+        await fetcher.fetchUsageAmount(token, date.getMonth() + 1, date.getFullYear(), { httpGet, proxyUrl: await safeProxy(configuredProxyUrl, readStore) });
         return { status: 'pass', summary: 'DeepSeek platform session was accepted', metadata: { configured: true } };
       } catch (_) {
         return { status: 'fail', summary: 'DeepSeek platform session check failed', errorCode: 'DEEPSEEK_SESSION_FAILED', metadata: { configured: true } };
@@ -235,7 +288,7 @@ function createProviderChecks(dependencies = {}) {
       return { status: 'pass', summary: 'Codex credential file is readable', metadata: { configured: snapshot.hasAccessToken, hasRefreshToken: snapshot.hasRefreshToken, hasAccountId: snapshot.hasAccountId, expiry: snapshot.expiry } };
     }),
     definition('codex.sessions', 'Codex local sessions', 'codex-local-log', 'local', LOCAL_TIMEOUT_MS, () => sessionResult(codexSessionsRoot, codexMatch, fsApi, pathApi)),
-    definition('codex.local-log', 'Codex local log sample', 'codex-local-log', 'local', LOCAL_TIMEOUT_MS, () => localLogResult(codexSessionsRoot, codexMatch, safeDependency(deps, 'parseRolloutLine', null) || parseRolloutLine, fsApi, pathApi)),
+    definition('codex.local-log', 'Codex local log sample', 'codex-local-log', 'local', LOCAL_TIMEOUT_MS, () => localLogResult(codexSessionsRoot, codexMatch, configuredRolloutParser || parseRolloutLine, fsApi, pathApi)),
     definition('codex.quota', 'Codex quota endpoint', 'codex-auth', 'remote', REMOTE_TIMEOUT_MS, async () => {
       const snapshot = codexSnapshot();
       if (!snapshot || !snapshot.hasAccessToken) return { status: 'skipped', summary: 'Codex access token is not configured', metadata: { credentialState: 'missing' } };
@@ -245,7 +298,7 @@ function createProviderChecks(dependencies = {}) {
           Authorization: 'Bearer ' + snapshot.accessToken,
           'ChatGPT-Account-Id': snapshot.accountId,
           'User-Agent': 'codex_cli_rs/0.46.0'
-        }, await safeProxy(deps));
+        }, await safeProxy(configuredProxyUrl, readStore));
         return { status: 'pass', summary: 'Codex quota endpoint responded', metadata: { credentialState: 'valid' } };
       } catch (_) { return quotaFailure(); }
     }),
@@ -255,7 +308,7 @@ function createProviderChecks(dependencies = {}) {
       return { status: 'pass', summary: 'Kimi credential file is readable', metadata: { configured: snapshot.hasAccessToken, hasRefreshToken: snapshot.hasRefreshToken, expiry: snapshot.expiry } };
     }),
     definition('kimi.sessions', 'Kimi local sessions', 'kimi-local-log', 'local', LOCAL_TIMEOUT_MS, () => sessionResult(kimiSessionsRoot, kimiMatch, fsApi, pathApi)),
-    definition('kimi.local-log', 'Kimi local log sample', 'kimi-local-log', 'local', LOCAL_TIMEOUT_MS, () => localLogResult(kimiSessionsRoot, kimiMatch, safeDependency(deps, 'parseWireLine', null) || parseWireLine, fsApi, pathApi)),
+    definition('kimi.local-log', 'Kimi local log sample', 'kimi-local-log', 'local', LOCAL_TIMEOUT_MS, () => localLogResult(kimiSessionsRoot, kimiMatch, configuredWireParser || parseWireLine, fsApi, pathApi)),
     definition('kimi.quota', 'Kimi quota endpoint', 'kimi-auth', 'remote', REMOTE_TIMEOUT_MS, async () => {
       const snapshot = kimiSnapshot();
       if (!snapshot || !snapshot.hasAccessToken) return { status: 'skipped', summary: 'Kimi access token is not configured', metadata: { credentialState: 'missing' } };
@@ -264,7 +317,7 @@ function createProviderChecks(dependencies = {}) {
         await httpGet('https://api.kimi.com/coding/v1/usages', {
           Authorization: 'Bearer ' + snapshot.accessToken,
           'User-Agent': 'kimi_cli'
-        }, await safeProxy(deps));
+        }, await safeProxy(configuredProxyUrl, readStore));
         return { status: 'pass', summary: 'Kimi quota endpoint responded', metadata: { credentialState: 'valid' } };
       } catch (_) { return quotaFailure(); }
     })

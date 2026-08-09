@@ -21,6 +21,15 @@ function safeProperty(value, key, fallback) {
   }
 }
 
+function safeMethod(value, key) {
+  try {
+    const method = value && typeof value === 'object' ? value[key] : null;
+    return typeof method === 'function' ? method.bind(value) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 function findMatchingFiles(options = {}) {
   const fsApi = safeProperty(options, 'fs', nodeFs) || nodeFs;
   const pathApi = safeProperty(options, 'path', nodePath) || nodePath;
@@ -28,7 +37,10 @@ function findMatchingFiles(options = {}) {
   const root = typeof rootValue === 'string' ? rootValue : '';
   const match = safeProperty(options, 'match', null);
   const maxEntries = positiveLimit(safeProperty(options, 'maxEntries', undefined), DEFAULT_MAX_ENTRIES, DEFAULT_MAX_ENTRIES);
-  if (!root || !match || typeof fsApi.lstatSync !== 'function' || typeof fsApi.readdirSync !== 'function') {
+  const lstatSync = safeMethod(fsApi, 'lstatSync');
+  const readdirSync = safeMethod(fsApi, 'readdirSync');
+  const join = safeMethod(pathApi, 'join') || nodePath.join;
+  if (!root || !match || !lstatSync || !readdirSync) {
     return [];
   }
 
@@ -39,9 +51,9 @@ function findMatchingFiles(options = {}) {
     const directory = directories.pop();
     let names;
     try {
-      const directoryStat = fsApi.lstatSync(directory);
+      const directoryStat = lstatSync(directory);
       if (!directoryStat || directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) continue;
-      names = fsApi.readdirSync(directory).slice().sort();
+      names = readdirSync(directory).slice().sort();
     } catch (_) {
       continue;
     }
@@ -50,10 +62,10 @@ function findMatchingFiles(options = {}) {
     for (const name of names) {
       if (entries >= maxEntries || matches.length >= DEFAULT_MAX_MATCHES) break;
       entries += 1;
-      const candidate = pathApi.join(directory, name);
+      const candidate = join(directory, name);
       let stat;
       try {
-        stat = fsApi.lstatSync(candidate);
+        stat = lstatSync(candidate);
       } catch (_) {
         continue;
       }
@@ -88,23 +100,27 @@ function readJsonlSample(options = {}) {
   const file = typeof fileValue === 'string' ? fileValue : '';
   const maxBytes = positiveLimit(safeProperty(options, 'maxBytes', undefined), DEFAULT_MAX_BYTES, DEFAULT_MAX_BYTES);
   const maxLines = positiveLimit(safeProperty(options, 'maxLines', undefined), DEFAULT_MAX_LINES, DEFAULT_MAX_LINES);
-  if (!file || typeof fsApi.openSync !== 'function' || typeof fsApi.readSync !== 'function'
-    || typeof fsApi.closeSync !== 'function' || typeof fsApi.statSync !== 'function') return null;
+  const openSync = safeMethod(fsApi, 'openSync');
+  const readSync = safeMethod(fsApi, 'readSync');
+  const closeSync = safeMethod(fsApi, 'closeSync');
+  const statSync = safeMethod(fsApi, 'statSync');
+  if (!file || !openSync || !readSync || !closeSync || !statSync) return null;
 
   let size;
   try {
-    size = Number(fsApi.statSync(file).size);
+    size = Number(statSync(file).size);
   } catch (_) {
     return null;
   }
-  if (!Number.isFinite(size) || size <= 0) return [];
+  if (!Number.isFinite(size) || size < 0) return null;
   const bytesToRead = Math.min(maxBytes, Math.floor(size));
   const offset = Math.max(0, Math.floor(size) - bytesToRead);
   const buffer = Buffer.alloc(bytesToRead);
   let descriptor = null;
   try {
-    descriptor = fsApi.openSync(file, 'r');
-    const bytesRead = fsApi.readSync(descriptor, buffer, 0, bytesToRead, offset);
+    descriptor = openSync(file, 'r');
+    if (bytesToRead === 0) return [];
+    const bytesRead = readSync(descriptor, buffer, 0, bytesToRead, offset);
     let text = buffer.subarray(0, Math.max(0, Number(bytesRead) || 0)).toString('utf8');
     if (offset > 0) {
       const firstNewline = text.indexOf('\n');
@@ -121,7 +137,7 @@ function readJsonlSample(options = {}) {
     return null;
   } finally {
     if (descriptor !== null) {
-      try { fsApi.closeSync(descriptor); } catch (_) { /* fail closed */ }
+      try { closeSync(descriptor); } catch (_) { /* fail closed */ }
     }
   }
 }

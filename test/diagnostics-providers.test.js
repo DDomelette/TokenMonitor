@@ -279,6 +279,7 @@ test('Kimi expiry metadata classifies only semantic expiry timestamps', () => {
       [-1, 'expired'],
       [null, 'unknown'],
       ['', 'unknown'],
+      ['   ', 'unknown'],
       [false, 'unknown'],
       [undefined, 'unknown'],
       ['not-a-number', 'unknown']
@@ -377,4 +378,117 @@ test('all provider definitions expose the fixed public contract', () => {
     { id: 'kimi.local-log', group: 'Providers', title: 'Kimi local log sample', guideId: 'kimi-local-log', phase: 'local', timeoutMs: 8000 },
     { id: 'kimi.quota', group: 'Providers', title: 'Kimi quota endpoint', guideId: 'kimi-auth', phase: 'remote', timeoutMs: 12000 }
   ]);
+});
+
+test('factory snapshots synchronous dependencies once and consumes rejected configuration thenables', async () => {
+  const unhandled = [];
+  const onUnhandled = (error) => unhandled.push(error);
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    let fetchGetterReads = 0;
+    const dependencies = {
+      fs: Promise.reject(new Error('private fs promise')),
+      path: Promise.reject(new Error('private path promise')),
+      now: Promise.reject(new Error('private clock promise')),
+      UsageFetcher: Promise.reject(new Error('private fetcher promise')),
+      httpGet: Promise.reject(new Error('private HTTP promise')),
+      tokenExpiryMs: Promise.reject(new Error('private expiry promise')),
+      codexAuthPath: Promise.reject(new Error('private auth path promise')),
+      codexSessionsRoot: Promise.reject(new Error('private sessions path promise')),
+      kimiCredPath: Promise.reject(new Error('private credential path promise')),
+      kimiSessionsRoot: Promise.reject(new Error('private Kimi sessions path promise')),
+      parseRolloutLine: Promise.reject(new Error('private rollout parser promise')),
+      parseWireLine: Promise.reject(new Error('private wire parser promise'))
+    };
+    Object.defineProperty(dependencies, 'fetchBalance', {
+      get() {
+        fetchGetterReads += 1;
+        return fetchGetterReads === 1
+          ? async () => ({ available: true })
+          : Promise.reject(new Error('second getter read'));
+      }
+    });
+    dependencies.store = {
+      get(key) {
+        if (key === 'providers.codex.localLogRoot') {
+          return { then(resolve) { resolve('ignored'); return Promise.reject(new Error('root chain rejection')); } };
+        }
+        return undefined;
+      }
+    };
+    assert.doesNotThrow(() => createProviderChecks(dependencies));
+    assert.equal(fetchGetterReads, 1);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+  }
+});
+
+test('controlled async configuration assimilation contains returned thenable rejections', async () => {
+  const unhandled = [];
+  const onUnhandled = (error) => unhandled.push(error);
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    const calls = [];
+    const checks = createProviderChecks({
+      getDeepseekApiKey: () => ({
+        then(resolve) {
+          resolve('resolved-custom-key');
+          return Promise.reject(new Error('custom then chain rejection'));
+        }
+      }),
+      fetchBalance: async (key) => { calls.push(key); return { available: true }; }
+    });
+    assert.deepEqual(await checks.find((check) => check.id === 'deepseek.api-key').run(), {
+      status: 'pass', summary: 'DeepSeek API key was accepted', metadata: { configured: true }
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(calls, ['resolved-custom-key']);
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+  }
+});
+
+test('empty samples must open successfully and helper method getters fail closed', () => {
+  const emptyFs = {
+    statSync() { return { size: 0 }; },
+    openSync() { throw new Error('empty file is unreadable'); },
+    readSync() { throw new Error('must not read'); },
+    closeSync() { throw new Error('must not close'); }
+  };
+  assert.equal(readJsonlSample({ file: 'empty.jsonl', fs: emptyFs }), null);
+
+  const throwingFindFs = {};
+  Object.defineProperty(throwingFindFs, 'lstatSync', { get() { throw new Error('private lstat getter'); } });
+  Object.defineProperty(throwingFindFs, 'readdirSync', { get() { throw new Error('private readdir getter'); } });
+  const throwingReadFs = {};
+  for (const key of ['statSync', 'openSync', 'readSync', 'closeSync']) {
+    Object.defineProperty(throwingReadFs, key, { get() { throw new Error('private ' + key + ' getter'); } });
+  }
+  assert.doesNotThrow(() => findMatchingFiles({ root: 'root', match: /^x$/, fs: throwingFindFs }));
+  assert.deepEqual(findMatchingFiles({ root: 'root', match: /^x$/, fs: throwingFindFs }), []);
+  assert.doesNotThrow(() => readJsonlSample({ file: 'x', fs: throwingReadFs }));
+  assert.equal(readJsonlSample({ file: 'x', fs: throwingReadFs }), null);
+});
+
+test('empty discovered logs with a failed open report LOCAL_LOG_UNREADABLE', () => {
+  const root = tempDir();
+  try {
+    const sessions = path.join(root, 'sessions');
+    const auth = path.join(root, 'auth.json');
+    fs.mkdirSync(sessions);
+    fs.writeFileSync(auth, JSON.stringify({ tokens: {} }));
+    fs.writeFileSync(path.join(sessions, 'rollout-empty.jsonl'), '');
+    const unreadableFs = Object.assign({}, fs, { openSync() { throw new Error('blocked'); } });
+    const checks = createProviderChecks({ fs: unreadableFs, codexAuthPath: auth, codexSessionsRoot: sessions });
+    for (const id of ['codex.sessions', 'codex.local-log']) {
+      const result = checks.find((check) => check.id === id).run();
+      assert.equal(result.status, 'fail');
+      assert.equal(result.errorCode, 'LOCAL_LOG_UNREADABLE');
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
