@@ -1,0 +1,25 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.resolve(__dirname, '..');
+const component = fs.readFileSync(path.join(root, 'renderer/src/components/TokenSpeedCard.jsx'), 'utf8');
+const hook = fs.readFileSync(path.join(root, 'renderer/src/hooks/useTokenSpeed.js'), 'utf8');
+const api = fs.readFileSync(path.join(root, 'renderer/src/api.js'), 'utf8');
+
+test('card exposes both selectors and the live curve surface', () => {
+  assert.match(component, /Token 消耗速度/);
+  assert.match(component, /data\.tokenSpeed\.providerFilter/);
+  assert.match(component, /data\.tokenSpeed\.intervalSeconds/);
+  assert.match(component, /token-speed-chart/);
+  assert.match(component, /采集中/);
+  assert.match(component, /含离线时间/);
+});
+
+test('hook loads and subscribes to the dedicated speed snapshot', () => {
+  assert.match(hook, /getTokenSpeed/);
+  assert.match(hook, /onTokenSpeedChanged/);
+  assert.match(api, /get:token-speed/);
+  assert.match(api, /token-speed:changed/);
+});

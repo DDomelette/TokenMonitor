@@ -13,6 +13,10 @@ export function getHeatmap(arg) {
   return api.invoke('get:heatmap', arg);
 }
 
+export function getTokenSpeed() {
+  return api.invoke('get:token-speed');
+}
+
 export function getBounds() {
   return api.invoke('get:bounds');
 }
@@ -23,6 +27,14 @@ export function getSettings() {
 
 export function onProvidersChanged(cb) {
   return api.on('providers:changed', cb);
+}
+
+export function onTokenSpeedChanged(cb) {
+  return api.on('token-speed:changed', cb);
+}
+
+export function saveSetting(key, value) {
+  return api.invoke('settings:save', { key, value });
 }
 
 export function onBoundsChanged(cb) {
