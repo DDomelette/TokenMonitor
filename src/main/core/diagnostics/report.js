@@ -19,6 +19,14 @@ function safeArrayLength(value) {
   return length.found && Number.isSafeInteger(length.value) && length.value >= 0 ? length.value : 0;
 }
 
+function safeIsArray(value) {
+  try {
+    return Array.isArray(value);
+  } catch {
+    return false;
+  }
+}
+
 function redactText(value, options = {}) {
   let text;
   if (value === undefined || value === null) {
@@ -49,7 +57,7 @@ function sanitizeMetadata(value, options, depth) {
 
   if (depth >= 4) return '<redacted-depth>';
 
-  if (Array.isArray(value)) {
+  if (safeIsArray(value)) {
     const sanitized = [];
     for (let index = 0; index < safeArrayLength(value); index += 1) {
       const item = readOwnDataProperty(value, String(index));
@@ -102,7 +110,7 @@ function formatDiagnosticReport(snapshot, environment = {}) {
   }
   const checksValue = readOwnDataProperty(source, 'checks');
   const checks = [];
-  if (checksValue.found && Array.isArray(checksValue.value)) {
+  if (checksValue.found && safeIsArray(checksValue.value)) {
     for (let index = 0; index < safeArrayLength(checksValue.value); index += 1) {
       const result = readOwnDataProperty(checksValue.value, String(index));
       if (result.found) checks.push(sanitizeDiagnosticResult(result.value, safeEnvironmentSource));

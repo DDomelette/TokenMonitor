@@ -271,3 +271,26 @@ test('fails closed when metadata proxy reflection traps throw', () => {
   assert.doesNotMatch(report, /sk-private-proxy/);
   assert.match(report, /"metadata": \{\}/);
 });
+
+test('fails closed when snapshot checks is a revoked array proxy', () => {
+  const checks = Proxy.revocable([], {});
+  checks.revoke();
+
+  const report = formatDiagnosticReport({ checks: checks.proxy });
+
+  assert.match(report, /## Checks\s+\[\]/);
+});
+
+test('fails closed when diagnostic metadata is a revoked object proxy', () => {
+  const metadata = Proxy.revocable({}, {});
+  metadata.revoke();
+
+  const report = formatDiagnosticReport({
+    checks: [{
+      id: 'network.proxy', group: 'Network', title: 'Proxy', status: 'fail',
+      summary: 'failed', errorCode: 'PROXY_FAILED', guideId: 'network-proxy', metadata: metadata.proxy
+    }]
+  });
+
+  assert.match(report, /"metadata": \{\}/);
+});
