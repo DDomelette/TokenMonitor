@@ -3,8 +3,21 @@ const DIAGNOSTIC_FIELDS = ['id', 'group', 'title', 'status', 'summary', 'errorCo
 const ENVIRONMENT_FIELDS = ['appVersion', 'platform', 'release', 'arch', 'electron'];
 
 function redactText(value, options = {}) {
-  let text = String(value === undefined || value === null ? '' : value);
-  if (options.homeDir) text = text.split(options.homeDir).join('~');
+  let text;
+  if (value === undefined || value === null) {
+    text = '';
+  } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    text = String(value);
+  } else {
+    return '<unsupported>';
+  }
+
+  let homeDir = '';
+  if (options && typeof options === 'object') {
+    const descriptor = Object.getOwnPropertyDescriptor(options, 'homeDir');
+    if (descriptor && typeof descriptor.value === 'string') homeDir = descriptor.value;
+  }
+  if (homeDir) text = text.split(homeDir).join('~');
   return text
     .replace(/\bBearer\s+[^\s,;]+/gi, 'Bearer <redacted>')
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '<redacted-jwt>')
@@ -14,19 +27,30 @@ function redactText(value, options = {}) {
 
 function sanitizeMetadata(value, options, depth) {
   if (value === null || typeof value !== 'object') {
+    if (value === undefined || typeof value === 'function' || typeof value === 'bigint' || typeof value === 'symbol') {
+      return '<unsupported>';
+    }
     return typeof value === 'string' ? redactText(value, options) : value;
   }
 
   if (depth >= 4) return '<redacted-depth>';
 
   if (Array.isArray(value)) {
-    return value.map((item) => sanitizeMetadata(item, options, depth + 1));
+    const sanitized = [];
+    for (let index = 0; index < value.length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      sanitized.push(descriptor && Object.prototype.hasOwnProperty.call(descriptor, 'value')
+        ? sanitizeMetadata(descriptor.value, options, depth + 1)
+        : '<unsupported>');
+    }
+    return sanitized;
   }
 
-  const sanitized = {};
-  for (const [key, nestedValue] of Object.entries(value)) {
-    if (!SENSITIVE_METADATA_KEY.test(key)) {
-      sanitized[key] = sanitizeMetadata(nestedValue, options, depth + 1);
+  const sanitized = Object.create(null);
+  for (const key of Object.keys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor && Object.prototype.hasOwnProperty.call(descriptor, 'value') && !SENSITIVE_METADATA_KEY.test(key)) {
+      sanitized[key] = sanitizeMetadata(descriptor.value, options, depth + 1);
     }
   }
   return sanitized;

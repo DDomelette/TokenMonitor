@@ -53,3 +53,111 @@ test('redactText safely normalizes absent values', () => {
   assert.equal(redactText(null), '');
   assert.equal(redactText('access-token: private-value'), 'access-token=<redacted>');
 });
+
+test('does not invoke metadata toJSON while formatting a diagnostic report', () => {
+  let toJSONCalls = 0;
+  const report = formatDiagnosticReport({
+    checks: [{
+      id: 'codex.auth', group: 'Codex', title: 'Auth', status: 'fail',
+      summary: 'failed', errorCode: 'AUTH_FAILED', guideId: 'codex-auth',
+      metadata: {
+        toJSON() {
+          toJSONCalls += 1;
+          return 'sk-private-leak';
+        }
+      }
+    }]
+  });
+
+  assert.equal(toJSONCalls, 0);
+  assert.doesNotMatch(report, /sk-private-leak/);
+});
+
+test('normalizes BigInt metadata so diagnostic reports remain JSON-safe', () => {
+  const report = formatDiagnosticReport({
+    checks: [{
+      id: 'network.proxy', group: 'Network', title: 'Proxy', status: 'fail',
+      summary: 'failed', errorCode: 'PROXY_FAILED', guideId: 'network-proxy',
+      metadata: { retryCount: 3n }
+    }]
+  });
+
+  assert.match(report, /"retryCount": "<unsupported>"/);
+});
+
+test('does not invoke enumerable metadata getters while formatting reports', () => {
+  let getterCalls = 0;
+  const metadata = {};
+  Object.defineProperty(metadata, 'credential', {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return 'sk-private-leak';
+    }
+  });
+
+  const report = formatDiagnosticReport({
+    checks: [{
+      id: 'network.proxy', group: 'Network', title: 'Proxy', status: 'fail',
+      summary: 'failed', errorCode: 'PROXY_FAILED', guideId: 'network-proxy', metadata
+    }]
+  });
+
+  assert.equal(getterCalls, 0);
+  assert.doesNotMatch(report, /sk-private-leak/);
+});
+
+test('normalizes unsupported metadata primitives to stable JSON-safe placeholders', () => {
+  const report = formatDiagnosticReport({
+    checks: [{
+      id: 'network.proxy', group: 'Network', title: 'Proxy', status: 'fail',
+      summary: 'failed', errorCode: 'PROXY_FAILED', guideId: 'network-proxy',
+      metadata: { callback: () => 'sk-private-leak', marker: Symbol('private'), absent: undefined }
+    }]
+  });
+
+  assert.match(report, /"callback": "<unsupported>"/);
+  assert.match(report, /"marker": "<unsupported>"/);
+  assert.match(report, /"absent": "<unsupported>"/);
+  assert.doesNotMatch(report, /sk-private-leak/);
+});
+
+test('redactText does not invoke object conversion hooks and accepts null options', () => {
+  let toStringCalls = 0;
+  const value = {
+    toString() {
+      toStringCalls += 1;
+      return 'sk-private-leak';
+    },
+    toJSON() {
+      throw new Error('must not run');
+    }
+  };
+
+  assert.equal(redactText(value, null), '<unsupported>');
+  assert.equal(toStringCalls, 0);
+});
+
+test('does not invoke accessor array entries in metadata', () => {
+  let getterCalls = 0;
+  const values = [];
+  Object.defineProperty(values, '0', {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return 'sk-private-leak';
+    }
+  });
+  values.length = 1;
+
+  const report = formatDiagnosticReport({
+    checks: [{
+      id: 'network.proxy', group: 'Network', title: 'Proxy', status: 'fail',
+      summary: 'failed', errorCode: 'PROXY_FAILED', guideId: 'network-proxy', metadata: { values }
+    }]
+  });
+
+  assert.equal(getterCalls, 0);
+  assert.doesNotMatch(report, /sk-private-leak/);
+  assert.match(report, /"values": \[\s+"<unsupported>"\s+\]/);
+});

@@ -64,3 +64,14 @@ test('does not allow guide whitelist entries to be changed at runtime', () => {
   assert.throws(() => GUIDE_IDS.add('unexpected-guide'), /immutable/i);
   assert.equal(GUIDE_IDS.size, 13);
 });
+
+test('rejects Set prototype-call bypasses without expanding the resolver whitelist', () => {
+  assert.throws(() => Set.prototype.add.call(GUIDE_IDS, 'bypass-guide'), TypeError);
+  assert.equal(GUIDE_IDS.size, 13);
+  assert.equal(resolveGuidePath('bypass-guide', {}).errorCode, 'INVALID_GUIDE_ID');
+});
+
+test('normalizes null guide environments and dependencies to stable missing-guide errors', async () => {
+  assert.deepEqual(resolveGuidePath('codex-auth', null), { ok: false, errorCode: 'GUIDE_NOT_FOUND' });
+  assert.deepEqual(await openGuide('codex-auth', null), { ok: false, errorCode: 'GUIDE_NOT_FOUND' });
+});
