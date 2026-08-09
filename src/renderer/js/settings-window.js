@@ -325,7 +325,11 @@
 
   function buildPanel(settings) {
     var groups = {};
-    definitions.forEach(function (d) {
+    var visibleDefinitions = definitions.filter(function (d) {
+      if (!d.visibleWhen) return true;
+      return getNested(settings, d.visibleWhen.key) === d.visibleWhen.equals;
+    });
+    visibleDefinitions.forEach(function (d) {
       if (!groups[d.group]) groups[d.group] = [];
       groups[d.group].push(d);
     });

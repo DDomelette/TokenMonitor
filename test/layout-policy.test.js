@@ -106,15 +106,15 @@ test('migration preserves compact component order', () => {
 
   assert.deepEqual(
     migrated.compact.items.map((item) => item.id),
-    ['quota-codex', 'quota-kimi', 'provider-bar', 'cost-line', 'balance-card', 'today-cost-card', 'cache-rate-card', 'model-bar', 'token-line', 'token-heatmap']
+    ['quota-codex', 'quota-kimi', 'provider-bar', 'token-speed', 'cost-line', 'balance-card', 'today-cost-card', 'cache-rate-card', 'model-bar', 'token-line', 'token-heatmap']
   );
   assert.deepEqual(
     migrated.compact.items.map((item) => item.y),
-    [0, 7, 14, 20, 26, 26, 26, 30, 36, 42]
+    [0, 7, 14, 20, 27, 33, 33, 33, 37, 43, 49]
   );
   assert.deepEqual(
     migrated.compact.items.map((item) => item.x),
-    [0, 0, 0, 0, 0, 4, 8, 0, 0, 0]
+    [0, 0, 0, 0, 0, 0, 4, 8, 0, 0, 0]
   );
 });
 
@@ -130,9 +130,9 @@ test('validation removes unknown and duplicate ids but restores missing records'
 
   assert.deepEqual(
     result.items.map((item) => item.id).sort(),
-    ['balance-card', 'cache-rate-card', 'cost-line', 'model-bar', 'provider-bar', 'quota-codex', 'quota-kimi', 'today-cost-card', 'token-heatmap', 'token-line']
+    ['balance-card', 'cache-rate-card', 'cost-line', 'model-bar', 'provider-bar', 'quota-codex', 'quota-kimi', 'today-cost-card', 'token-heatmap', 'token-line', 'token-speed']
   );
-  assert.equal(new Set(result.items.map((item) => item.id)).size, 10);
+  assert.equal(new Set(result.items.map((item) => item.id)).size, 11);
 });
 
 test('validation commits legal preset geometry and resolves overlap', () => {

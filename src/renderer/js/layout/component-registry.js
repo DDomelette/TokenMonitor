@@ -160,6 +160,31 @@
       }
     },
     {
+      id: 'token-speed',
+      label: 'Token 消耗速度',
+      settingsLabel: 'Token 消耗速度（会增加内存占用）',
+      settingsKey: 'components.tokenSpeed',
+      defaultVisible: false,
+      presets: {
+        compact: [
+          { name: 'card', w: 4, h: 4 },
+          { name: 'half', w: 6, h: 6 },
+          { name: 'full', w: 12, h: 7 },
+          { name: 'tall', w: 12, h: 9 }
+        ],
+        wide: [
+          { name: 'card', w: 4, h: 4 },
+          { name: 'half', w: 6, h: 6 },
+          { name: 'full', w: 12, h: 7 },
+          { name: 'tall', w: 12, h: 9 }
+        ]
+      },
+      defaultPlacement: {
+        compact: { x: 0, y: 30, w: 12, h: 7, preset: 'full' },
+        wide: { x: 0, y: 30, w: 12, h: 7, preset: 'full' }
+      }
+    },
+    {
       id: 'token-line',
       label: 'Token 消耗趋势',
       settingsKey: 'components.tokenLine',
@@ -179,8 +204,8 @@
         ]
       },
       defaultPlacement: {
-        compact: { x: 0, y: 30, w: 12, h: 6, preset: 'full' },
-        wide: { x: 0, y: 30, w: 12, h: 6, preset: 'full' }
+        compact: { x: 0, y: 37, w: 12, h: 6, preset: 'full' },
+        wide: { x: 0, y: 37, w: 12, h: 6, preset: 'full' }
       }
     },
     {
@@ -203,8 +228,8 @@
         ]
       },
       defaultPlacement: {
-        compact: { x: 0, y: 36, w: 12, h: 6, preset: 'full' },
-        wide: { x: 0, y: 36, w: 12, h: 6, preset: 'full' }
+        compact: { x: 0, y: 43, w: 12, h: 6, preset: 'full' },
+        wide: { x: 0, y: 43, w: 12, h: 6, preset: 'full' }
       }
     },
     {
@@ -225,8 +250,8 @@
         ]
       },
       defaultPlacement: {
-        compact: { x: 0, y: 42, w: 12, h: 10, preset: 'full' },
-        wide: { x: 0, y: 42, w: 12, h: 10, preset: 'full' }
+        compact: { x: 0, y: 49, w: 12, h: 10, preset: 'full' },
+        wide: { x: 0, y: 49, w: 12, h: 10, preset: 'full' }
       }
     }
   ];
