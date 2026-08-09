@@ -101,7 +101,7 @@ function runDiagnostics({
     const result = await runOne(definition);
     if (!result) return false;
     terminalById.set(definition.id, result);
-    emitIfCurrent(result);
+    emitIfCurrent(copyResult(result));
     return true;
   }
 

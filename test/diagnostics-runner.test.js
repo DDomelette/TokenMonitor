@@ -176,3 +176,31 @@ test('a running event that makes the run stale does not start the check or timer
   assert.deepEqual(events, ['running']);
   assert.deepEqual(results, []);
 });
+
+test('terminal event mutations do not change final context or returned results', async () => {
+  let finalResults;
+  const checks = [
+    check('emitted', 'local', async () => ({
+      status: 'pass', summary: 'original', metadata: { nested: { value: 'original' } }
+    })),
+    check('final', 'final', async (context) => {
+      finalResults = context.getResults();
+      return { status: 'pass' };
+    })
+  ];
+  const results = await runDiagnostics({
+    runId: 'run-13', checks,
+    emit(event) {
+      if (event.check.id === 'emitted' && event.check.status === 'pass') {
+        event.check.summary = 'mutated';
+        event.check.metadata.nested.value = 'mutated';
+      }
+    },
+    isActive: () => true
+  });
+
+  assert.equal(finalResults[0].summary, 'original');
+  assert.equal(finalResults[0].metadata.nested.value, 'original');
+  assert.equal(results[0].summary, 'original');
+  assert.equal(results[0].metadata.nested.value, 'original');
+});
