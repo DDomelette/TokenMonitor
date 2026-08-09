@@ -2,7 +2,7 @@
 
 日期：2026-08-09
 
-状态：方案 1 已批准，等待书面规格确认
+状态：方案 1 与书面规格均已确认
 
 目标分支：`main`
 
@@ -185,7 +185,7 @@ Diagnostics BrowserWindow：
 
 - `app.getPath('userData')` 可访问。
 - Store 已初始化，并能读取安全字段。
-- 若 Store 文件存在，仅读取 bytes 并验证 JSON 可解析；不将内容加入结果。
+- 若 Store 文件存在，仅读取 bytes 验证文件可访问；由于现有 `electron-store` 启用了 `encryptionKey`，不把磁盘内容当作明文 JSON 解析。配置解密/解析成功由“Store 已初始化且能读取安全字段”证明。
 - 在 `userData` 下创建带随机名称的零敏感临时文件，关闭后立即删除；成功或失败都在 `finally` 清理。
 - 检查 encryption key/config 所需文件的存在性、可读性和格式状态，但不输出 key。
 - 用现有 proxy normalize 和 settings schema 规则检查 `providers.proxyUrl`、`data.historyDays` 等关键值。
