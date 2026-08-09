@@ -2,6 +2,23 @@ const SENSITIVE_METADATA_KEY = /api.?key|session|access.?token|refresh.?token|au
 const DIAGNOSTIC_FIELDS = ['id', 'group', 'title', 'status', 'summary', 'errorCode', 'guideId'];
 const ENVIRONMENT_FIELDS = ['appVersion', 'platform', 'release', 'arch', 'electron'];
 
+function readOwnDataProperty(source, key) {
+  if (!source || typeof source !== 'object') return { found: false };
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(source, key);
+    return descriptor && Object.prototype.hasOwnProperty.call(descriptor, 'value')
+      ? { found: true, value: descriptor.value }
+      : { found: false };
+  } catch {
+    return { found: false };
+  }
+}
+
+function safeArrayLength(value) {
+  const length = readOwnDataProperty(value, 'length');
+  return length.found && Number.isSafeInteger(length.value) && length.value >= 0 ? length.value : 0;
+}
+
 function redactText(value, options = {}) {
   let text;
   if (value === undefined || value === null) {
@@ -12,11 +29,8 @@ function redactText(value, options = {}) {
     return '<unsupported>';
   }
 
-  let homeDir = '';
-  if (options && typeof options === 'object') {
-    const descriptor = Object.getOwnPropertyDescriptor(options, 'homeDir');
-    if (descriptor && typeof descriptor.value === 'string') homeDir = descriptor.value;
-  }
+  const homeDirValue = readOwnDataProperty(options, 'homeDir');
+  const homeDir = homeDirValue.found && typeof homeDirValue.value === 'string' ? homeDirValue.value : '';
   if (homeDir) text = text.split(homeDir).join('~');
   return text
     .replace(/\bBearer\s+[^\s,;]+/gi, 'Bearer <redacted>')
@@ -37,20 +51,26 @@ function sanitizeMetadata(value, options, depth) {
 
   if (Array.isArray(value)) {
     const sanitized = [];
-    for (let index = 0; index < value.length; index += 1) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-      sanitized.push(descriptor && Object.prototype.hasOwnProperty.call(descriptor, 'value')
-        ? sanitizeMetadata(descriptor.value, options, depth + 1)
+    for (let index = 0; index < safeArrayLength(value); index += 1) {
+      const item = readOwnDataProperty(value, String(index));
+      sanitized.push(item.found
+        ? sanitizeMetadata(item.value, options, depth + 1)
         : '<unsupported>');
     }
     return sanitized;
   }
 
   const sanitized = Object.create(null);
-  for (const key of Object.keys(value)) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (descriptor && Object.prototype.hasOwnProperty.call(descriptor, 'value') && !SENSITIVE_METADATA_KEY.test(key)) {
-      sanitized[key] = sanitizeMetadata(descriptor.value, options, depth + 1);
+  let keys;
+  try {
+    keys = Object.keys(value);
+  } catch {
+    return sanitized;
+  }
+  for (const key of keys) {
+    const item = readOwnDataProperty(value, key);
+    if (item.found && !SENSITIVE_METADATA_KEY.test(key)) {
+      sanitized[key] = sanitizeMetadata(item.value, options, depth + 1);
     }
   }
   return sanitized;
@@ -60,30 +80,40 @@ function sanitizeDiagnosticResult(result, options = {}) {
   const source = result && typeof result === 'object' ? result : {};
   const sanitized = {};
   for (const field of DIAGNOSTIC_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(source, field)) {
-      sanitized[field] = redactText(source[field], options);
+    const item = readOwnDataProperty(source, field);
+    if (item.found) {
+      sanitized[field] = redactText(item.value, options);
     }
   }
-  sanitized.metadata = sanitizeMetadata(source.metadata && typeof source.metadata === 'object' ? source.metadata : {}, options, -1);
+  const metadata = readOwnDataProperty(source, 'metadata');
+  sanitized.metadata = sanitizeMetadata(metadata.found && metadata.value && typeof metadata.value === 'object' ? metadata.value : {}, options, -1);
   return sanitized;
 }
 
 function formatDiagnosticReport(snapshot, environment = {}) {
   const source = snapshot && typeof snapshot === 'object' ? snapshot : {};
+  const safeEnvironmentSource = environment && typeof environment === 'object' ? environment : {};
   const safeEnvironment = {};
   for (const field of ENVIRONMENT_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(environment, field)) {
-      safeEnvironment[field] = redactText(environment[field], environment);
+    const item = readOwnDataProperty(safeEnvironmentSource, field);
+    if (item.found) {
+      safeEnvironment[field] = redactText(item.value, safeEnvironmentSource);
     }
   }
-  const checks = Array.isArray(source.checks)
-    ? source.checks.map((result) => sanitizeDiagnosticResult(result, environment))
-    : [];
+  const checksValue = readOwnDataProperty(source, 'checks');
+  const checks = [];
+  if (checksValue.found && Array.isArray(checksValue.value)) {
+    for (let index = 0; index < safeArrayLength(checksValue.value); index += 1) {
+      const result = readOwnDataProperty(checksValue.value, String(index));
+      if (result.found) checks.push(sanitizeDiagnosticResult(result.value, safeEnvironmentSource));
+    }
+  }
+  const runId = readOwnDataProperty(source, 'runId');
 
   return [
     '# Diagnostics Report',
     '',
-    `Run ID: ${redactText(source.runId, environment)}`,
+    `Run ID: ${redactText(runId.found ? runId.value : '', safeEnvironmentSource)}`,
     '',
     '## Environment',
     '',

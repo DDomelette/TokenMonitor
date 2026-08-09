@@ -161,3 +161,113 @@ test('does not invoke accessor array entries in metadata', () => {
   assert.doesNotMatch(report, /sk-private-leak/);
   assert.match(report, /"values": \[\s+"<unsupported>"\s+\]/);
 });
+
+test('does not invoke a diagnostic result summary accessor', () => {
+  let calls = 0;
+  const result = {
+    id: 'codex.auth', group: 'Codex', title: 'Auth', status: 'fail',
+    errorCode: 'AUTH_FAILED', guideId: 'codex-auth', metadata: {}
+  };
+  Object.defineProperty(result, 'summary', {
+    enumerable: true,
+    get() {
+      calls += 1;
+      throw new Error('sk-private-summary');
+    }
+  });
+
+  const report = formatDiagnosticReport({ checks: [result] });
+
+  assert.equal(calls, 0);
+  assert.doesNotMatch(report, /sk-private-summary/);
+});
+
+test('does not invoke a diagnostic result metadata accessor', () => {
+  let calls = 0;
+  const result = {
+    id: 'codex.auth', group: 'Codex', title: 'Auth', status: 'fail',
+    summary: 'failed', errorCode: 'AUTH_FAILED', guideId: 'codex-auth'
+  };
+  Object.defineProperty(result, 'metadata', {
+    enumerable: true,
+    get() {
+      calls += 1;
+      throw new Error('sk-private-metadata');
+    }
+  });
+
+  const report = formatDiagnosticReport({ checks: [result] });
+
+  assert.equal(calls, 0);
+  assert.doesNotMatch(report, /sk-private-metadata/);
+});
+
+test('does not invoke snapshot runId or checks accessors', () => {
+  let runIdCalls = 0;
+  let checksCalls = 0;
+  const snapshot = {};
+  Object.defineProperty(snapshot, 'runId', {
+    enumerable: true,
+    get() {
+      runIdCalls += 1;
+      throw new Error('sk-private-run-id');
+    }
+  });
+  Object.defineProperty(snapshot, 'checks', {
+    enumerable: true,
+    get() {
+      checksCalls += 1;
+      throw new Error('sk-private-checks');
+    }
+  });
+
+  const report = formatDiagnosticReport(snapshot);
+
+  assert.equal(runIdCalls, 0);
+  assert.equal(checksCalls, 0);
+  assert.doesNotMatch(report, /sk-private-run-id|sk-private-checks/);
+});
+
+test('does not invoke environment platform or homeDir accessors', () => {
+  let platformCalls = 0;
+  let homeDirCalls = 0;
+  const environment = { appVersion: '1.0.0' };
+  Object.defineProperty(environment, 'platform', {
+    enumerable: true,
+    get() {
+      platformCalls += 1;
+      throw new Error('sk-private-platform');
+    }
+  });
+  Object.defineProperty(environment, 'homeDir', {
+    enumerable: true,
+    get() {
+      homeDirCalls += 1;
+      throw new Error('sk-private-home');
+    }
+  });
+
+  const report = formatDiagnosticReport({ checks: [] }, environment);
+
+  assert.equal(platformCalls, 0);
+  assert.equal(homeDirCalls, 0);
+  assert.doesNotMatch(report, /sk-private-platform|sk-private-home/);
+});
+
+test('fails closed when metadata proxy reflection traps throw', () => {
+  const metadata = new Proxy({}, {
+    ownKeys() {
+      throw new Error('sk-private-proxy');
+    }
+  });
+
+  const report = formatDiagnosticReport({
+    checks: [{
+      id: 'network.proxy', group: 'Network', title: 'Proxy', status: 'fail',
+      summary: 'failed', errorCode: 'PROXY_FAILED', guideId: 'network-proxy', metadata
+    }]
+  });
+
+  assert.doesNotMatch(report, /sk-private-proxy/);
+  assert.match(report, /"metadata": \{\}/);
+});
