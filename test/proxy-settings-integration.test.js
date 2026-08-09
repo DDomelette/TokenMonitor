@@ -49,6 +49,10 @@ test('invalid proxy settings are rejected before persistence, side effects, or b
   assert.deepEqual(writes, [{
     key: 'providers.proxyUrl',
     value: 'http://proxy.example:8080'
+  }, {
+    // 自定义代理保存成功时顺手记下"上次使用的地址",供设置页预填
+    key: 'providers.proxyUrlLastCustom',
+    value: 'http://proxy.example:8080'
   }]);
   assert.equal(broadcasts, 1);
 });

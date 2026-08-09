@@ -13,6 +13,7 @@ const { syncDeepSeekHistory, rescanLocalLogs } = require('./core/history-sync');
 const { UsageFetcher } = require('./providers/deepseek/usage');
 const { httpGet } = require('./core/http');
 const { SYSTEM_PROXY_VALUE, resolveElectronSystemProxy } = require('./core/proxy-settings');
+const { detectProxyPort } = require('./core/proxy-detect');
 
 function deepseekApiKeyCtx(deps, apiKey) {
   return {
@@ -232,6 +233,11 @@ module.exports = function setupIPC(deps) {
 
   ipcMain.handle('get:settings', () => {
     return sanitizeSettings(deps.store.store);
+  });
+
+  // 设置页"自定义 HTTP 代理"预填:探测本机常见代理端口是否在监听
+  ipcMain.handle('detect:proxy-port', async () => {
+    return { port: await detectProxyPort() };
   });
 
   ipcMain.on('settings:reset', () => {

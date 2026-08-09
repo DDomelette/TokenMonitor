@@ -1,6 +1,7 @@
 (function () {
   var definitions = window.SettingsDefinitions;
   var sessionState = { loggedIn: false, error: null };
+  var lastCustomProxyUrl = '';
   var closingSettingsWindow = false;
   var failedSaveKeys = Object.create(null);
   var settingsUpdateQueue = window.SettingsDebounce.createKeyedDebouncer({
@@ -148,6 +149,29 @@
     input.disabled = !custom;
     input.placeholder = custom ? 'http://127.0.0.1:7890' : '仅自定义模式需要地址';
     showProxyFeedback('', false);
+    if (custom && !input.value.trim()) prefillProxyUrl();
+  }
+
+  // 自定义模式且输入为空时预填默认值:优先探测本机正在监听的代理端口,
+  // 探测不到再回填上次使用过的地址(忘记 IP/端口 是常态)
+  function prefillProxyUrl() {
+    var input = document.getElementById('proxyUrlInput');
+    if (!input || input.value.trim()) return;
+    function fillLastCustom() {
+      if (lastCustomProxyUrl && !input.value.trim()) {
+        input.value = lastCustomProxyUrl;
+        showProxyFeedback('已填入上次使用的代理地址,可按需修改。', false);
+      }
+    }
+    window.api.invoke('detect:proxy-port').then(function (result) {
+      var port = result && result.port;
+      if (port && !input.value.trim()) {
+        input.value = 'http://127.0.0.1:' + port;
+        showProxyFeedback('已填入检测到的本机代理端口 ' + port + ',可按需修改。', false);
+        return;
+      }
+      if (!port) fillLastCustom();
+    }).catch(fillLastCustom);
   }
 
   function setProxyPending(pending) {
@@ -448,6 +472,7 @@
   }
 
   function renderAll(settings) {
+    lastCustomProxyUrl = getNested(settings, 'providers.proxyUrlLastCustom') || '';
     document.getElementById('settingsBody').innerHTML = buildSessionSection() + buildPanel(settings);
     bindEvents();
     syncProxyControls();

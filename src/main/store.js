@@ -7,7 +7,8 @@ const defaults = {
       apiKey: '',
       sessionToken: ''
     },
-    proxyUrl: ''
+    proxyUrl: '',
+    proxyUrlLastCustom: ''
   },
   window: {
     x: undefined,
