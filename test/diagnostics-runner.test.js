@@ -181,7 +181,9 @@ test('terminal event mutations do not change final context or returned results',
   let finalResults;
   const checks = [
     check('emitted', 'local', async () => ({
-      status: 'pass', summary: 'original', metadata: { nested: { value: 'original' } }
+      status: 'pass',
+      summary: 'original',
+      metadata: { nested: { value: 'original', date: new Date('2020-01-01T00:00:00.000Z') } }
     })),
     check('final', 'final', async (context) => {
       finalResults = context.getResults();
@@ -194,6 +196,7 @@ test('terminal event mutations do not change final context or returned results',
       if (event.check.id === 'emitted' && event.check.status === 'pass') {
         event.check.summary = 'mutated';
         event.check.metadata.nested.value = 'mutated';
+        event.check.metadata.nested.date.setUTCFullYear(2030);
       }
     },
     isActive: () => true
@@ -201,6 +204,25 @@ test('terminal event mutations do not change final context or returned results',
 
   assert.equal(finalResults[0].summary, 'original');
   assert.equal(finalResults[0].metadata.nested.value, 'original');
+  assert.equal(finalResults[0].metadata.nested.date.getUTCFullYear(), 2020);
   assert.equal(results[0].summary, 'original');
   assert.equal(results[0].metadata.nested.value, 'original');
+  assert.equal(results[0].metadata.nested.date.getUTCFullYear(), 2020);
+});
+
+test('uncloneable metadata fails closed in final context and returned results', async () => {
+  let finalResults;
+  const checks = [
+    check('uncloneable', 'local', async () => ({
+      status: 'pass', metadata: { callback() {} }
+    })),
+    check('final', 'final', async (context) => {
+      finalResults = context.getResults();
+      return { status: 'pass' };
+    })
+  ];
+
+  const results = await runDiagnostics({ runId: 'run-14', checks, emit() {}, isActive: () => true });
+  assert.deepEqual(finalResults[0].metadata, {});
+  assert.deepEqual(results[0].metadata, {});
 });

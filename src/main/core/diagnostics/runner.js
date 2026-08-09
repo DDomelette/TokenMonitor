@@ -1,18 +1,15 @@
 const { pendingResult, terminalResult, safeCode } = require('./results');
 
-function copyValue(value) {
-  if (Array.isArray(value)) return value.map(copyValue);
-  if (value && Object.getPrototypeOf(value) === Object.prototype) {
-    return Object.keys(value).reduce((copy, key) => {
-      copy[key] = copyValue(value[key]);
-      return copy;
-    }, {});
+function copyMetadata(metadata) {
+  try {
+    return typeof structuredClone === 'function' ? structuredClone(metadata) : {};
+  } catch (_) {
+    return {};
   }
-  return value;
 }
 
 function copyResult(result) {
-  return Object.assign({}, result, { metadata: copyValue(result.metadata) });
+  return Object.assign({}, result, { metadata: copyMetadata(result.metadata) });
 }
 
 function createRunSnapshot(runId, checks) {
