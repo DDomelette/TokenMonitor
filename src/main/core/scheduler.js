@@ -14,7 +14,16 @@ function isAuthError(err) {
   return /unauthoriz|401|403|登录|expired|invalid token/i.test(msg);
 }
 
-function startScheduler({ registry, store, broadcast, intervals, onStateChange, getProxyInput }) {
+function startScheduler({
+  registry,
+  store,
+  broadcast,
+  intervals,
+  onStateChange,
+  getProxyInput,
+  onUsageObservation,
+  onUsageUnavailable
+}) {
   const enabled = intervals === false ? false : Object.assign({}, DEFAULT_INTERVALS, intervals || {});
   const timers = [];
   const states = Object.create(null);
@@ -110,6 +119,20 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange, 
     return false;
   }
 
+  function notifyUsageObservation(provider, channel) {
+    if (typeof onUsageObservation !== 'function') return;
+    try {
+      onUsageObservation(provider.id, { channel, observedAt: Date.now() });
+    } catch (_) {}
+  }
+
+  function notifyUsageUnavailable(provider, channel) {
+    if (typeof onUsageUnavailable !== 'function') return;
+    try {
+      onUsageUnavailable(provider.id, { channel, observedAt: Date.now() });
+    } catch (_) {}
+  }
+
   function recordFailure(provider, channel, error) {
     const st = ensureState(provider);
     const before = failureSignature(st);
@@ -183,7 +206,10 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange, 
   }
 
   async function pollUsage(provider) {
-    if (!canPollProtected(provider)) return;
+    if (!canPollProtected(provider)) {
+      notifyUsageUnavailable(provider, 'usage');
+      return;
+    }
     const now = new Date();
     try {
       const usage = await provider.fetchUsage(ctxFor(provider), {
@@ -191,8 +217,10 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange, 
         year: now.getFullYear()
       });
       recordSuccess(provider, 'usage', 'usage', usage);
+      notifyUsageObservation(provider, 'usage');
     } catch (error) {
       recordFailure(provider, 'usage', error);
+      notifyUsageUnavailable(provider, 'usage');
     }
   }
 
@@ -213,8 +241,10 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange, 
       const changed = Array.isArray(records) && records.length > 0;
       const recovered = recordChannelRecovery(provider, 'localLog', false);
       if (changed || recovered) touch(provider.id);
+      notifyUsageObservation(provider, 'localLog');
     } catch (error) {
       recordFailure(provider, 'localLog', error);
+      notifyUsageUnavailable(provider, 'localLog');
     }
   }
 

@@ -95,6 +95,12 @@ module.exports = function setupIPC(deps) {
     return deps.scheduler.getSnapshot();
   });
 
+  ipcMain.handle('get:token-speed', () => {
+    return deps.tokenSpeedRuntime
+      ? deps.tokenSpeedRuntime.getSnapshot()
+      : { enabled: false, providers: [], series: {} };
+  });
+
   /* ======== Heatmap ======== */
 
   ipcMain.handle('get:heatmap', (event, arg) => {
@@ -191,6 +197,10 @@ module.exports = function setupIPC(deps) {
       };
     }
 
+    if (deps.tokenSpeedRuntime && typeof deps.tokenSpeedRuntime.rebaselineAll === 'function') {
+      deps.tokenSpeedRuntime.rebaselineAll();
+    }
+
     // 广播 providers:changed,渲染端 TokenHeatmap/ProviderBar 已订阅,会自动重取 get:heatmap
     if (deps.scheduler && typeof deps.scheduler.pollAll === 'function') {
       await deps.scheduler.pollAll();
@@ -228,6 +238,9 @@ module.exports = function setupIPC(deps) {
 
   ipcMain.on('settings:reset', () => {
     resetSettingsStore(deps.store);
+    if (deps.tokenSpeedRuntime && typeof deps.tokenSpeedRuntime.applySettings === 'function') {
+      deps.tokenSpeedRuntime.applySettings();
+    }
     console.log('[settings] reset done (credentials and usage state preserved)');
     if (getMain()) {
       getMain().setAlwaysOnTop(true);

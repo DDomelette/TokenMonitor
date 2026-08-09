@@ -8,6 +8,7 @@ const deepseekProvider = require('./providers/deepseek');
 const codexProvider = require('./providers/codex');
 const kimiProvider = require('./providers/kimi');
 const { startScheduler } = require('./core/scheduler');
+const { createTokenSpeedRuntime } = require('./core/token-speed-runtime');
 const { wakeMostRelevantWindow } = require('./core/startup-windows');
 const setupIPC = require('./ipc');
 const { captureSession } = require('./providers/deepseek/session');
@@ -32,6 +33,7 @@ let sessionWindow = null;
 let settingsWindow = null;
 let tray = null;
 let scheduler = null;
+let tokenSpeedRuntime = null;
 let moveDebounce = null;
 
 const runtime = {
@@ -459,6 +461,16 @@ function createSettingsWindow() {
 /* ======== 设置应用 ======== */
 
 function applySetting(key, value) {
+  switch (key) {
+    case 'components.tokenSpeed':
+    case 'data.tokenSpeed.intervalSeconds':
+    case 'data.tokenSpeed.providerFilter':
+      if (tokenSpeedRuntime) tokenSpeedRuntime.applySettings();
+      return;
+    case 'data.historyDays':
+      if (tokenSpeedRuntime) tokenSpeedRuntime.rebaselineAll();
+      return;
+  }
   if (!mainWindow) return;
   switch (key) {
     // window.opacity 不再应用:setOpacity 的分层窗口机制会导致缩放露黑边,
@@ -582,8 +594,21 @@ function startSchedulerRuntime() {
         updateTrayMenu();
         broadcastSessionState();
       }
+    },
+    onUsageObservation: (providerId, detail) => {
+      if (tokenSpeedRuntime) tokenSpeedRuntime.observeProvider(providerId, detail.observedAt);
+    },
+    onUsageUnavailable: (providerId, detail) => {
+      if (tokenSpeedRuntime) tokenSpeedRuntime.markProviderUnavailable(providerId, detail);
     }
   });
+  tokenSpeedRuntime = createTokenSpeedRuntime({
+    store,
+    registry,
+    scheduler,
+    broadcast: (channel, payload) => broadcastToWindows(channel, payload)
+  });
+  tokenSpeedRuntime.start();
 }
 
 /* ======== App 生命周期 ======== */
@@ -599,6 +624,7 @@ app.whenReady().then(() => {
     store,
     registry,
     scheduler,
+    tokenSpeedRuntime,
     runtime,
     resizeState,
     getMainWindow: () => mainWindow,
@@ -653,6 +679,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   app.isQuitting = true;
+  if (tokenSpeedRuntime) tokenSpeedRuntime.stop();
   if (scheduler) scheduler.stop();
   if (tray) { tray.destroy(); tray = null; }
 });
