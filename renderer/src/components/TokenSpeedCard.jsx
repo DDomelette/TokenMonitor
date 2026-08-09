@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import useECharts from '../hooks/useECharts.js';
 import useTokenSpeed from '../hooks/useTokenSpeed.js';
 import { saveSetting } from '../api.js';
+import CustomSelect from './CustomSelect.jsx';
 import {
   FILTER_OPTIONS,
   INTERVAL_OPTIONS,
@@ -57,12 +58,12 @@ export default function TokenSpeedCard() {
     compact: !!chartRef.current && chartRef.current.clientWidth < 220
   }), [snapshot]);
 
-  function updateFilter(event) {
-    saveSetting('data.tokenSpeed.providerFilter', event.target.value).catch(() => {});
+  function updateFilter(value) {
+    saveSetting('data.tokenSpeed.providerFilter', value).catch(() => {});
   }
 
-  function updateInterval(event) {
-    saveSetting('data.tokenSpeed.intervalSeconds', Number(event.target.value)).catch(() => {});
+  function updateInterval(value) {
+    saveSetting('data.tokenSpeed.intervalSeconds', Number(value)).catch(() => {});
   }
 
   return (
@@ -70,16 +71,18 @@ export default function TokenSpeedCard() {
       <div className="token-speed-header">
         <div className="token-speed-title"><SpeedIcon /><span>Token 消耗速度</span></div>
         <div className="token-speed-controls">
-          <label>
-            <select className="token-speed-select" aria-label="展示平台" value={providerFilter} onChange={updateFilter}>
-              {FILTER_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-          <label>
-            <select className="token-speed-select" aria-label="统计周期" value={intervalSeconds} onChange={updateInterval}>
-              {INTERVAL_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
+          <CustomSelect
+            ariaLabel="展示平台"
+            value={providerFilter}
+            options={FILTER_OPTIONS}
+            onChange={updateFilter}
+          />
+          <CustomSelect
+            ariaLabel="统计周期"
+            value={intervalSeconds}
+            options={INTERVAL_OPTIONS}
+            onChange={updateInterval}
+          />
         </div>
       </div>
 

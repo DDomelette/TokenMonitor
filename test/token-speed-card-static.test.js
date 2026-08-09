@@ -36,6 +36,22 @@ test('Dashboard routes token-speed as an embedded chart widget', () => {
   assert.match(styles, /\.token-speed-legend/);
 });
 
+test('token speed selectors use the themed custom dropdown (no native select)', () => {
+  // 原生 <select> 的展开列表由 OS 渲染:直角、白底,与设置页 custom-select 不一致
+  assert.match(component, /import CustomSelect/);
+  assert.doesNotMatch(component, /<select/);
+  const customSelect = fs.readFileSync(path.join(root, 'renderer/src/components/CustomSelect.jsx'), 'utf8');
+  assert.match(customSelect, /themed-select-trigger/);
+  assert.match(customSelect, /themed-select-menu/);
+  assert.match(customSelect, /themed-select-option/);
+  assert.match(customSelect, /drop-up/);
+  const styles = fs.readFileSync(path.join(root, 'renderer/src/styles.css'), 'utf8');
+  assert.match(styles, /\.themed-select-trigger/);
+  assert.match(styles, /\.themed-select-menu/);
+  assert.match(styles, /\.themed-select-option\.selected/);
+  assert.doesNotMatch(styles, /\.token-speed-select/);
+});
+
 test('minimum card mode keeps the compact legend on one row so the curve remains visible', () => {
   const styles = fs.readFileSync(path.join(root, 'renderer/src/styles.css'), 'utf8');
   const compact = styles.slice(styles.indexOf('@container (max-width: 220px)'));
