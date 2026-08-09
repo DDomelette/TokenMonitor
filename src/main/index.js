@@ -39,8 +39,7 @@ let moveDebounce = null;
 const runtime = {
   sessionToken: null,
   sessionStatus: 'missing',
-  sessionError: null,
-  proxyStatus: { running: false, port: 0, error: '未获取数据' }
+  sessionError: null
 };
 
 // 缩放状态机运行标记(状态本体在 ipc.js,这里只消费布尔值)
@@ -248,7 +247,6 @@ function createSessionWindow() {
         const snapshot = getSessionSnapshot(runtime);
         if (!snapshot.loggedIn && snapshot.status !== 'expired') {
           clearSession(runtime, '未登录 DeepSeek 平台');
-          runtime.proxyStatus = { running: false, port: 0, error: '未登录 DeepSeek 平台' };
         }
         broadcastSessionState();
         updateTrayMenu();
@@ -259,7 +257,6 @@ function createSessionWindow() {
     .then((token) => {
       restoreSession(runtime, token);
       store.set('providers.deepseek.sessionToken', token);
-      runtime.proxyStatus = { running: true, port: 0, activeSince: Date.now() };
       broadcastSessionState();
       updateTrayMenu();
       if (scheduler) scheduler.poll('deepseek', 'usage');
@@ -270,7 +267,6 @@ function createSessionWindow() {
       if (!snapshot.loggedIn && snapshot.status !== 'expired') {
         clearSession(runtime, message);
       }
-      runtime.proxyStatus = { running: false, port: 0, error: message };
       broadcastSessionState();
       updateTrayMenu();
     });
@@ -590,7 +586,6 @@ function startSchedulerRuntime() {
       if (state.authStatus === 'expired' && state.lastError) {
         expireSession(runtime, '会话已过期，请重新登录');
         store.delete('providers.deepseek.sessionToken');
-        runtime.proxyStatus = { running: false, port: 0, error: '会话已过期，请重新登录' };
         updateTrayMenu();
         broadcastSessionState();
       }
@@ -658,11 +653,9 @@ app.whenReady().then(() => {
       if (getSessionSnapshot(runtime).loggedIn) {
         console.log('[session] startup with stored token, starting usage timer');
         scheduler.poll('deepseek', 'usage');
-        runtime.proxyStatus = { running: true, port: 0, activeSince: Date.now() };
       } else {
         console.log('[session] startup without token, opening platform login window');
         clearSession(runtime, '请登录平台获取用量');
-        runtime.proxyStatus = { running: false, port: 0, error: '请登录平台获取用量' };
         createSessionWindow();
       }
       broadcastSessionState();

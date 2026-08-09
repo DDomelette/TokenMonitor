@@ -54,7 +54,6 @@ module.exports = function setupIPC(deps) {
       payload.curveToken = curves.token;
       payload.curveCost = curves.cost;
     }
-    payload.proxyStatus = deps.runtime.proxyStatus;
     return payload;
   }
 

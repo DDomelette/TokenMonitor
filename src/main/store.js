@@ -44,7 +44,6 @@ const defaults = {
   data: {
     sampleInterval: 30,
     defaultTimeRange: '1h',
-    proxyPort: 7890,
     historyDays: 7,
     tokenSpeed: {
       intervalSeconds: 30,

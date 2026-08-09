@@ -1,5 +1,6 @@
 // Kimi 账户额度采集:GET https://api.kimi.com/coding/v1/usages。
-const { ensureFresh } = require('./auth');
+// 凭证只读(CLI 自己保活刷新,见 auth.js 头注);401 由上层判 expired。
+const { readCred } = require('./auth');
 const { makeQuotaState } = require('../types');
 
 // 判定规则:limits[i].window.duration===300 && timeUnit==='TIME_UNIT_MINUTE' → '5h';顶层 usage → 'weekly'。
@@ -45,7 +46,7 @@ function normalizeKimiUsage(data, planName) {
 }
 
 async function fetchQuota(ctx) {
-  const cred = await ensureFresh(ctx);
+  const cred = readCred();
   if (!cred || !cred.accessToken) return null;
   const headers = {
     'Authorization': 'Bearer ' + cred.accessToken,
