@@ -1,5 +1,6 @@
 // Codex 账户额度采集:GET https://chatgpt.com/backend-api/wham/usage(需代理)。
-const { ensureFresh } = require('./auth');
+// 凭证只读(CLI 自己保活刷新,见 auth.js 头注);401 由上层判 expired。
+const { readAuth } = require('./auth');
 const { makeQuotaState } = require('../types');
 
 // windows 换算规则:18000s→'5h',604800s→'weekly',其他按秒数推断为 'limit'。
@@ -59,7 +60,7 @@ function normalizeWhamUsage(data) {
 }
 
 async function fetchQuota(ctx) {
-  const auth = await ensureFresh(ctx);
+  const auth = readAuth();
   if (!auth || !auth.accessToken) return null;
   const data = await ctx.httpGet('https://chatgpt.com/backend-api/wham/usage', {
     'Authorization': 'Bearer ' + auth.accessToken,

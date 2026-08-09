@@ -3,12 +3,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { EventEmitter } = require('node:events');
-const https = require('node:https');
 
 const fixture = require('./fixtures/codex-wham-usage.json');
 const { normalizeWhamUsage } = require('../src/main/providers/codex/quota');
-const { readAuth, ensureFresh, tokenExpiryMs } = require('../src/main/providers/codex/auth');
+const { readAuth, tokenExpiryMs } = require('../src/main/providers/codex/auth');
 
 test('normalizeWhamUsage maps the synthetic fixture into QuotaState', () => {
   const quota = normalizeWhamUsage(fixture);
@@ -97,56 +95,11 @@ test('tokenExpiryMs decodes the JWT exp claim', () => {
   assert.equal(tokenExpiryMs('not-a-jwt'), null);
 });
 
-test('ensureFresh skips refresh while the token is still fresh', async () => {
-  const p = tempAuthFile({
-    tokens: { access_token: makeJwt(Math.floor(Date.now() / 1000) + 3600), refresh_token: 'ref', account_id: 'a' }
-  });
-  try {
-    const original = https.request;
-    let called = false;
-    https.request = function () { called = true; throw new Error('should not be called'); };
-    try {
-      const auth = await ensureFresh({ getProxyUrl: () => null }, p);
-      assert.equal(called, false);
-      assert.equal(auth.accessToken.includes('.'), true);
-    } finally {
-      https.request = original;
-    }
-  } finally {
-    fs.unlinkSync(p);
-  }
-});
-
-test('ensureFresh refreshes and writes back when the token is expired', async () => {
-  const p = tempAuthFile({
-    tokens: { access_token: makeJwt(Math.floor(Date.now() / 1000) - 3600), refresh_token: 'ref-token', account_id: 'a' }
-  });
-  const original = https.request;
-  https.request = function (options, callback) {
-    assert.equal(options.method, 'POST');
-    const req = new EventEmitter();
-    req.setTimeout = function () {};
-    req.destroy = function () {};
-    req.write = function () {};
-    req.end = function () {
-      const res = new EventEmitter();
-      res.statusCode = 200;
-      callback(res);
-      process.nextTick(function () {
-        res.emit('data', JSON.stringify({ access_token: makeJwt(Math.floor(Date.now() / 1000) + 3600), refresh_token: 'new-rt' }));
-        res.emit('end');
-      });
-    };
-    return req;
-  };
-  try {
-    const auth = await ensureFresh({ getProxyUrl: () => null }, p);
-    assert.ok(auth.accessToken.includes('.'));
-    const persisted = JSON.parse(fs.readFileSync(p, 'utf8'));
-    assert.equal(persisted.tokens.refresh_token, 'new-rt');
-    assert.ok(persisted.last_refresh);
-  } finally {
-    https.request = original;
-    fs.unlinkSync(p);
-  }
+test('codex credential access is read-only (CLI owns refresh; proactive refresh raced the CLI)', () => {
+  const quotaSource = fs.readFileSync(path.resolve(__dirname, '../src/main/providers/codex/quota.js'), 'utf8');
+  const authSource = fs.readFileSync(path.resolve(__dirname, '../src/main/providers/codex/auth.js'), 'utf8');
+  assert.match(quotaSource, /readAuth\(\)/);
+  assert.doesNotMatch(quotaSource, /ensureFresh|refreshAuth/);
+  // refresh_token 一次性轮换:任何主动刷新成功都会作废 CLI 内存中的旧 RT
+  assert.doesNotMatch(authSource, /refreshAuth|writeAuthAtomic|oauth\/token/);
 });
