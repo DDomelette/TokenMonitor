@@ -45,6 +45,11 @@ test('token speed selectors use the themed custom dropdown (no native select)', 
   assert.match(customSelect, /themed-select-menu/);
   assert.match(customSelect, /themed-select-option/);
   assert.match(customSelect, /drop-up/);
+  // 菜单 portal 到 body:留在卡片内会被 overflow:hidden + backdrop-filter 裁剪;
+  // 宽度取触发器实测宽,避免菜单与触发器对不齐
+  assert.match(customSelect, /createPortal/);
+  assert.match(customSelect, /document\.body/);
+  assert.match(customSelect, /getBoundingClientRect/);
   const styles = fs.readFileSync(path.join(root, 'renderer/src/styles.css'), 'utf8');
   assert.match(styles, /\.themed-select-trigger/);
   assert.match(styles, /\.themed-select-menu/);

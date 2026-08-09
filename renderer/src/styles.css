@@ -417,35 +417,31 @@ body,
 }
 
 .themed-select-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  min-width: 88px;
+  position: fixed;
+  z-index: 10000;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-input);
   box-shadow: 0 6px 20px rgba(31, 41, 55, 0.18);
-  z-index: 100;
   overflow: hidden;
-  opacity: 0;
-  transform: translateY(-6px) scaleY(0.86);
   transform-origin: top center;
-  pointer-events: none;
-  /* 收回:较慢的阻尼感 */
-  transition:
-    opacity 240ms cubic-bezier(0.55, 0, 0.55, 0.2),
-    transform 300ms cubic-bezier(0.55, 0, 0.55, 0.2);
+  /* 菜单仅在打开时挂载,展开动画用 keyframes(较快、带轻微回弹的阻尼感) */
+  animation: themed-select-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.themed-select.open .themed-select-menu {
-  opacity: 1;
-  transform: translateY(0) scaleY(1);
-  pointer-events: auto;
-  /* 展开:较快、带轻微回弹的阻尼感 */
-  transition:
-    opacity 160ms ease-out,
-    transform 230ms cubic-bezier(0.22, 1, 0.36, 1);
+.themed-select-menu.drop-up {
+  transform-origin: bottom center;
+  animation-name: themed-select-in-up;
+}
+
+@keyframes themed-select-in {
+  from { opacity: 0; transform: translateY(-6px) scaleY(0.86); }
+  to { opacity: 1; transform: translateY(0) scaleY(1); }
+}
+
+@keyframes themed-select-in-up {
+  from { opacity: 0; transform: translateY(6px) scaleY(0.86); }
+  to { opacity: 1; transform: translateY(0) scaleY(1); }
 }
 
 .themed-select-option {
@@ -466,17 +462,8 @@ body,
   font-weight: 500;
 }
 
-/* 向上展开(卡片内空间不足时):从触发器上缘划出 */
-.themed-select.drop-up .themed-select-menu {
-  top: auto;
-  bottom: calc(100% + 4px);
-  transform: translateY(6px) scaleY(0.86);
-  transform-origin: bottom center;
-}
-
-.themed-select.drop-up.open .themed-select-menu {
-  transform: translateY(0) scaleY(1);
-}
+/* 向上展开(窗口下方空间不足时)的定位由 CustomSelect 内联 bottom 控制,
+   .drop-up 仅切换 transform-origin 与动画方向(见上) */
 
 .token-speed-legends {
   display: flex;
@@ -540,7 +527,6 @@ body,
     font-size: 8px;
     padding: 1px 3px;
   }
-  .themed-select-menu { min-width: 0; }
   .themed-select-option { font-size: 8px; padding: 3px 5px; }
   .token-speed-legends { flex-wrap: nowrap; justify-content: space-between; gap: 1px; }
   .token-speed-legend { flex-wrap: nowrap; gap: 1px; font-size: 7px; }
