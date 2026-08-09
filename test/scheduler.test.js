@@ -139,3 +139,43 @@ test('scheduler marks authStatus expired and broadcasts a safe summary on 401 qu
     scheduler.stop();
   }
 });
+
+test('scheduler reports successful web usage and local-log observations', async () => {
+  const observations = [];
+  const web = makeFakeAdapter({
+    id: 'web',
+    capabilities: { balance: false, webUsage: true, quota: false, localLog: false, realtimeProxy: false },
+    fetchUsage: async () => ({ amount: { aggregate: { todayTokens: 10 } } })
+  });
+  const local = makeFakeAdapter({
+    id: 'local',
+    capabilities: { balance: false, webUsage: false, quota: false, localLog: true, realtimeProxy: false },
+    readLocalLog: async () => []
+  });
+  const scheduler = startScheduler({
+    registry: makeRegistry([web, local]),
+    store: makeFakeStore({}),
+    broadcast() {},
+    intervals: false,
+    onUsageObservation(providerId, detail) { observations.push([providerId, detail.channel]); }
+  });
+  await scheduler.poll('web', 'usage');
+  await scheduler.poll('local', 'localLog');
+  assert.deepEqual(observations, [['web', 'usage'], ['local', 'localLog']]);
+  scheduler.stop();
+});
+
+test('scheduler reports usage-source failures without exposing raw errors', async () => {
+  const unavailable = [];
+  const web = makeFakeAdapter({
+    capabilities: { balance: false, webUsage: true, quota: false, localLog: false, realtimeProxy: false },
+    fetchUsage: async () => { throw new Error('secret upstream body'); }
+  });
+  const scheduler = startScheduler({
+    registry: makeRegistry([web]), store: makeFakeStore({}), broadcast() {}, intervals: false,
+    onUsageUnavailable(providerId, detail) { unavailable.push([providerId, detail.channel]); }
+  });
+  await scheduler.poll('fake', 'usage');
+  assert.deepEqual(unavailable, [['fake', 'usage']]);
+  scheduler.stop();
+});

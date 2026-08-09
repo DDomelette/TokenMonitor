@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('api', {
       'window:bounds-changed',
       'session:changed',
       'providers:changed',
+      'token-speed:changed',
       'sync:progress'
     ];
     if (validChannels.includes(channel)) {
@@ -51,6 +52,7 @@ contextBridge.exposeInMainWorld('api', {
       'settings:replace-api-key',
       'get:dashboard',
       'get:providers',
+      'get:token-speed',
       'get:heatmap',
       'get:bounds',
       'get:session-state',
