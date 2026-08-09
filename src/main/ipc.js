@@ -107,10 +107,9 @@ module.exports = function setupIPC(deps) {
     const { provider, year } = arg || {};
     // 全部 provider 的日数据统一来自 store 键 'usageDaily' { '<provider>:<date>': { total, cached, models? } }:
     // codex/kimi 由本地日志增量聚合;deepseek 由 fetchUsage 按月抓取时持久化(含历史回填)。
-    const usageDaily = filterUsageDaily(
-      deps.store.get('usageDaily') || {},
-      deps.store.get('data.historyDays')
-    );
+    // 显示层不套用保留窗口:已同步的历史应全部可见,清理交给 data.historyDays/prune。
+    // 不传 historyDays 时 filterUsageDaily 只做畸形键过滤(无限保留)。
+    const usageDaily = filterUsageDaily(deps.store.get('usageDaily') || {});
     const byProvider = {};
     const cachedByProvider = {};
     const deepseekModels = {};
@@ -175,7 +174,7 @@ module.exports = function setupIPC(deps) {
       }
       summary[pid] = await rescanLocalLogs({
         providerId: pid,
-        readLocalLog: () => provider.readLocalLog({ store: deps.store }),
+        readLocalLog: () => provider.readLocalLog({ store: deps.store }, { retainAll: true }),
         readStore,
         writeStore,
         onProgress: sendProgress
