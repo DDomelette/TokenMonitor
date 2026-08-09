@@ -16,9 +16,6 @@ function createStorageChecks(dependencies = {}) {
   const store = dependencies.store;
   const validateEncryptionKey = dependencies.validateEncryptionKey;
   const normalizeStoredProxyValue = dependencies.normalizeStoredProxyValue;
-  const configPath = pathApi.join(userDataDir, 'config.json');
-  const keyPath = pathApi.join(userDataDir, '.key');
-
   return [
     definition('storage.user-data-access', 'User data directory access', 'storage-user-data', () => {
       try {
@@ -39,7 +36,7 @@ function createStorageChecks(dependencies = {}) {
     }),
     definition('storage.config-readable', 'Encrypted config readability', 'storage-config', () => {
       try {
-        fsApi.readFileSync(configPath);
+        fsApi.readFileSync(pathApi.join(userDataDir, 'config.json'));
         return { status: 'pass', summary: 'Encrypted config bytes are readable' };
       } catch (_) {
         return { status: 'fail', summary: 'Encrypted config is unreadable', errorCode: 'CONFIG_UNREADABLE' };
@@ -65,7 +62,7 @@ function createStorageChecks(dependencies = {}) {
     definition('storage.encryption-state', 'Encryption key state', 'storage-config', () => {
       try {
         if (typeof validateEncryptionKey !== 'function') throw new Error('missing validator');
-        validateEncryptionKey(fsApi.readFileSync(keyPath, 'utf8'));
+        validateEncryptionKey(fsApi.readFileSync(pathApi.join(userDataDir, '.key'), 'utf8'));
         return { status: 'pass', summary: 'Encryption key is valid', metadata: { keyValid: true } };
       } catch (_) {
         return { status: 'fail', summary: 'Encryption key is invalid', errorCode: 'ENCRYPTION_KEY_INVALID', metadata: { keyValid: false } };

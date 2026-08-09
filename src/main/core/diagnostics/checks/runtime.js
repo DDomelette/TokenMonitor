@@ -23,6 +23,16 @@ function createRuntimeChecks(dependencies = {}) {
   const getWindows = typeof dependencies.getWindows === 'function'
     ? dependencies.getWindows
     : () => ({});
+  const defaultExpectedCheckIds = [
+    'runtime.versions',
+    'runtime.windows-build',
+    'runtime.renderer-build',
+    'runtime.ipc-roundtrip',
+    'runtime.window-references'
+  ];
+  const expectedCheckIds = Array.isArray(dependencies.expectedCheckIds)
+    ? dependencies.expectedCheckIds.slice()
+    : defaultExpectedCheckIds;
 
   return [
     definition('runtime.versions', 'Runtime versions', 'local', () => ({
@@ -73,16 +83,13 @@ function createRuntimeChecks(dependencies = {}) {
     }),
     definition('runtime.self-check', 'Diagnostics self-check', 'final', (context) => {
       const results = context && typeof context.getResults === 'function' ? context.getResults() : [];
-      const expected = new Set([
-        'runtime.versions',
-        'runtime.windows-build',
-        'runtime.renderer-build',
-        'runtime.ipc-roundtrip',
-        'runtime.window-references'
-      ]);
-      const completed = results.filter((result) => expected.has(result.id));
       const terminal = new Set(['pass', 'fail', 'skipped']);
-      return completed.length === expected.size && completed.every((result) => terminal.has(result.status))
+      const complete = new Set(expectedCheckIds).size === expectedCheckIds.length
+        && expectedCheckIds.every((id) => {
+          const matches = results.filter((result) => result && result.id === id);
+          return matches.length === 1 && terminal.has(matches[0].status);
+        });
+      return complete
         ? { status: 'pass', summary: 'All preceding runtime checks completed' }
         : { status: 'fail', summary: 'A preceding runtime check is incomplete', errorCode: 'RUNTIME_CHECK_INCOMPLETE' };
     })
