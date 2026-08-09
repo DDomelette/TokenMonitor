@@ -168,3 +168,213 @@ test('provider check definitions keep credential and local-log probes local and 
   assert.equal(byId.get('codex.local-log').guideId, 'codex-local-log');
   assert.equal(byId.get('kimi.local-log').guideId, 'kimi-local-log');
 });
+
+test('async credential and proxy configuration is awaited without leaked rejections', async () => {
+  const unhandled = [];
+  const onUnhandled = (error) => unhandled.push(error);
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    const calls = [];
+    const checks = createProviderChecks({
+      getDeepseekApiKey: () => Promise.resolve('deepseek-secret'),
+      getDeepseekSessionToken: () => Promise.reject(new Error('private session getter failure')),
+      getProxyUrl: () => Promise.reject(new Error('private proxy getter failure')),
+      fetchBalance: async (key, options) => {
+        calls.push({ key, proxyUrl: options.proxyUrl });
+        return { available: true };
+      },
+      UsageFetcher: class { async fetchUsageAmount() { throw new Error('must not receive a token'); } }
+    });
+    const api = await checks.find((check) => check.id === 'deepseek.api-key').run();
+    const session = await checks.find((check) => check.id === 'deepseek.session').run();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(api.status, 'pass');
+    assert.equal(session.status, 'skipped');
+    assert.deepEqual(calls, [{ key: 'deepseek-secret', proxyUrl: null }]);
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+  }
+});
+
+test('async Store credential and proxy reads are awaited without leaked rejections', async () => {
+  const unhandled = [];
+  const onUnhandled = (error) => unhandled.push(error);
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    const calls = [];
+    const checks = createProviderChecks({
+      store: {
+        get(key) {
+          if (key === 'providers.deepseek.apiKey') return Promise.resolve('deepseek-store-secret');
+          if (key === 'providers.deepseek.sessionToken' || key === 'providers.proxyUrl') return Promise.reject(new Error('private Store rejection'));
+          return undefined;
+        }
+      },
+      fetchBalance: async (key, options) => {
+        calls.push({ key, proxyUrl: options.proxyUrl });
+        return { available: true };
+      }
+    });
+    const api = await checks.find((check) => check.id === 'deepseek.api-key').run();
+    const session = await checks.find((check) => check.id === 'deepseek.session').run();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(api.status, 'pass');
+    assert.equal(session.status, 'skipped');
+    assert.deepEqual(calls, [{ key: 'deepseek-store-secret', proxyUrl: null }]);
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+  }
+});
+
+test('provider factory fails closed when configuration getters throw during construction', () => {
+  const dependencies = {};
+  Object.defineProperty(dependencies, 'fs', { get() { throw new Error('private fs failure'); } });
+  Object.defineProperty(dependencies, 'store', { get() { throw new Error('private store failure'); } });
+  assert.doesNotThrow(() => createProviderChecks(dependencies));
+  assert.equal(createProviderChecks(dependencies).length, 10);
+});
+
+test('unreadable discovered local logs fail while readable empty logs still pass', () => {
+  const root = tempDir();
+  try {
+    const sessions = path.join(root, 'sessions');
+    const auth = path.join(root, 'auth.json');
+    fs.mkdirSync(sessions);
+    fs.writeFileSync(auth, JSON.stringify({ tokens: {} }));
+    const log = path.join(sessions, 'rollout-empty.jsonl');
+    fs.writeFileSync(log, '');
+    const readable = createProviderChecks({ fs, codexAuthPath: auth, codexSessionsRoot: sessions });
+    assert.equal(readable.find((check) => check.id === 'codex.local-log').run().status, 'pass');
+
+    fs.writeFileSync(log, '{"partial":true}\n');
+    const unreadableFs = Object.assign({}, fs, {
+      readSync() { throw new Error('not readable'); }
+    });
+    const unreadable = createProviderChecks({ fs: unreadableFs, codexAuthPath: auth, codexSessionsRoot: sessions });
+    assert.deepEqual(unreadable.find((check) => check.id === 'codex.sessions').run().status, 'fail');
+    assert.deepEqual(unreadable.find((check) => check.id === 'codex.local-log').run(), {
+      status: 'fail',
+      summary: 'Local log sample could not be read safely',
+      errorCode: 'LOCAL_LOG_UNREADABLE',
+      metadata: { matchingFiles: 1, sampledLines: 0, parsedRecords: 0 }
+    });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Kimi expiry metadata classifies only semantic expiry timestamps', () => {
+  const root = tempDir();
+  try {
+    const credPath = path.join(root, 'kimi.json');
+    const nowMs = 2_000_000_000_000;
+    const cases = [
+      [Math.floor(nowMs / 1000) + 3600, 'valid'],
+      [Math.floor(nowMs / 1000) + 60, 'near-expiry'],
+      [0, 'expired'],
+      [-1, 'expired'],
+      [null, 'unknown'],
+      ['', 'unknown'],
+      [false, 'unknown'],
+      [undefined, 'unknown'],
+      ['not-a-number', 'unknown']
+    ];
+    for (const [expiresAt, expiry] of cases) {
+      const payload = { access_token: 'kimi-secret', refresh_token: 'refresh-secret' };
+      if (expiresAt !== undefined) payload.expires_at = expiresAt;
+      fs.writeFileSync(credPath, JSON.stringify(payload));
+      const auth = createProviderChecks({ fs, kimiCredPath: credPath, now: () => nowMs })
+        .find((check) => check.id === 'kimi.auth').run();
+      assert.equal(auth.metadata.expiry, expiry);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('bounded discovery counts only child entries and caps matching files at twenty', () => {
+  const childNames = Array.from({ length: 2105 }, (_, index) => 'rollout-' + String(index).padStart(4, '0') + '.jsonl');
+  const inspected = [];
+  const fakeFs = {
+    lstatSync(target) {
+      if (target === 'root') return { isSymbolicLink: () => false, isDirectory: () => true };
+      inspected.push(target);
+      return { isSymbolicLink: () => false, isDirectory: () => false, isFile: () => true };
+    },
+    readdirSync() { return childNames; }
+  };
+  const matches = findMatchingFiles({ root: 'root', match: /^rollout-.*\.jsonl$/, fs: fakeFs, maxEntries: 99999 });
+  assert.equal(matches.length, 20);
+  assert.equal(inspected.length, 20, 'the first twenty matching children stop further entry inspection');
+
+  const noMatches = findMatchingFiles({ root: 'root', match: /^never$/, fs: fakeFs, maxEntries: 99999 });
+  assert.equal(noMatches.length, 0);
+  assert.equal(inspected.length, 2020, 'the root is not counted; the second walk inspects exactly the 2000-entry cap');
+  assert.deepEqual(findMatchingFiles(null), []);
+  assert.deepEqual(findMatchingFiles({ root: 'root', match: /^x$/, fs: { lstatSync() { throw new Error('private fs error'); }, readdirSync() { return []; } } }), []);
+});
+
+test('JSONL sampling caps tail reads and handles partial, CRLF, short-read, and close-error paths', () => {
+  const tailContent = Buffer.from('discarded-prefix-without-newline\nkeep-one\r\nkeep-two\r\ntrailing-partial');
+  const readCalls = [];
+  let closes = 0;
+  const tailFs = {
+    statSync() { return { size: tailContent.length }; },
+    openSync() { return 7; },
+    readSync(fd, target, offset, length, position) {
+      readCalls.push({ fd, length, position, bufferLength: target.length });
+      tailContent.copy(target, offset, position, position + length);
+      return Math.min(length, tailContent.length - position);
+    },
+    closeSync() { closes += 1; }
+  };
+  assert.deepEqual(readJsonlSample({ file: 'tail.jsonl', fs: tailFs, maxBytes: 40, maxLines: 100 }), ['keep-one', 'keep-two']);
+  assert.equal(readCalls[0].length <= 40, true);
+  assert.equal(readCalls[0].bufferLength <= 40, true);
+  assert.equal(readCalls[0].position, tailContent.length - 40);
+  assert.equal(closes, 1);
+
+  const allLines = Array.from({ length: 103 }, (_, index) => 'line-' + index + '\n').join('');
+  const linesBuffer = Buffer.from(allLines);
+  const manyLinesFs = {
+    statSync() { return { size: linesBuffer.length }; },
+    openSync() { return 8; },
+    readSync(fd, target, offset, length, position) {
+      linesBuffer.copy(target, offset, position, position + length);
+      return Math.min(length, linesBuffer.length - position);
+    },
+    closeSync() { throw new Error('close failure'); }
+  };
+  const lines = readJsonlSample({ file: 'many.jsonl', fs: manyLinesFs, maxBytes: 65536, maxLines: 999 });
+  assert.equal(lines.length, 100);
+  assert.equal(lines[0], 'line-3');
+  assert.equal(lines.at(-1), 'line-102');
+
+  const shortFs = {
+    statSync() { return { size: 6 }; },
+    openSync() { return 9; },
+    readSync(fd, target) { Buffer.from('a\nb\n').copy(target); return 4; },
+    closeSync() {}
+  };
+  assert.deepEqual(readJsonlSample({ file: 'short.jsonl', fs: shortFs, maxBytes: 8 }), ['a', 'b']);
+  assert.equal(readJsonlSample(null), null);
+});
+
+test('all provider definitions expose the fixed public contract', () => {
+  assert.deepEqual(createProviderChecks({}).map(({ id, group, title, guideId, phase, timeoutMs }) => ({ id, group, title, guideId, phase, timeoutMs })), [
+    { id: 'deepseek.api-key', group: 'Providers', title: 'DeepSeek API key', guideId: 'deepseek-api-key', phase: 'remote', timeoutMs: 12000 },
+    { id: 'deepseek.session', group: 'Providers', title: 'DeepSeek platform session', guideId: 'deepseek-session', phase: 'remote', timeoutMs: 12000 },
+    { id: 'codex.auth', group: 'Providers', title: 'Codex credential snapshot', guideId: 'codex-auth', phase: 'local', timeoutMs: 8000 },
+    { id: 'codex.sessions', group: 'Providers', title: 'Codex local sessions', guideId: 'codex-local-log', phase: 'local', timeoutMs: 8000 },
+    { id: 'codex.local-log', group: 'Providers', title: 'Codex local log sample', guideId: 'codex-local-log', phase: 'local', timeoutMs: 8000 },
+    { id: 'codex.quota', group: 'Providers', title: 'Codex quota endpoint', guideId: 'codex-auth', phase: 'remote', timeoutMs: 12000 },
+    { id: 'kimi.auth', group: 'Providers', title: 'Kimi credential snapshot', guideId: 'kimi-auth', phase: 'local', timeoutMs: 8000 },
+    { id: 'kimi.sessions', group: 'Providers', title: 'Kimi local sessions', guideId: 'kimi-local-log', phase: 'local', timeoutMs: 8000 },
+    { id: 'kimi.local-log', group: 'Providers', title: 'Kimi local log sample', guideId: 'kimi-local-log', phase: 'local', timeoutMs: 8000 },
+    { id: 'kimi.quota', group: 'Providers', title: 'Kimi quota endpoint', guideId: 'kimi-auth', phase: 'remote', timeoutMs: 12000 }
+  ]);
+});

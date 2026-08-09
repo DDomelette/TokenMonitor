@@ -17,9 +17,49 @@ function definition(id, title, guideId, phase, timeoutMs, run) {
   return { id, group: 'Providers', title, guideId, phase, timeoutMs, run };
 }
 
+function safeDependency(dependencies, key, fallback) {
+  try {
+    const value = dependencies && typeof dependencies === 'object' ? dependencies[key] : undefined;
+    return value === undefined ? fallback : value;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function consumeThenable(value) {
+  if (!value || (typeof value !== 'object' && typeof value !== 'function')) return false;
+  try {
+    const then = value.then;
+    if (typeof then !== 'function') return false;
+    then.call(value, () => {}, () => {});
+    return true;
+  } catch (_) {
+    // An asynchronous value is never valid for synchronous configuration.
+    return true;
+  }
+}
+
 function safeStoreValue(store, key) {
   try {
-    return store && typeof store.get === 'function' ? store.get(key) : undefined;
+    const get = store && typeof store.get === 'function' ? store.get : null;
+    return get ? get.call(store, key) : undefined;
+  } catch (_) {
+    return undefined;
+  }
+}
+
+function safeSynchronousStoreValue(store, key) {
+  const value = safeStoreValue(store, key);
+  return consumeThenable(value) ? undefined : value;
+}
+
+async function safeConfiguredValue(dependencies, getterKey, storeKey) {
+  try {
+    const getter = safeDependency(dependencies, getterKey, null);
+    const value = typeof getter === 'function'
+      ? getter()
+      : safeStoreValue(safeDependency(dependencies, 'store', null), storeKey);
+    return await value;
   } catch (_) {
     return undefined;
   }
@@ -37,6 +77,22 @@ function expiryClass(expiry, now) {
   return 'valid';
 }
 
+function safeNow(now) {
+  try {
+    const value = Number(now());
+    return Number.isFinite(value) ? value : Date.now();
+  } catch (_) {
+    return Date.now();
+  }
+}
+
+function validExpirySeconds(value) {
+  if (value === null || value === undefined || value === '' || typeof value === 'boolean') return null;
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  const seconds = Number(value);
+  return Number.isFinite(seconds) ? seconds : null;
+}
+
 function readJsonSnapshot(fsApi, file) {
   try {
     const bytes = fsApi.readFileSync(file);
@@ -47,19 +103,27 @@ function readJsonSnapshot(fsApi, file) {
   }
 }
 
-function safeProxy(dependencies) {
+async function safeProxy(dependencies) {
   try {
-    if (typeof dependencies.getProxyUrl === 'function') return dependencies.getProxyUrl() || null;
+    const getProxyUrl = safeDependency(dependencies, 'getProxyUrl', null);
+    if (typeof getProxyUrl === 'function') return (await getProxyUrl()) || null;
   } catch (_) {
     return null;
   }
-  return safeStoreValue(dependencies.store, 'providers.proxyUrl') || null;
+  try {
+    return (await safeStoreValue(safeDependency(dependencies, 'store', null), 'providers.proxyUrl')) || null;
+  } catch (_) {
+    return null;
+  }
 }
 
 function sessionResult(root, match, fsApi, pathApi) {
   const files = findMatchingFiles({ root, match, fs: fsApi, path: pathApi });
   if (!files.length) {
-    return { status: 'fail', summary: 'No readable local session log was found', errorCode: 'LOCAL_LOG_NOT_FOUND', metadata: { matchingFiles: 0 } };
+      return { status: 'fail', summary: 'No readable local session log was found', errorCode: 'LOCAL_LOG_NOT_FOUND', metadata: { matchingFiles: 0 } };
+  }
+  if (readJsonlSample({ file: files[0], fs: fsApi }) === null) {
+    return { status: 'fail', summary: 'Local session log is unreadable', errorCode: 'LOCAL_LOG_UNREADABLE', metadata: { matchingFiles: files.length } };
   }
   return { status: 'pass', summary: 'Local session logs are readable', metadata: { matchingFiles: files.length } };
 }
@@ -70,6 +134,9 @@ function localLogResult(root, match, parser, fsApi, pathApi) {
     return { status: 'fail', summary: 'No readable local session log was found', errorCode: 'LOCAL_LOG_NOT_FOUND', metadata: { matchingFiles: 0, sampledLines: 0, parsedRecords: 0 } };
   }
   const lines = readJsonlSample({ file: files[0], fs: fsApi });
+  if (lines === null) {
+    return { status: 'fail', summary: 'Local log sample could not be read safely', errorCode: 'LOCAL_LOG_UNREADABLE', metadata: { matchingFiles: files.length, sampledLines: 0, parsedRecords: 0 } };
+  }
   let parsedRecords = 0;
   try {
     for (const line of lines) if (typeof parser === 'function' && parser(line)) parsedRecords += 1;
@@ -89,27 +156,24 @@ function quotaFailure() {
 
 function createProviderChecks(dependencies = {}) {
   const deps = dependencies && typeof dependencies === 'object' ? dependencies : {};
-  const fsApi = deps.fs || fs;
-  const pathApi = deps.path || path;
-  const now = typeof deps.now === 'function' ? deps.now : Date.now;
-  const fetchBalance = typeof deps.fetchBalance === 'function' ? deps.fetchBalance : defaultFetchBalance;
-  const UsageFetcher = typeof deps.UsageFetcher === 'function' ? deps.UsageFetcher : DefaultUsageFetcher;
-  const httpGet = typeof deps.httpGet === 'function' ? deps.httpGet : defaultHttpGet;
-  const tokenExpiryMs = typeof deps.tokenExpiryMs === 'function' ? deps.tokenExpiryMs : defaultTokenExpiryMs;
-  const codexAuthPath = safePath(deps.codexAuthPath, DEFAULT_AUTH_PATH);
-  const codexSessionsRoot = safePath(deps.codexSessionsRoot || safeStoreValue(deps.store, 'providers.codex.localLogRoot'), defaultCodexRoot);
-  const kimiCredPath = safePath(deps.kimiCredPath, DEFAULT_CRED_PATH);
-  const kimiSessionsRoot = safePath(deps.kimiSessionsRoot || safeStoreValue(deps.store, 'providers.kimi.localLogRoot'), defaultKimiRoot);
+  const fsApi = safeDependency(deps, 'fs', fs) || fs;
+  const pathApi = safeDependency(deps, 'path', path) || path;
+  const now = typeof safeDependency(deps, 'now', null) === 'function' ? safeDependency(deps, 'now', null) : Date.now;
+  const fetchBalance = typeof safeDependency(deps, 'fetchBalance', null) === 'function' ? safeDependency(deps, 'fetchBalance', null) : defaultFetchBalance;
+  const UsageFetcher = typeof safeDependency(deps, 'UsageFetcher', null) === 'function' ? safeDependency(deps, 'UsageFetcher', null) : DefaultUsageFetcher;
+  const httpGet = typeof safeDependency(deps, 'httpGet', null) === 'function' ? safeDependency(deps, 'httpGet', null) : defaultHttpGet;
+  const tokenExpiryMs = typeof safeDependency(deps, 'tokenExpiryMs', null) === 'function' ? safeDependency(deps, 'tokenExpiryMs', null) : defaultTokenExpiryMs;
+  const store = safeDependency(deps, 'store', null);
+  const codexAuthPath = safePath(safeDependency(deps, 'codexAuthPath', undefined), DEFAULT_AUTH_PATH);
+  const codexSessionsRoot = safePath(safeDependency(deps, 'codexSessionsRoot', undefined) || safeSynchronousStoreValue(store, 'providers.codex.localLogRoot'), defaultCodexRoot);
+  const kimiCredPath = safePath(safeDependency(deps, 'kimiCredPath', undefined), DEFAULT_CRED_PATH);
+  const kimiSessionsRoot = safePath(safeDependency(deps, 'kimiSessionsRoot', undefined) || safeSynchronousStoreValue(store, 'providers.kimi.localLogRoot'), defaultKimiRoot);
 
   function deepseekApiKey() {
-    return typeof deps.getDeepseekApiKey === 'function'
-      ? deps.getDeepseekApiKey()
-      : safeStoreValue(deps.store, 'providers.deepseek.apiKey');
+    return safeConfiguredValue(deps, 'getDeepseekApiKey', 'providers.deepseek.apiKey');
   }
   function deepseekSession() {
-    return typeof deps.getDeepseekSessionToken === 'function'
-      ? deps.getDeepseekSessionToken()
-      : safeStoreValue(deps.store, 'providers.deepseek.sessionToken');
+    return safeConfiguredValue(deps, 'getDeepseekSessionToken', 'providers.deepseek.sessionToken');
   }
   function codexSnapshot() {
     const raw = readJsonSnapshot(fsApi, codexAuthPath);
@@ -124,29 +188,29 @@ function createProviderChecks(dependencies = {}) {
       hasAccountId: typeof tokens.account_id === 'string' && !!tokens.account_id,
       accessToken,
       accountId: typeof tokens.account_id === 'string' ? tokens.account_id : '',
-      expiry: expiryClass(expiry, now())
+      expiry: expiryClass(expiry, safeNow(now))
     };
   }
   function kimiSnapshot() {
     const raw = readJsonSnapshot(fsApi, kimiCredPath);
     if (!raw) return null;
     const accessToken = typeof raw.access_token === 'string' ? raw.access_token : '';
-    const seconds = Number(raw.expires_at);
+    const seconds = validExpirySeconds(raw.expires_at);
     return {
       hasAccessToken: !!accessToken,
       hasRefreshToken: typeof raw.refresh_token === 'string' && !!raw.refresh_token,
       accessToken,
-      expiry: expiryClass(Number.isFinite(seconds) ? seconds * 1000 : null, now())
+      expiry: expiryClass(seconds === null ? null : seconds * 1000, safeNow(now))
     };
   }
 
   return [
     definition('deepseek.api-key', 'DeepSeek API key', 'deepseek-api-key', 'remote', REMOTE_TIMEOUT_MS, async () => {
       let key;
-      try { key = deepseekApiKey(); } catch (_) { key = null; }
+      try { key = await deepseekApiKey(); } catch (_) { key = null; }
       if (typeof key !== 'string' || !key) return { status: 'skipped', summary: 'DeepSeek API key is not configured', metadata: { configured: false } };
       try {
-        await fetchBalance(key, { httpGet, proxyUrl: safeProxy(deps) });
+        await fetchBalance(key, { httpGet, proxyUrl: await safeProxy(deps) });
         return { status: 'pass', summary: 'DeepSeek API key was accepted', metadata: { configured: true } };
       } catch (_) {
         return { status: 'fail', summary: 'DeepSeek API key check failed', errorCode: 'DEEPSEEK_API_KEY_FAILED', metadata: { configured: true } };
@@ -154,12 +218,12 @@ function createProviderChecks(dependencies = {}) {
     }),
     definition('deepseek.session', 'DeepSeek platform session', 'deepseek-session', 'remote', REMOTE_TIMEOUT_MS, async () => {
       let token;
-      try { token = deepseekSession(); } catch (_) { token = null; }
+      try { token = await deepseekSession(); } catch (_) { token = null; }
       if (typeof token !== 'string' || !token) return { status: 'skipped', summary: 'DeepSeek platform session is not configured', metadata: { configured: false } };
       try {
-        const date = new Date(now());
+        const date = new Date(safeNow(now));
         const fetcher = new UsageFetcher();
-        await fetcher.fetchUsageAmount(token, date.getMonth() + 1, date.getFullYear(), { httpGet, proxyUrl: safeProxy(deps) });
+        await fetcher.fetchUsageAmount(token, date.getMonth() + 1, date.getFullYear(), { httpGet, proxyUrl: await safeProxy(deps) });
         return { status: 'pass', summary: 'DeepSeek platform session was accepted', metadata: { configured: true } };
       } catch (_) {
         return { status: 'fail', summary: 'DeepSeek platform session check failed', errorCode: 'DEEPSEEK_SESSION_FAILED', metadata: { configured: true } };
@@ -171,7 +235,7 @@ function createProviderChecks(dependencies = {}) {
       return { status: 'pass', summary: 'Codex credential file is readable', metadata: { configured: snapshot.hasAccessToken, hasRefreshToken: snapshot.hasRefreshToken, hasAccountId: snapshot.hasAccountId, expiry: snapshot.expiry } };
     }),
     definition('codex.sessions', 'Codex local sessions', 'codex-local-log', 'local', LOCAL_TIMEOUT_MS, () => sessionResult(codexSessionsRoot, codexMatch, fsApi, pathApi)),
-    definition('codex.local-log', 'Codex local log sample', 'codex-local-log', 'local', LOCAL_TIMEOUT_MS, () => localLogResult(codexSessionsRoot, codexMatch, deps.parseRolloutLine || parseRolloutLine, fsApi, pathApi)),
+    definition('codex.local-log', 'Codex local log sample', 'codex-local-log', 'local', LOCAL_TIMEOUT_MS, () => localLogResult(codexSessionsRoot, codexMatch, safeDependency(deps, 'parseRolloutLine', null) || parseRolloutLine, fsApi, pathApi)),
     definition('codex.quota', 'Codex quota endpoint', 'codex-auth', 'remote', REMOTE_TIMEOUT_MS, async () => {
       const snapshot = codexSnapshot();
       if (!snapshot || !snapshot.hasAccessToken) return { status: 'skipped', summary: 'Codex access token is not configured', metadata: { credentialState: 'missing' } };
@@ -181,7 +245,7 @@ function createProviderChecks(dependencies = {}) {
           Authorization: 'Bearer ' + snapshot.accessToken,
           'ChatGPT-Account-Id': snapshot.accountId,
           'User-Agent': 'codex_cli_rs/0.46.0'
-        }, safeProxy(deps));
+        }, await safeProxy(deps));
         return { status: 'pass', summary: 'Codex quota endpoint responded', metadata: { credentialState: 'valid' } };
       } catch (_) { return quotaFailure(); }
     }),
@@ -191,7 +255,7 @@ function createProviderChecks(dependencies = {}) {
       return { status: 'pass', summary: 'Kimi credential file is readable', metadata: { configured: snapshot.hasAccessToken, hasRefreshToken: snapshot.hasRefreshToken, expiry: snapshot.expiry } };
     }),
     definition('kimi.sessions', 'Kimi local sessions', 'kimi-local-log', 'local', LOCAL_TIMEOUT_MS, () => sessionResult(kimiSessionsRoot, kimiMatch, fsApi, pathApi)),
-    definition('kimi.local-log', 'Kimi local log sample', 'kimi-local-log', 'local', LOCAL_TIMEOUT_MS, () => localLogResult(kimiSessionsRoot, kimiMatch, deps.parseWireLine || parseWireLine, fsApi, pathApi)),
+    definition('kimi.local-log', 'Kimi local log sample', 'kimi-local-log', 'local', LOCAL_TIMEOUT_MS, () => localLogResult(kimiSessionsRoot, kimiMatch, safeDependency(deps, 'parseWireLine', null) || parseWireLine, fsApi, pathApi)),
     definition('kimi.quota', 'Kimi quota endpoint', 'kimi-auth', 'remote', REMOTE_TIMEOUT_MS, async () => {
       const snapshot = kimiSnapshot();
       if (!snapshot || !snapshot.hasAccessToken) return { status: 'skipped', summary: 'Kimi access token is not configured', metadata: { credentialState: 'missing' } };
@@ -200,7 +264,7 @@ function createProviderChecks(dependencies = {}) {
         await httpGet('https://api.kimi.com/coding/v1/usages', {
           Authorization: 'Bearer ' + snapshot.accessToken,
           'User-Agent': 'kimi_cli'
-        }, safeProxy(deps));
+        }, await safeProxy(deps));
         return { status: 'pass', summary: 'Kimi quota endpoint responded', metadata: { credentialState: 'valid' } };
       } catch (_) { return quotaFailure(); }
     })

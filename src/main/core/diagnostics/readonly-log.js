@@ -12,12 +12,22 @@ function positiveLimit(value, fallback, ceiling) {
   return Math.min(Math.floor(parsed), ceiling);
 }
 
+function safeProperty(value, key, fallback) {
+  try {
+    const result = value && typeof value === 'object' ? value[key] : undefined;
+    return result === undefined ? fallback : result;
+  } catch (_) {
+    return fallback;
+  }
+}
+
 function findMatchingFiles(options = {}) {
-  const fsApi = options.fs || nodeFs;
-  const pathApi = options.path || nodePath;
-  const root = typeof options.root === 'string' ? options.root : '';
-  const match = options.match;
-  const maxEntries = positiveLimit(options.maxEntries, DEFAULT_MAX_ENTRIES, DEFAULT_MAX_ENTRIES);
+  const fsApi = safeProperty(options, 'fs', nodeFs) || nodeFs;
+  const pathApi = safeProperty(options, 'path', nodePath) || nodePath;
+  const rootValue = safeProperty(options, 'root', '');
+  const root = typeof rootValue === 'string' ? rootValue : '';
+  const match = safeProperty(options, 'match', null);
+  const maxEntries = positiveLimit(safeProperty(options, 'maxEntries', undefined), DEFAULT_MAX_ENTRIES, DEFAULT_MAX_ENTRIES);
   if (!root || !match || typeof fsApi.lstatSync !== 'function' || typeof fsApi.readdirSync !== 'function') {
     return [];
   }
@@ -73,18 +83,19 @@ function findMatchingFiles(options = {}) {
 }
 
 function readJsonlSample(options = {}) {
-  const fsApi = options.fs || nodeFs;
-  const file = typeof options.file === 'string' ? options.file : '';
-  const maxBytes = positiveLimit(options.maxBytes, DEFAULT_MAX_BYTES, DEFAULT_MAX_BYTES);
-  const maxLines = positiveLimit(options.maxLines, DEFAULT_MAX_LINES, DEFAULT_MAX_LINES);
+  const fsApi = safeProperty(options, 'fs', nodeFs) || nodeFs;
+  const fileValue = safeProperty(options, 'file', '');
+  const file = typeof fileValue === 'string' ? fileValue : '';
+  const maxBytes = positiveLimit(safeProperty(options, 'maxBytes', undefined), DEFAULT_MAX_BYTES, DEFAULT_MAX_BYTES);
+  const maxLines = positiveLimit(safeProperty(options, 'maxLines', undefined), DEFAULT_MAX_LINES, DEFAULT_MAX_LINES);
   if (!file || typeof fsApi.openSync !== 'function' || typeof fsApi.readSync !== 'function'
-    || typeof fsApi.closeSync !== 'function' || typeof fsApi.statSync !== 'function') return [];
+    || typeof fsApi.closeSync !== 'function' || typeof fsApi.statSync !== 'function') return null;
 
   let size;
   try {
     size = Number(fsApi.statSync(file).size);
   } catch (_) {
-    return [];
+    return null;
   }
   if (!Number.isFinite(size) || size <= 0) return [];
   const bytesToRead = Math.min(maxBytes, Math.floor(size));
@@ -107,7 +118,7 @@ function readJsonlSample(options = {}) {
       .filter((line) => line.length > 0)
       .slice(-maxLines);
   } catch (_) {
-    return [];
+    return null;
   } finally {
     if (descriptor !== null) {
       try { fsApi.closeSync(descriptor); } catch (_) { /* fail closed */ }
