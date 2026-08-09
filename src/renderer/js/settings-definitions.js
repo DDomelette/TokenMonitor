@@ -31,10 +31,35 @@ var componentDefinitions = window.ComponentRegistry.list().map(function (compone
     group: '组件',
     key: component.settingsKey,
     type: 'toggle',
-    label: component.label,
+    label: component.settingsLabel || component.label,
     default: component.defaultVisible
   };
 });
+
+var tokenSpeedDefinitions = [
+  {
+    group: '数据', key: 'data.tokenSpeed.intervalSeconds', type: 'select',
+    label: 'Token 速度统计周期', default: 30,
+    visibleWhen: { key: 'components.tokenSpeed', equals: true },
+    options: [
+      { value: 10, label: '10 秒' }, { value: 20, label: '20 秒' },
+      { value: 30, label: '30 秒' }, { value: 60, label: '1 分钟' },
+      { value: 180, label: '3 分钟' }, { value: 300, label: '5 分钟' },
+      { value: 3600, label: '1 小时' }, { value: 18000, label: '5 小时' }
+    ]
+  },
+  {
+    group: '数据', key: 'data.tokenSpeed.providerFilter', type: 'select',
+    label: 'Token 速度展示平台', default: 'all',
+    visibleWhen: { key: 'components.tokenSpeed', equals: true },
+    options: [
+      { value: 'all', label: '展示全部' },
+      { value: 'deepseek', label: 'DeepSeek' },
+      { value: 'codex', label: 'Codex' },
+      { value: 'kimi', label: 'Kimi' }
+    ]
+  }
+];
 
 var tailDefinitions = [
   { group: '数据', key: 'data.historyDays', type: 'select', label: '历史数据保留', options: [
@@ -47,5 +72,6 @@ window.SettingsDefinitions = windowDefinitions.concat(
   networkDefinitions,
   historyDefinitions,
   componentDefinitions,
+  tokenSpeedDefinitions,
   tailDefinitions
 );

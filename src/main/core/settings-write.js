@@ -1,10 +1,20 @@
 const { isWritableSettingKey, resolveWritableSettingKey } = require('./settings-security');
 const { normalizeStoredProxyValue } = require('./proxy-settings');
 const { pruneUsageDaily } = require('./usage-retention');
+const {
+  normalizeIntervalSeconds,
+  normalizeProviderFilter
+} = require('./token-speed-settings');
 
 function normalizeSettingValue(targetKey, value) {
   if (targetKey === 'providers.proxyUrl') {
     return normalizeStoredProxyValue(value);
+  }
+  if (targetKey === 'data.tokenSpeed.intervalSeconds') {
+    return normalizeIntervalSeconds(value);
+  }
+  if (targetKey === 'data.tokenSpeed.providerFilter') {
+    return normalizeProviderFilter(value);
   }
   return value;
 }

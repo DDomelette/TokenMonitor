@@ -64,7 +64,7 @@ test('fee overview cards are independently registered widgets', () => {
 });
 
 test('chart presets include a card-sized minimum plus readable larger sizes', () => {
-  ['model-bar', 'token-line', 'cost-line'].forEach((id) => {
+  ['model-bar', 'token-speed', 'token-line', 'cost-line'].forEach((id) => {
     const component = dashboardRegistry.get(id);
     ['compact', 'wide'].forEach((breakpoint) => {
       const presets = component.presets[breakpoint];
@@ -97,7 +97,7 @@ test('every dashboard component automatically has one settings toggle', () => {
   );
   assert.deepEqual(
     definitions.map((definition) => definition.label),
-    components.map((component) => component.label)
+    components.map((component) => component.settingsLabel || component.label)
   );
   assert.equal(new Set(definitions.map((definition) => definition.key)).size, components.length);
 });

@@ -26,6 +26,7 @@ const defaults = {
     cacheRateCard: true,
     modelBar: true,
     providerBar: true,
+    tokenSpeed: false,
     tokenLine: true,
     costLine: true
   },
@@ -36,6 +37,7 @@ const defaults = {
     'cache-rate-card',
     'model-bar',
     'provider-bar',
+    'token-speed',
     'token-line',
     'cost-line'
   ],
@@ -43,7 +45,11 @@ const defaults = {
     sampleInterval: 30,
     defaultTimeRange: '1h',
     proxyPort: 7890,
-    historyDays: 7
+    historyDays: 7,
+    tokenSpeed: {
+      intervalSeconds: 30,
+      providerFilter: 'all'
+    }
   }
 };
 
