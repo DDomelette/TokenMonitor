@@ -4,7 +4,7 @@
 
 **Goal:** Add a read-only Diagnostics Center that runs isolated environment, storage, Windows, network, and provider checks with live status, offline guides, and a redacted copyable report.
 
-**Architecture:** A pure CommonJS diagnostics core owns result normalization, phased execution, timeouts, redaction, and guide resolution. Main-process orchestration owns Electron windows, run ownership, IPC, clipboard, and shell access; a separate static renderer consumes only sanitized progress events and filters them by `runId`.
+**Architecture:** A pure CommonJS diagnostics core owns result normalization, phased execution, timeouts, redaction, and guide resolution. Main-process orchestration owns Electron windows, run ownership, IPC, clipboard, and shell access; a separate renderer consumes only sanitized progress events and filters them by `runId`.
 
 **Tech Stack:** Electron 40, Node.js CommonJS, `node:test`, `electron-store`, koffi, plain HTML/CSS/JavaScript, electron-builder.
 
@@ -39,6 +39,7 @@
 - `src/main/core/diagnostics/checks/network.js`: proxy normalization, proxy TCP, endpoint reachability, stage classification.
 - `src/main/core/diagnostics/checks/providers.js`: DeepSeek/Codex/Kimi read-only credential, log, and quota checks.
 - `src/main/core/diagnostics/controller.js`: per-webContents run ownership, in-memory sanitized snapshots, copy/open operations.
+- `src/main/core/diagnostics/ipc-registration.js`: dependency-injected behavioral registration for Diagnostics IPC channels.
 - `src/main/core/diagnostics/index.js`: dependency assembly and ordered check registry.
 
 ### New renderer and docs
@@ -46,6 +47,7 @@
 - `src/renderer/diagnostics-window.html`: isolated Diagnostics document.
 - `src/renderer/css/diagnostics.css`: grouped result layout and exact status colors/spinner.
 - `src/renderer/js/diagnostics-state.js`: UMD pure state reducer keyed by active `runId`.
+- `src/renderer/js/diagnostics-view.js`: UMD pure view-model mapping states to rows, status classes, and guide visibility.
 - `src/renderer/js/diagnostics-window.js`: DOM rendering and IPC control.
 - `docs/diagnostics/*.md`: 13 offline troubleshooting guides from the approved spec.
 
@@ -68,9 +70,10 @@
 - `test/diagnostics-network.test.js`
 - `test/diagnostics-providers.test.js`
 - `test/diagnostics-controller.test.js`
-- `test/diagnostics-ipc-static.test.js`
+- `test/diagnostics-ipc.test.js`
+- `test/diagnostics-preload.test.js`
 - `test/diagnostics-state.test.js`
-- `test/diagnostics-renderer-static.test.js`
+- `test/diagnostics-view.test.js`
 - `test/diagnostics-integration.test.js`
 
 ---
@@ -273,7 +276,7 @@ Expected: all tests pass and the commit contains only Task 1 files.
 - Produces: `redactText(value, { homeDir })`, `sanitizeDiagnosticResult(result, options)`, and `formatDiagnosticReport(snapshot, environment)`.
 - Produces: `GUIDE_IDS`, `resolveGuidePath(guideId, environment)`, and `openGuide(guideId, dependencies)`.
 
-- [ ] **Step 1: Write failing privacy, traversal, missing-guide, open-error, and packaging tests**
+- [ ] **Step 1: Write failing privacy, traversal, missing-guide, and open-error tests**
 
 Use secret fixtures that are unmistakable:
 
@@ -294,7 +297,7 @@ assert.doesNotMatch(report, /sk-private|refresh-private|eyJhbGci|C:\\Users\\Alic
 assert.match(report, /~\\\.codex|<redacted>/);
 ```
 
-In guide tests, assert all 13 ids resolve in development, `../secret` is rejected with `INVALID_GUIDE_ID`, a missing file returns `GUIDE_NOT_FOUND`, non-empty `shell.openPath` output becomes `GUIDE_OPEN_FAILED`, and `electron-builder.yml` contains `extraResources`, `docs/diagnostics`, and `diagnostics-guides`.
+In guide tests, create real temporary development and packaged guide roots. Assert all 13 ids resolve to existing files in both modes, `../secret` is rejected with `INVALID_GUIDE_ID`, a missing file returns `GUIDE_NOT_FOUND`, and non-empty `shell.openPath` output becomes `GUIDE_OPEN_FAILED`. Packaging behavior is verified from the real unpacked artifact in Task 9 rather than by reading YAML source text.
 
 - [ ] **Step 2: Run focused tests and verify RED**
 
@@ -723,42 +726,40 @@ git commit -m "feat: add provider diagnostics"
 **Files:**
 - Create: `src/main/core/diagnostics/controller.js`
 - Create: `src/main/core/diagnostics/index.js`
+- Create: `src/main/core/diagnostics/ipc-registration.js`
 - Modify: `src/main/index.js`
 - Modify: `src/main/ipc.js`
 - Modify: `src/preload/preload.js`
 - Test: `test/diagnostics-controller.test.js`
-- Test: `test/diagnostics-ipc-static.test.js`
+- Test: `test/diagnostics-ipc.test.js`
+- Test: `test/diagnostics-preload.test.js`
 
 **Interfaces:**
 - Produces: `createDiagnosticsController(dependencies)` with `start(sender)`, `copy(sender, runId)`, `openGuide(sender, guideId)`, and `dispose(senderId)`.
 - Produces: `createDiagnostics(dependencies)` assembling ordered checks and the controller.
-- Adds dependency functions `getDiagnosticsWindow()` and `createDiagnosticsWindow()` to `setupIPC`.
+- Produces: `registerDiagnosticsIpc({ ipcMain, diagnostics, getDiagnosticsWindow, createDiagnosticsWindow })`.
 
 - [ ] **Step 1: Write failing controller ownership and stale-event tests**
 
 Use fake senders with different numeric ids. Start two runs for one sender before resolving the first; assert only the second run emits terminal progress and only its runId can be copied. Assert sender B cannot copy sender A’s run. Destroy the sender, call `dispose`, and assert no send or clipboard call occurs afterward. Inject `sanitizeDiagnosticResult` and assert a check result containing `metadata.apiKey = 'sk-private'` reaches neither the progress event nor the stored copy snapshot.
 
-Static tests must assert exact channel placement:
+- [ ] **Step 2: Write failing IPC and preload behavior tests**
 
-```text
-preload on: diagnostics:progress
-preload send: open:diagnostics, window:close-diagnostics
-preload invoke: diagnostics:run, diagnostics:open-guide, diagnostics:copy-report
-ipcMain on: open:diagnostics, window:close-diagnostics
-ipcMain handle: diagnostics:run, diagnostics:open-guide, diagnostics:copy-report
-```
+For IPC, provide a fake `ipcMain` whose `on` and `handle` methods capture the registered callbacks, then exercise the real registration function. Assert `open:diagnostics` invokes the creator, each valid Diagnostics sender reaches the matching controller method, an invalid sender receives `DIAGNOSTICS_SENDER_INVALID`, and `window:close-diagnostics` closes only the active Diagnostics window.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+For preload, temporarily replace Electron through `Module._load`, require the real `src/preload/preload.js`, and capture the API passed to `contextBridge.exposeInMainWorld`. Invoke `api.on`, `api.send`, and `api.invoke`: the Diagnostics channels must call the fake `ipcRenderer`, while an unknown channel must be rejected or ignored according to the existing API contract. Restore `Module._load` in `t.after` so the test cannot leak into other files.
+
+- [ ] **Step 3: Run focused tests and verify RED**
 
 Run:
 
 ```powershell
-node --test test/diagnostics-controller.test.js test/diagnostics-ipc-static.test.js
+node --test test/diagnostics-controller.test.js test/diagnostics-ipc.test.js test/diagnostics-preload.test.js
 ```
 
-Expected: FAIL because the controller and integration channels do not exist.
+Expected: FAIL because the controller, registration function, and preload channels do not exist.
 
-- [ ] **Step 3: Implement per-webContents in-memory ownership**
+- [ ] **Step 4: Implement per-webContents in-memory ownership**
 
 The controller stores one record per sender id:
 
@@ -773,11 +774,11 @@ records.set(sender.id, {
 
 `start` returns the pending snapshot immediately and schedules `runDiagnostics` with injected `setImmediate`. Its progress callback first verifies record identity and sender liveness, passes the result through `sanitizeDiagnosticResult`, then updates the sanitized check by id and sends `diagnostics:progress`. `copy` requires exact sender id and runId, formats the stored sanitized snapshot, writes clipboard text, and returns `{ ok: true, length }`. `dispose` deletes the record.
 
-- [ ] **Step 4: Assemble the ordered registry and scheduler observation checks**
+- [ ] **Step 5: Assemble the ordered registry and scheduler observation checks**
 
 `index.js` concatenates runtime, storage, Windows, network, and provider checks. Append one safe scheduler observation per provider containing only `authStatus`, `lastErrorChannel`, `lastFailedAt`, `lastFetchedAt`, and `stale`; map arbitrary `lastError` through a fixed category function before it becomes summary.
 
-- [ ] **Step 5: Add Diagnostics BrowserWindow lifecycle**
+- [ ] **Step 6: Add Diagnostics BrowserWindow lifecycle**
 
 In `src/main/index.js`:
 
@@ -790,18 +791,18 @@ In `src/main/index.js`:
 - capture `const diagnosticsWebContentsId = diagnosticsWindow.webContents.id` immediately after creation and call `diagnostics.dispose(diagnosticsWebContentsId)` on close;
 - construct diagnostics after scheduler start and pass it into `setupIPC`.
 
-- [ ] **Step 6: Add IPC handlers and preload allowlists**
+- [ ] **Step 7: Add dependency-injected IPC registration and preload allowlists**
 
-Handlers must verify the sender belongs to the active Diagnostics window before run/copy/open-guide. A main or settings renderer invoking these channels receives `DIAGNOSTICS_SENDER_INVALID`. Guide opening uses the controller’s whitelist-backed method. Close only the current Diagnostics window.
+Keep the Diagnostics handler registration in `ipc-registration.js` so tests can exercise real callbacks without loading Electron. `src/main/ipc.js` calls that function with its live dependencies. Handlers must verify the sender belongs to the active Diagnostics window before run/copy/open-guide. A main or settings renderer invoking these channels receives `DIAGNOSTICS_SENDER_INVALID`. Guide opening uses the controller's whitelist-backed method. Close only the current Diagnostics window. Add the exact Diagnostics channels to the appropriate preload allowlists; the preload behavior test, rather than source-text matching, proves their placement.
 
-- [ ] **Step 7: Verify GREEN and commit**
+- [ ] **Step 8: Verify GREEN and commit**
 
 Run:
 
 ```powershell
-node --test test/diagnostics-controller.test.js test/diagnostics-ipc-static.test.js test/windows-backdrop.test.js test/theme-sync.test.js
+node --test test/diagnostics-controller.test.js test/diagnostics-ipc.test.js test/diagnostics-preload.test.js test/windows-backdrop.test.js test/theme-sync.test.js
 npm test
-git add src/main/core/diagnostics/controller.js src/main/core/diagnostics/index.js src/main/index.js src/main/ipc.js src/preload/preload.js test/diagnostics-controller.test.js test/diagnostics-ipc-static.test.js
+git add src/main/core/diagnostics/controller.js src/main/core/diagnostics/index.js src/main/core/diagnostics/ipc-registration.js src/main/index.js src/main/ipc.js src/preload/preload.js test/diagnostics-controller.test.js test/diagnostics-ipc.test.js test/diagnostics-preload.test.js
 git commit -m "feat: wire diagnostics window"
 ```
 
@@ -813,14 +814,16 @@ git commit -m "feat: wire diagnostics window"
 - Create: `src/renderer/diagnostics-window.html`
 - Create: `src/renderer/css/diagnostics.css`
 - Create: `src/renderer/js/diagnostics-state.js`
+- Create: `src/renderer/js/diagnostics-view.js`
 - Create: `src/renderer/js/diagnostics-window.js`
 - Modify: `src/renderer/js/settings-definitions.js`
 - Modify: `src/renderer/js/settings-window.js`
 - Test: `test/diagnostics-state.test.js`
-- Test: `test/diagnostics-renderer-static.test.js`
+- Test: `test/diagnostics-view.test.js`
 
 **Interfaces:**
 - Produces UMD API: `createState()`, `startRun(state, snapshot)`, `applyProgress(state, event)`, `orderedChecks(state)`, `summary(state)`.
+- Produces UMD API: `rowForCheck(check)` and `groupChecks(checks, definitions)` for observable presentation behavior.
 - Renderer consumes only `window.api` allowlisted channels.
 
 - [ ] **Step 1: Write failing reducer tests**
@@ -842,25 +845,31 @@ assert.deepEqual(DiagnosticsState.summary(state), {
 });
 ```
 
-- [ ] **Step 2: Write failing static UI and settings-entry tests**
+- [ ] **Step 2: Write failing view-model and settings-definition behavior tests**
 
-Assert the HTML loads `main.css`, `diagnostics.css`, `theme-mode-link.js`, `diagnostics-state.js`, and `diagnostics-window.js` in dependency order. Assert CSS contains exact selectors for `.status-running .status-icon`, a circular `border-radius: 50%` spinner with yellow color, green pass, red fail, gray skipped/pending, and blue `.guide-link`. Assert settings definitions contain `{ type: 'diagnostics' }` and settings window sends `open:diagnostics` without adding a writable setting key.
+Call the real `DiagnosticsView.rowForCheck` for every status. Assert pending maps to `status-pending`, running maps to `status-running` with label `正在诊断`, pass maps to `status-pass`, fail maps to `status-fail` and exposes only its `guideId`, and skipped maps to `status-skipped`. Only fail returns `showGuide: true`. Call `groupChecks` with interleaved groups and assert definition order and check order are preserved.
+
+Execute the real `settings-definitions.js` in `vm` with a fake `window.ComponentRegistry.list()` and inspect `window.SettingsDefinitions`. Assert it exports one Diagnostics action with `type: 'diagnostics'` and `channel: 'open:diagnostics'`, and that this action has no writable setting key/default value.
 
 - [ ] **Step 3: Run focused tests and verify RED**
 
 Run:
 
 ```powershell
-node --test test/diagnostics-state.test.js test/diagnostics-renderer-static.test.js
+node --test test/diagnostics-state.test.js test/diagnostics-view.test.js
 ```
 
-Expected: FAIL because renderer files and entry do not exist.
+Expected: FAIL because the state, view-model, and settings action do not exist.
 
 - [ ] **Step 4: Implement the immutable UMD state reducer**
 
 Follow the existing `settings-debounce.js` UMD pattern. `startRun` copies the snapshot order and indexes by id. `applyProgress` returns the original state for a mismatched runId or unknown id; otherwise clone only the changed maps. `summary` counts all five statuses and sets `complete` when no pending/running remain.
 
-- [ ] **Step 5: Implement the Diagnostics document and CSS**
+- [ ] **Step 5: Implement the Diagnostics view-model and settings definition**
+
+Follow the UMD pattern for `diagnostics-view.js`. Keep status-to-class, localized status labels, guide visibility, and stable grouping as pure functions. Add the Diagnostics action definition with its explicit IPC channel and no persisted setting value. Make the behavior tests pass before binding DOM events.
+
+- [ ] **Step 6: Implement the Diagnostics document and CSS**
 
 The DOM contains:
 
@@ -877,28 +886,22 @@ The DOM contains:
 
 Render text with `textContent`, never interpolate result text into HTML. Group using definition order. Fail rows show summary and a `button.guide-link` carrying only `guideId`. Skipped rows never receive fail classes or a guide button.
 
-- [ ] **Step 6: Implement renderer control flow and theme handling**
+- [ ] **Step 7: Implement renderer control flow and theme handling**
 
 Subscribe to `diagnostics:progress` before invoking `diagnostics:run`. On load and rerun, call `startRun` with the returned snapshot. Copy calls `diagnostics:copy-report(activeRunId)` and shows “已复制诊断结果”. Guide calls `diagnostics:open-guide(guideId)` and displays the returned stable failure on that row. Bind the title-bar close button to `window.api.send('window:close-diagnostics')`. Reuse `ThemeModeLink.resolveTheme`, `get:settings`, `settings:loaded`, `theme:changed`, and `window:focus-state` without exposing settings secrets.
 
-- [ ] **Step 7: Add the settings action**
+- [ ] **Step 8: Add the settings action**
 
-Add:
+Render a full-width `id="openDiagnosticsBtn"` button for the action definition, mark it vertical, and bind its declared channel through `window.api.send`. It must not enter `settingsUpdateQueue`.
 
-```js
-{ group: '诊断与支持', key: 'diagnostics.run', type: 'diagnostics', label: '运行环境与功能诊断', default: '' }
-```
-
-Render a full-width `id="openDiagnosticsBtn"` button for that type, mark it vertical, and bind `window.api.send('open:diagnostics')`. It must not enter `settingsUpdateQueue`.
-
-- [ ] **Step 8: Verify GREEN and commit**
+- [ ] **Step 9: Verify GREEN and commit**
 
 Run:
 
 ```powershell
-node --test test/diagnostics-state.test.js test/diagnostics-renderer-static.test.js test/settings-window-theme.test.js test/theme-acrylic.test.js
+node --test test/diagnostics-state.test.js test/diagnostics-view.test.js test/settings-window-theme.test.js test/theme-acrylic.test.js
 npm test
-git add src/renderer/diagnostics-window.html src/renderer/css/diagnostics.css src/renderer/js/diagnostics-state.js src/renderer/js/diagnostics-window.js src/renderer/js/settings-definitions.js src/renderer/js/settings-window.js test/diagnostics-state.test.js test/diagnostics-renderer-static.test.js
+git add src/renderer/diagnostics-window.html src/renderer/css/diagnostics.css src/renderer/js/diagnostics-state.js src/renderer/js/diagnostics-view.js src/renderer/js/diagnostics-window.js src/renderer/js/settings-definitions.js src/renderer/js/settings-window.js test/diagnostics-state.test.js test/diagnostics-view.test.js
 git commit -m "feat: add diagnostics interface"
 ```
 
@@ -985,7 +988,7 @@ Before committing, inspect `git status --short` and remove any generated `build/
 - Modify: only files required to resolve validated review findings
 
 **Interfaces:**
-- Produces: a reviewed feature branch pushed to `origin` and a draft PR targeting `main`.
+- Produces: a reviewed feature branch, a PR targeting `main`, and a merge performed through that PR after required checks pass.
 
 - [ ] **Step 1: Capture review boundaries and run fresh verification**
 
@@ -1019,9 +1022,9 @@ Require the reviewer to focus on credential mutation, Store/cursor writes, rende
 
 For every Critical or Important finding, first add or tighten the focused test that reproduces it, run that test and observe the expected failure, make the smallest source change, rerun the focused test, then rerun `npm test`. Commit reviewed fixes with a terse message naming the corrected boundary. If the reviewer reports no Critical or Important findings, make no review-only source commit.
 
-- [ ] **Step 4: Publish a draft PR to main**
+- [ ] **Step 4: Publish a PR to main**
 
-Follow `github:yeet`: inspect `git status -sb` and the full diff, stage only intended files, commit any remaining reviewed changes, run fresh relevant checks, push with tracking, and create a draft PR with base `main`. The PR body must include:
+Follow `github:yeet`: inspect `git status -sb` and the full diff, stage only intended files, commit any remaining reviewed changes, run fresh relevant checks, push with tracking, and create a PR with base `main`. The PR body must include:
 
 ```markdown
 ## What changed
@@ -1045,6 +1048,10 @@ Closes #169 by giving users a safe, self-service path to identify feature-specif
 
 Verify the PR target is `DDomelette/TokenMonitor:main` and report the PR URL, branch, final commit, and validation counts.
 
+- [ ] **Step 5: Merge through the reviewed PR**
+
+Wait for required GitHub checks to finish. If a check fails, inspect its logs and fix only validated branch defects with focused tests before pushing again. When all required checks pass and the PR is mergeable, merge it into `main` through GitHub (never by developing directly on `main`). Verify the PR reports merged and that `origin/main` contains the PR merge result.
+
 ---
 
 ## Plan Self-Review Checklist
@@ -1055,4 +1062,5 @@ Verify the PR target is `DDomelette/TokenMonitor:main` and report the PR URL, br
 - All cross-task names are consistent: `diagnostics:run`, `diagnostics:progress`, `diagnostics:open-guide`, `diagnostics:copy-report`, `open:diagnostics`, `window:close-diagnostics`.
 - The report ownership model is per `webContents.id` and active `runId` only.
 - The encrypted Store file is checked as readable bytes; decrypt/parse is proven through initialized Store access, not plaintext JSON parsing.
+- UI, IPC, preload, and packaging assertions exercise exported behavior or real artifacts; no source-regex/CSS-text test is used as a change detector.
 - The plan does not include auto-repair, A/B visual testing, credential refresh, cursor writes, or command-line diagnostics.
