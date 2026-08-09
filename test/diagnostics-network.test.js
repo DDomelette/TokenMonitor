@@ -21,7 +21,11 @@ test('classifyNetworkError returns stable stage and redacted code', () => {
     [{ code: 'ENOTFOUND' }, 'dns', false, 'NETWORK_DNS_FAILED'],
     [{ code: 'ECONNREFUSED' }, 'tcp', false, 'NETWORK_TCP_FAILED'],
     [{ code: 'PROXY_CONNECT_RESPONSE_TIMEOUT' }, 'proxy-connect', false, 'NETWORK_TIMEOUT'],
+    [new Error('proxy CONNECT failed: HTTP/1.1 407 Proxy Authentication Required'), 'proxy-connect', false, 'NETWORK_PROXY_CONNECT_FAILED'],
     [{ code: 'ERR_TLS_CERT_ALTNAME_INVALID' }, 'tls', false, 'NETWORK_TLS_FAILED'],
+    [{ code: 'DEPTH_ZERO_SELF_SIGNED_CERT' }, 'tls', false, 'NETWORK_TLS_FAILED'],
+    [{ code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' }, 'tls', false, 'NETWORK_TLS_FAILED'],
+    [{ code: 'ETIMEDOUT' }, 'tcp', false, 'NETWORK_TIMEOUT'],
     [new Error('Unauthorized: session expired (HTTP 401)'), 'http', true, 'NETWORK_HTTP_REACHED'],
     [new Error('HTTP 503: unavailable'), 'http', true, 'NETWORK_HTTP_REACHED'],
     [new Error('Failed to parse response'), 'http', true, 'NETWORK_HTTP_REACHED']
@@ -254,4 +258,48 @@ test('createNetworkChecks normalizes direct, system, and custom proxy modes with
   assert.equal((await directChecks[2].run()).status, 'skipped');
   await directChecks[3].run();
   assert.equal(endpointCalls.at(-1).proxyInput, null);
+});
+
+test('createNetworkChecks consumes an asynchronous proxy read rejection without normalizing its Promise', async () => {
+  const rejected = Promise.reject(new Error('private proxy read failed'));
+  const unhandled = [];
+  const onUnhandled = (error) => unhandled.push(error);
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    let normalizeCalls = 0;
+    const checks = createNetworkChecks({
+      getStoredProxyValue: () => rejected,
+      normalizeStoredProxyValue: () => { normalizeCalls += 1; return ''; }
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(normalizeCalls, 0);
+    assert.deepEqual(await checks[0].run(), {
+      status: 'fail',
+      summary: 'Stored proxy configuration is invalid',
+      errorCode: 'NETWORK_PROXY_CONFIG_INVALID'
+    });
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+  }
+});
+
+test('createNetworkChecks fails closed when a proxy value has a throwing then accessor', async () => {
+  const value = {};
+  Object.defineProperty(value, 'then', {
+    get() { throw new Error('private then accessor'); }
+  });
+  let normalizeCalls = 0;
+  const checks = createNetworkChecks({
+    getStoredProxyValue: () => value,
+    normalizeStoredProxyValue: () => { normalizeCalls += 1; return ''; }
+  });
+
+  assert.equal(normalizeCalls, 0);
+  assert.deepEqual(await checks[0].run(), {
+    status: 'fail',
+    summary: 'Stored proxy configuration is invalid',
+    errorCode: 'NETWORK_PROXY_CONFIG_INVALID'
+  });
 });

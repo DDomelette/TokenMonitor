@@ -17,6 +17,25 @@ const TRANSPORT_TIMEOUTS = Object.freeze({
 const REQUEST_TIMEOUT_MS = 8000;
 const PROXY_GUIDE = 'network-proxy';
 const TLS_GUIDE = 'network-tls';
+const TLS_CERT_CODES = new Set([
+  'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'SELF_SIGNED_CERT_IN_CHAIN',
+  'UNABLE_TO_GET_ISSUER_CERT',
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'CERT_HAS_EXPIRED',
+  'CERT_NOT_YET_VALID'
+]);
+const TCP_TIMEOUT_CODES = new Set([
+  'ETIMEDOUT',
+  'ERR_SOCKET_CONNECTION_TIMEOUT',
+  'UND_ERR_CONNECT_TIMEOUT'
+]);
+const HTTP_TIMEOUT_CODES = new Set([
+  'ESOCKETTIMEDOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT'
+]);
 
 const ENDPOINTS = Object.freeze([
   {
@@ -61,13 +80,19 @@ function classifyNetworkError(error) {
   if (code === 'PROXY_TLS_HANDSHAKE_TIMEOUT') {
     return { reachedHttp: false, stage: 'tls', errorCode: 'NETWORK_TIMEOUT' };
   }
+  if (TCP_TIMEOUT_CODES.has(code)) {
+    return { reachedHttp: false, stage: 'tcp', errorCode: 'NETWORK_TIMEOUT' };
+  }
+  if (HTTP_TIMEOUT_CODES.has(code)) {
+    return { reachedHttp: false, stage: 'http', errorCode: 'NETWORK_TIMEOUT' };
+  }
   if (code === 'HTTPS_REQUEST_TIMEOUT' || code === 'DIAGNOSTIC_TIMEOUT' || /_TIMEOUT$/.test(code)) {
     return { reachedHttp: false, stage: 'http', errorCode: 'NETWORK_TIMEOUT' };
   }
   if (code === 'PROXY_CONNECT_FAILED' || code === 'PROXY_CONNECT_REJECTED') {
     return { reachedHttp: false, stage: 'proxy-connect', errorCode: 'NETWORK_PROXY_CONNECT_FAILED' };
   }
-  if (code === 'ERR_TLS_CERT_ALTNAME_INVALID' || /^ERR_TLS_/.test(code) || /^CERT_/.test(code)) {
+  if (code === 'ERR_TLS_CERT_ALTNAME_INVALID' || /^ERR_TLS_/.test(code) || /^CERT_/.test(code) || TLS_CERT_CODES.has(code)) {
     return { reachedHttp: false, stage: 'tls', errorCode: 'NETWORK_TLS_FAILED' };
   }
   if (code === 'ECONNREFUSED' || code === 'ECONNRESET' || code === 'EHOSTUNREACH' || code === 'ENETUNREACH') {
@@ -75,6 +100,9 @@ function classifyNetworkError(error) {
   }
   if (code === 'SYSTEM_PROXY_RESOLUTION_FAILED' || code === 'UNSUPPORTED_SYSTEM_PROXY') {
     return { reachedHttp: false, stage: 'proxy-config', errorCode: 'NETWORK_PROXY_CONFIG_FAILED' };
+  }
+  if (/^proxy CONNECT failed:/i.test(message)) {
+    return { reachedHttp: false, stage: 'proxy-connect', errorCode: 'NETWORK_PROXY_CONNECT_FAILED' };
   }
   if (/Unauthorized:.*HTTP\s+(401|403)/i.test(message)
     || /^HTTP\s+\d{3}\b/i.test(message)
@@ -246,6 +274,26 @@ function skippedProxyCheck(summary) {
   return { status: 'skipped', summary };
 }
 
+function consumeThenable(value) {
+  if (!value || (typeof value !== 'object' && typeof value !== 'function')) return false;
+  let then;
+  try {
+    then = value.then;
+  } catch (_) {
+    return true;
+  }
+  if (typeof then !== 'function') return false;
+  try {
+    const chained = then.call(value, () => {}, () => {});
+    if (chained && typeof chained.catch === 'function') {
+      try { chained.catch(() => {}); } catch (_) { /* fail closed below */ }
+    }
+  } catch (_) {
+    // The stored value remains invalid; never expose an async-value error.
+  }
+  return true;
+}
+
 function createNetworkChecks(dependencies = {}) {
   const store = dependencies.store;
   const readStoredProxy = typeof dependencies.getStoredProxyValue === 'function'
@@ -265,7 +313,9 @@ function createNetworkChecks(dependencies = {}) {
   let proxy;
   let proxyConfigError = false;
   try {
-    const normalized = normalizeStored(readStoredProxy());
+    const storedProxy = readStoredProxy();
+    if (consumeThenable(storedProxy)) throw new Error('asynchronous proxy value');
+    const normalized = normalizeStored(storedProxy);
     proxy = classifyStored(normalized);
   } catch (_) {
     proxyConfigError = true;
