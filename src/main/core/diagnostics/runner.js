@@ -1,10 +1,25 @@
 const { pendingResult, terminalResult, safeCode } = require('./results');
 
+function copyValue(value) {
+  if (Array.isArray(value)) return value.map(copyValue);
+  if (value && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.keys(value).reduce((copy, key) => {
+      copy[key] = copyValue(value[key]);
+      return copy;
+    }, {});
+  }
+  return value;
+}
+
+function copyResult(result) {
+  return Object.assign({}, result, { metadata: copyValue(result.metadata) });
+}
+
 function createRunSnapshot(runId, checks) {
   const ids = new Set();
   for (const definition of checks) {
     if (ids.has(definition.id)) throw new TypeError('Duplicate diagnostic check id');
-    if (typeof definition.guideId !== 'string' || !definition.guideId) {
+    if (typeof definition.guideId !== 'string' || !definition.guideId.trim()) {
       throw new TypeError('Diagnostic checks require a guideId');
     }
     ids.add(definition.id);
@@ -34,7 +49,7 @@ function runDiagnostics({
   };
   const orderedTerminalResults = () => checks
     .filter((definition) => terminalById.has(definition.id))
-    .map((definition) => terminalById.get(definition.id));
+    .map((definition) => copyResult(terminalById.get(definition.id)));
   const emitIfCurrent = (check) => {
     if (!isCurrent()) return false;
     try {
@@ -47,9 +62,11 @@ function runDiagnostics({
 
   async function runOne(definition) {
     if (!isCurrent()) return undefined;
-    emitIfCurrent(Object.assign(pendingResult(definition), { status: 'running' }));
+    if (!emitIfCurrent(Object.assign(pendingResult(definition), { status: 'running' })) || !isCurrent()) {
+      return undefined;
+    }
     const priorResults = orderedTerminalResults();
-    const checkContext = { getResults: () => priorResults.slice() };
+    const checkContext = { getResults: () => priorResults.map(copyResult) };
     let timer;
     try {
       const value = await Promise.race([

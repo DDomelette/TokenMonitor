@@ -59,7 +59,7 @@ test('a completed check clears a zero-valued injected timer handle', async () =>
   assert.deepEqual(cleared, [0]);
 });
 
-test('remote checks use a bounded worker pool', async () => {
+test('remote checks default to a three-worker pool', async () => {
   const gates = [deferred(), deferred(), deferred(), deferred()];
   let active = 0;
   let peak = 0;
@@ -72,7 +72,7 @@ test('remote checks use a bounded worker pool', async () => {
   }));
 
   const running = runDiagnostics({
-    runId: 'run-3', checks, emit() {}, isActive: () => true, maxRemoteConcurrency: 3
+    runId: 'run-3', checks, emit() {}, isActive: () => true
   });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(peak, 3);
@@ -118,4 +118,61 @@ test('the final phase receives completed terminal results and snapshots reject u
   assert.deepEqual(observed, [['local', 'remote']]);
   assert.throws(() => createRunSnapshot('run-6', [checks[0], Object.assign({}, checks[0])]), /duplicate/i);
   assert.throws(() => createRunSnapshot('run-7', [Object.assign({}, checks[0], { guideId: '' })]), /guideId/);
+});
+
+test('snapshots reject whitespace-only guide ids while allowing trimmed nonempty ids', () => {
+  const definition = check('guide-id', 'local', async () => ({ status: 'pass' }));
+  assert.throws(() => createRunSnapshot('run-8', [Object.assign({}, definition, { guideId: '  ' })]), /guideId/);
+  assert.throws(() => createRunSnapshot('run-9', [Object.assign({}, definition, { guideId: '\t' })]), /guideId/);
+  assert.doesNotThrow(() => createRunSnapshot('run-10', [Object.assign({}, definition, { guideId: ' app-runtime ' })]));
+});
+
+test('getResults isolates top-level and nested metadata from a final check mutation', async () => {
+  let afterMutation;
+  const checks = [
+    check('completed', 'local', async () => ({
+      status: 'pass', summary: 'original', metadata: { nested: { value: 'original' } }
+    })),
+    check('final', 'final', async (context) => {
+      const previous = context.getResults();
+      previous[0].summary = 'mutated';
+      previous[0].metadata.nested.value = 'mutated';
+      afterMutation = context.getResults();
+      return { status: 'pass' };
+    })
+  ];
+
+  const results = await runDiagnostics({ runId: 'run-11', checks, emit() {}, isActive: () => true });
+  assert.equal(afterMutation[0].summary, 'original');
+  assert.equal(afterMutation[0].metadata.nested.value, 'original');
+  assert.equal(results[0].summary, 'original');
+  assert.equal(results[0].metadata.nested.value, 'original');
+});
+
+test('a running event that makes the run stale does not start the check or timer', async () => {
+  let active = true;
+  let timerCount = 0;
+  const called = [];
+  const events = [];
+  const results = await runDiagnostics({
+    runId: 'run-12',
+    checks: [check('stale-on-running', 'local', async () => {
+      called.push('run');
+      return { status: 'pass' };
+    })],
+    emit(event) {
+      events.push(event.check.status);
+      if (event.check.status === 'running') active = false;
+    },
+    isActive: () => active,
+    timers: {
+      setTimeout() { timerCount += 1; return timerCount; },
+      clearTimeout() {}
+    }
+  });
+
+  assert.deepEqual(called, []);
+  assert.equal(timerCount, 0);
+  assert.deepEqual(events, ['running']);
+  assert.deepEqual(results, []);
 });
