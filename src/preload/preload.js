@@ -11,7 +11,8 @@ contextBridge.exposeInMainWorld('api', {
       'window:bounds-changed',
       'session:changed',
       'providers:changed',
-      'sync:progress'
+      'sync:progress',
+      'diagnostics:progress'
     ];
     if (validChannels.includes(channel)) {
       const listener = (event, ...args) => callback(...args);
@@ -37,7 +38,9 @@ contextBridge.exposeInMainWorld('api', {
       'window:set-bounds',
       'resize:start',
       'resize:move',
-      'resize:end'
+      'resize:end',
+      'open:diagnostics',
+      'window:close-diagnostics'
     ];
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data);
@@ -55,7 +58,10 @@ contextBridge.exposeInMainWorld('api', {
       'get:bounds',
       'get:session-state',
       'window:commit',
-      'sync:history'
+      'sync:history',
+      'diagnostics:run',
+      'diagnostics:copy-report',
+      'diagnostics:open-guide'
     ];
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args);

@@ -13,6 +13,7 @@ const { syncDeepSeekHistory, rescanLocalLogs } = require('./core/history-sync');
 const { UsageFetcher } = require('./providers/deepseek/usage');
 const { httpGet } = require('./core/http');
 const { SYSTEM_PROXY_VALUE, resolveElectronSystemProxy } = require('./core/proxy-settings');
+const { registerDiagnosticsIpc } = require('./core/diagnostics/ipc-registration');
 
 function deepseekApiKeyCtx(deps, apiKey) {
   return {
@@ -29,6 +30,13 @@ function deepseekApiKeyCtx(deps, apiKey) {
 module.exports = function setupIPC(deps) {
   let mainResizeState = null;
   let settingsResizeState = null;
+
+  registerDiagnosticsIpc({
+    ipcMain,
+    diagnostics: deps.diagnostics,
+    getDiagnosticsWindow: deps.getDiagnosticsWindow,
+    createDiagnosticsWindow: deps.createDiagnosticsWindow
+  });
 
   function getMain() {
     return deps.getMainWindow();

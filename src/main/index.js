@@ -1,6 +1,7 @@
-const { app, BrowserWindow, Tray, Menu, nativeTheme } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeTheme, clipboard, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const store = require('./store');
 const { migrateLegacyKeys } = store;
 const registry = require('./providers/registry');
@@ -8,6 +9,9 @@ const deepseekProvider = require('./providers/deepseek');
 const codexProvider = require('./providers/codex');
 const kimiProvider = require('./providers/kimi');
 const { startScheduler } = require('./core/scheduler');
+const { createDiagnostics } = require('./core/diagnostics');
+const { validateEncryptionKey } = require('./core/encryption-key');
+const { normalizeStoredProxyValue } = require('./core/proxy-settings');
 const { wakeMostRelevantWindow } = require('./core/startup-windows');
 const setupIPC = require('./ipc');
 const { captureSession } = require('./providers/deepseek/session');
@@ -30,8 +34,10 @@ let mainWindow = null;
 let loginWindow = null;
 let sessionWindow = null;
 let settingsWindow = null;
+let diagnosticsWindow = null;
 let tray = null;
 let scheduler = null;
+let diagnostics = null;
 let moveDebounce = null;
 
 const runtime = {
@@ -81,7 +87,7 @@ function sendMainWindowBounds() {
 }
 
 function broadcastToWindows(channel, payload) {
-  [mainWindow, settingsWindow].forEach(function (win) {
+  [mainWindow, settingsWindow, diagnosticsWindow].forEach(function (win) {
     if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
     win.webContents.send(channel, payload);
   });
@@ -183,6 +189,10 @@ function createMainWindow() {
       mainWindow.webContents.send('theme:changed', theme);
       if (loginWindow && !loginWindow.isDestroyed()) {
         loginWindow.webContents.send('theme:changed', theme);
+      }
+      if (diagnosticsWindow && !diagnosticsWindow.isDestroyed()
+          && !diagnosticsWindow.webContents.isDestroyed()) {
+        diagnosticsWindow.webContents.send('theme:changed', theme);
       }
     }
     applyBackdropToAll();
@@ -458,6 +468,46 @@ function createSettingsWindow() {
 
 /* ======== 设置应用 ======== */
 
+function createDiagnosticsWindow() {
+  if (diagnosticsWindow && !diagnosticsWindow.isDestroyed()) {
+    diagnosticsWindow.show();
+    diagnosticsWindow.focus();
+    return diagnosticsWindow;
+  }
+
+  const createdWindow = new BrowserWindow({
+    width: 720,
+    height: 640,
+    minWidth: 560,
+    minHeight: 440,
+    frame: false,
+    transparent: false,
+    backgroundColor: '#00000000',
+    roundedCorners: true,
+    ...windowMaterialOptions(),
+    resizable: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, '..', 'preload', 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  diagnosticsWindow = createdWindow;
+  const diagnosticsWebContentsId = createdWindow.webContents.id;
+  createdWindow.setMenu(null);
+  createdWindow.loadFile(path.join(__dirname, '..', 'renderer', 'diagnostics-window.html'));
+  applyBackdropTo(createdWindow);
+  revealWhenReady(createdWindow);
+  createdWindow.on('blur', function () { notifyFocusState(createdWindow, false); });
+  createdWindow.on('focus', function () { notifyFocusState(createdWindow, true); });
+  createdWindow.on('closed', () => {
+    if (diagnostics) diagnostics.dispose(diagnosticsWebContentsId);
+    if (diagnosticsWindow === createdWindow) diagnosticsWindow = null;
+  });
+  return createdWindow;
+}
+
 function applySetting(key, value) {
   if (!mainWindow) return;
   switch (key) {
@@ -490,6 +540,10 @@ function applyTheme() {
   }
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.send('theme:changed', isDark ? 'dark' : 'light');
+  }
+  if (diagnosticsWindow && !diagnosticsWindow.isDestroyed()
+      && !diagnosticsWindow.webContents.isDestroyed()) {
+    diagnosticsWindow.webContents.send('theme:changed', isDark ? 'dark' : 'light');
   }
   if (loginWindow && !loginWindow.isDestroyed()) {
     loginWindow.webContents.send('theme:changed', isDark ? 'dark' : 'light');
@@ -558,12 +612,18 @@ function applyBackdropToAll() {
   applyBackdropTo(mainWindow);
   applyBackdropTo(settingsWindow);
   applyBackdropTo(loginWindow);
+  applyBackdropTo(diagnosticsWindow);
 }
 
 // 路线 B:失焦实心化只在 Accent 未生效时下发,避免盖住 Accent 的持久透明
 function notifyFocusState(win, focused) {
   if (!win || win.isDestroyed() || accentAppliedWindows.has(win)) return;
-  win.webContents.send('window:focus-state', focused);
+  try {
+    if (win.webContents.isDestroyed()) return;
+    win.webContents.send('window:focus-state', focused);
+  } catch (_) {
+    // Focus can race renderer teardown; a dead webContents is no longer a recipient.
+  }
 }
 
 /* ======== 调度器 ======== */
@@ -588,12 +648,79 @@ function startSchedulerRuntime() {
 
 /* ======== App 生命周期 ======== */
 
+function createDiagnosticsRuntime() {
+  const diagnosticsPage = path.join(__dirname, '..', 'renderer', 'diagnostics-window.html');
+  return createDiagnostics({
+    runtime: {
+      versions: {
+        app: app.getVersion(),
+        electron: process.versions.electron,
+        node: process.versions.node,
+        chromium: process.versions.chrome
+      },
+      platform: process.platform,
+      arch: process.arch,
+      release: os.release(),
+      buildPaths: {
+        mainRenderer: path.join(__dirname, '..', '..', 'renderer', 'dist', 'index.html'),
+        preload: path.join(__dirname, '..', 'preload', 'preload.js'),
+        diagnosticsPage
+      },
+      getWindows: () => ({
+        main: mainWindow,
+        settings: settingsWindow,
+        login: loginWindow,
+        session: sessionWindow,
+        diagnostics: diagnosticsWindow
+      })
+    },
+    storage: {
+      fs,
+      path,
+      userDataDir: app.getPath('userData'),
+      store,
+      validateEncryptionKey,
+      normalizeStoredProxyValue
+    },
+    windows: {
+      platform: process.platform,
+      release: os.release(),
+      BrowserWindow,
+      app
+    },
+    network: { store },
+    providers: {
+      store,
+      getProxyUrl: () => store.get('providers.proxyUrl') || null
+    },
+    scheduler,
+    controller: {
+      clipboard,
+      shell,
+      safeEnvironment: () => ({
+        appVersion: app.getVersion(),
+        platform: process.platform,
+        release: os.release(),
+        arch: process.arch,
+        electron: process.versions.electron,
+        homeDir: os.homedir()
+      }),
+      guideEnvironment: {
+        isPackaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        appPath: app.getAppPath()
+      }
+    }
+  });
+}
+
 app.whenReady().then(() => {
   migrateLegacyKeys(store);
   registry.register(deepseekProvider);
   registry.register(codexProvider);
   registry.register(kimiProvider);
   startSchedulerRuntime();
+  diagnostics = createDiagnosticsRuntime();
 
   setupIPC({
     store,
@@ -604,10 +731,13 @@ app.whenReady().then(() => {
     getMainWindow: () => mainWindow,
     getSettingsWindow: () => settingsWindow,
     getLoginWindow: () => loginWindow,
+    getDiagnosticsWindow: () => diagnosticsWindow,
     createMainWindow,
     createLoginWindow,
     createSessionWindow,
     createSettingsWindow,
+    createDiagnosticsWindow,
+    diagnostics,
     broadcastSettings,
     broadcastSessionState,
     applySetting,
