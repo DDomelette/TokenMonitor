@@ -1,4 +1,5 @@
-// GitHub 风格 Token 活动热力图:每日(53×7)/每周·累计(方块堆积列)三模式。
+// GitHub 风格 Token 活动热力图:每日(53×7)/每周·累计三模式共用同一网格。
+// 每周/累计只是在每日网格基础上改变被上色的格子(列内从底向上按量填色)。
 // 颜色用主题 primary(#74B8FC)的 5 档透明度;hover tooltip 显示日期与用量。
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -14,10 +15,6 @@ import {
 const CELL = 12;
 const GAP = 2;
 const LEVEL_ALPHA = [0.06, 0.18, 0.38, 0.62, 0.9];
-const MAX_COL_BLOCKS = 10; // 与 lib/heatmap.js 的 MAX_HEATMAP_BLOCKS 对应
-const BLOCK_W = CELL + 6;
-const BLOCK_H = CELL;
-const COL_HEIGHT = MAX_COL_BLOCKS * BLOCK_H + (MAX_COL_BLOCKS - 1) * GAP;
 const PROVIDER_OPTS = [
   { id: 'all', label: '全部' },
   { id: 'deepseek', label: 'DeepSeek' },
@@ -77,8 +74,9 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
   const days = data.days || {};
   const maxDaily = data.maxDaily || 0;
 
-  // 自适应容器宽度:只保留最近若干周(结尾对齐本周);宽度足够时显示全年
-  const colWidth = mode === 'daily' ? CELL + GAP : CELL + GAP + 6;
+  // 自适应容器宽度:只保留最近若干周(结尾对齐本周);宽度足够时显示全年。
+  // 三种模式共用同一网格,列宽一致,避免空周列塌缩导致月份错位。
+  const colWidth = CELL + GAP;
   const availWidth = boxWidth > 0 ? boxWidth - 4 : window.innerWidth - 52;
   const maxCols = Math.max(4, Math.floor(availWidth / colWidth));
   const todayKey = localDayKey(clockDate);
@@ -253,33 +251,42 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
     );
   }
 
-  // 方块堆积列:每周/累计共用。列高固定(MAX_COL_BLOCKS),方块从底向上堆,空周整列可悬停
-  const blockScale = mode === 'weekly'
-    ? (maxWeek > 0 ? maxWeek / MAX_COL_BLOCKS : 0)
-    : (maxCum > 0 ? maxCum / MAX_COL_BLOCKS : 0);
-
-  function renderBlockColumns(valueForCol, headTextForCol) {
+  // 每周/累计:与每日共用同一网格,列内按总量从底向上填色 N 格,
+  // N ∝ 值(scale = 列最大值 / 7,即满列 7 格)。未填的 inYear 格用最浅档。
+  function renderStacked(valueForCol, headTextForCol, scale) {
     return (
-      <div className="heatmap-grid heatmap-grid-blocks">
+      <div className="heatmap-grid heatmap-grid-daily">
         {visibleWeeks.map((col, i) => {
           const c = start + i;
+          const blocks = blockCount(valueForCol(c, col), scale);
           const date = lastInYearDate(c);
-          const blocks = blockCount(valueForCol(c, col), blockScale);
+          const headText = headTextForCol(c, col);
           return (
-            <div
-              key={c}
-              className="heatmap-block-col"
-              style={{ height: COL_HEIGHT }}
-              onMouseEnter={(e) => showTip(e, date, null, headTextForCol(c, col))}
-              onMouseMove={moveTip} onMouseLeave={hideTip}
-            >
-              {Array.from({ length: blocks }).map((_, b) => (
-                <div
-                  key={b}
-                  className="heatmap-cell"
-                  style={{ width: BLOCK_W, height: BLOCK_H, background: 'rgba(116,184,252,0.55)' }}
-                />
-              ))}
+            <div className="heatmap-col" key={c}>
+              {col.map((cell, r) => {
+                if (!cell) return <div key={r} style={{ width: CELL, height: CELL }} />;
+                // 从底向上数第 N 个 inYear 格上色(只填本年格,跨年格保持底色)
+                const inYearBelow = col.slice(r).filter((x) => x && x.inYear).length;
+                const filled = cell.inYear && inYearBelow <= blocks;
+                const style = {
+                  width: CELL,
+                  height: CELL,
+                  background: !cell.inYear
+                    ? 'rgba(0,0,0,0.04)'
+                    : filled
+                      ? 'rgba(116,184,252,0.55)'
+                      : 'rgba(116,184,252,' + LEVEL_ALPHA[0] + ')'
+                };
+                return (
+                  <div
+                    key={r}
+                    className="heatmap-cell"
+                    style={style}
+                    onMouseEnter={(e) => showTip(e, date, null, headText)}
+                    onMouseMove={moveTip} onMouseLeave={hideTip}
+                  />
+                );
+              })}
             </div>
           );
         })}
@@ -288,7 +295,7 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
   }
 
   function renderWeekly() {
-    return renderBlockColumns(
+    return renderStacked(
       (c, col) => {
         const weekKey = col[0] ? sundayWeekKey(new Date(col[0].date + 'T00:00:00')) : null;
         return weekKey ? weekTotals[weekKey] || 0 : 0;
@@ -296,12 +303,13 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
       (c, col) => {
         const weekKey = col[0] ? sundayWeekKey(new Date(col[0].date + 'T00:00:00')) : null;
         return weekKey ? dateLabel(weekKey) + ' 当周使用了' : null;
-      }
+      },
+      maxWeek > 0 ? maxWeek / 7 : 0
     );
   }
 
   function renderCumulative() {
-    return renderBlockColumns(
+    return renderStacked(
       (c) => {
         const date = lastInYearDate(c);
         return date && cumByDate[date] ? cumByDate[date] : 0;
@@ -309,7 +317,8 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
       (c) => {
         const date = lastInYearDate(c);
         return date ? '截至 ' + date.slice(0, 4) + '年' + dateLabel(date) + ' 当周累计使用' : null;
-      }
+      },
+      maxCum > 0 ? maxCum / 7 : 0
     );
   }
 
@@ -319,7 +328,7 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
         const c = start + i;
         const label = monthLabels[c];
         return (
-          <div key={c} className="heatmap-month-cell" style={{ width: CELL + (mode === 'daily' ? GAP : GAP + 6) }}>
+          <div key={c} className="heatmap-month-cell" style={{ width: CELL + GAP }}>
             {label ? <span className={'heatmap-month-text' + (i === visibleWeeks.length - 1 ? ' last' : '')}>{label}</span> : ''}
           </div>
         );

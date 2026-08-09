@@ -1,9 +1,14 @@
 // 历史用量同步:DeepSeek 逐月全量回填 + Codex/Kimi 本机日志全量重扫。
 // 纯逻辑模块,依赖全部注入,便于 node --test 直测。
 const MAX_MONTHS = 36;
-const EMPTY_STREAK_STOP = 2;
+// 连续空月停止阈值:12,容忍使用量稀疏的长间隔(曾有 5/6 月空、4 月有数据的真实案例)
+const EMPTY_STREAK_STOP = 12;
 const MONTH_GAP_MS = 300;
 const MAX_SCAN_PASSES = 200;
+// 全量同步自己的月份标记:不能用 backfill 的 providers.deepseek.fetchedMonths——
+// backfill 抓取时 persistDaily 会按保留窗口丢弃旧日数据,月份却照标"已抓",
+// 信任它会让被丢弃的月份永远不再抓(数据永久缺失)。
+const SYNCED_MONTHS_KEY = 'providers.deepseek.syncedMonths';
 
 function defaultSleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -34,7 +39,7 @@ async function syncDeepSeekHistory(options) {
   let month = current.getMonth() + 1;
 
   const usageDaily = readStore('usageDaily') || {};
-  const fetchedMonths = new Set(readStore('providers.deepseek.fetchedMonths') || []);
+  const syncedMonths = new Set(readStore(SYNCED_MONTHS_KEY) || []);
   let earliestDate = null;
   Object.keys(usageDaily).forEach((k) => {
     const m = /^deepseek:(\d{4}-\d{2}-\d{2})$/.exec(k);
@@ -47,7 +52,7 @@ async function syncDeepSeekHistory(options) {
 
   for (let i = 0; i < MAX_MONTHS && emptyStreak < EMPTY_STREAK_STOP; i++) {
     const key = monthKey(year, month);
-    if (!fetchedMonths.has(key)) {
+    if (!syncedMonths.has(key)) {
       let daily = null;
       try {
         daily = await fetchMonthWithRetry(fetchMonth, year, month);
@@ -74,7 +79,7 @@ async function syncDeepSeekHistory(options) {
             if (!earliestDate || d.date < earliestDate) earliestDate = d.date;
           });
         }
-        fetchedMonths.add(key);
+        syncedMonths.add(key);
       }
       if (onProgress) onProgress({ stage: 'deepseek', detail: key });
       await sleep(MONTH_GAP_MS);
@@ -87,7 +92,7 @@ async function syncDeepSeekHistory(options) {
   }
 
   writeStore('usageDaily', usageDaily);
-  writeStore('providers.deepseek.fetchedMonths', Array.from(fetchedMonths));
+  writeStore(SYNCED_MONTHS_KEY, Array.from(syncedMonths));
   return { monthsFetched, monthsFailed, earliestDate };
 }
 

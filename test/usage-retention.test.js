@@ -88,16 +88,17 @@ test('expired records remain filtered when a collector replays them after cleanu
   });
 });
 
-test('both local-log providers filter rolled-up records before merging while keeping cursor scanning intact', () => {
+test('both local-log providers filter rolled-up records before merging unless retainAll (full rescan)', () => {
   ['codex', 'kimi'].forEach((provider) => {
     const source = fs.readFileSync(
       path.resolve(__dirname, '../src/main/providers/' + provider + '/locallog.js'),
       'utf8'
     );
     assert.match(source, /require\('\.\.\/\.\.\/core\/usage-retention'\)/);
+    assert.match(source, /const rolled = rollupDaily\(records, diagnostics, nowMs\);/);
     assert.match(
       source,
-      /filterUsageDaily\(\s*rollupDaily\(records,\s*diagnostics,\s*nowMs\),\s*store\.get\('data\.historyDays'\),\s*nowMs\s*\)/
+      /opts && opts\.retainAll\s*\?\s*rolled\s*:\s*filterUsageDaily\(rolled, store\.get\('data\.historyDays'\), nowMs\)/
     );
     assert.match(source, /scanFiles\(\{/);
     assert.match(source, /cursorKey:\s*CURSOR_KEY/);

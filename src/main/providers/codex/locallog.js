@@ -73,11 +73,11 @@ async function readLocalLog(ctx, opts) {
     yieldToLoop: opts && opts.yieldToLoop
   });
   if (records.length && store) {
-    const daily = filterUsageDaily(
-      rollupDaily(records, diagnostics, nowMs),
-      store.get('data.historyDays'),
-      nowMs
-    );
+    // retainAll:全量重扫(历史同步)时绕过保留窗口过滤,否则旧日聚合在写入前即被丢弃
+    const rolled = rollupDaily(records, diagnostics, nowMs);
+    const daily = opts && opts.retainAll
+      ? rolled
+      : filterUsageDaily(rolled, store.get('data.historyDays'), nowMs);
     const usageDaily = store.get('usageDaily') || {};
     Object.keys(daily).forEach((key) => {
       const prev = usageDaily[key] || { input: 0, cached: 0, output: 0, total: 0 };
