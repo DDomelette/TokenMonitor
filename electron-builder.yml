@@ -19,3 +19,8 @@ nsis:
 asarUnpack:
   # koffi 的预编译 FFI 二进制必须在 asar 外才能被加载
   - node_modules/koffi/**/*
+extraResources:
+  - from: docs/diagnostics
+    to: diagnostics-guides
+    filter:
+      - "**/*.md"
