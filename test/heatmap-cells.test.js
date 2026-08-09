@@ -121,10 +121,11 @@ test('TokenHeatmap portals the tooltip to document.body so it escapes the module
   assert.match(heatmapJsx, /document\.body/);
 });
 
-test('TokenHeatmap renders weekly/cumulative as stacked block columns', () => {
+test('TokenHeatmap renders weekly/cumulative on the same daily grid, filling cells bottom-up', () => {
+  // 每周/累计只是在每日网格基础上改变被上色的格子,不另起方块堆积布局
   assert.match(heatmapJsx, /blockCount/);
-  assert.match(heatmapJsx, /heatmap-grid-blocks/);
-  assert.match(heatmapJsx, /heatmap-block-col/);
+  assert.doesNotMatch(heatmapJsx, /heatmap-grid-blocks/);
+  assert.doesNotMatch(heatmapJsx, /heatmap-block-col/);
   assert.match(heatmapJsx, /当周使用了/);
   assert.match(heatmapJsx, /当周累计使用/);
 });

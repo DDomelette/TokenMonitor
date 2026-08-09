@@ -591,19 +591,6 @@ body,
   border-radius: 2px;
 }
 
-/* 每周/累计模式:方块堆积列 */
-.heatmap-grid-blocks {
-  width: max-content;
-  align-items: flex-end;
-}
-
-.heatmap-block-col {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 2px;
-}
-
 .heatmap-months {
   display: flex;
   gap: 2px;

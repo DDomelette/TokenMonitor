@@ -12,7 +12,7 @@
 3. **与官方 dashboard 对不上（时区）**。应用落盘已是北京日历日（`localDayStr`)，与官方非北京结算口径的错位属固有；要做的是核查并用测试钉死三家的日边界均为北京日。
 4. **Kimi 数据完整性未知**。同 Codex，全量重扫 + 核查即可见分晓。
 
-另外用户要求热力图"每周"视图改为参考图的方块堆积样式（每列一周，方块高度 ∝ 当周量，tooltip "X月X日 当周使用了 N Token"),"累计"视图同样改为方块堆积（高度 ∝ 截至该周累计量，列高单调不减，tooltip "截至 X 年 X 月 X 日 当周累计使用 N Token")。
+用户要求热力图"每周/累计"视图与每日网格同风格——只是在每日网格基础上改变被上色的格子（列内从底向上按量填色 N 格），不另起方块堆积布局。
 
 ## 方案概览（方案 A)
 
@@ -38,15 +38,17 @@ syncDeepSeekHistory({ fetchMonth, readStore, writeStore, onProgress, now })
   - fetchMonth(year, month) -> { days: { 'YYYY-MM-DD': {input,cached,output,total}, models } }
   - 从当月起逐月向前:
     - 单月失败 → 重试 1 次,仍失败记录为 failed 并继续
-    - 连续 2 个月 days 为空 → 停止探测
+    - 连续 12 个月 days 为空 → 停止探测(容忍稀疏使用间隔)
     - 硬上限 36 个月
   - 写回:同名 '<deepseek>:<date>' 键以 API 数据直接覆盖(幂等,API 为准),models 明细同覆
-  - 更新 providers.deepseek.fetchedMonths
+  - 同步进度用独立标记 providers.deepseek.syncedMonths 记录(不复用 fetchedMonths:
+    日常回填按保留窗口丢弃旧数据时月份仍被标记,信任它会跳过有数据的旧月)
   - 请求节奏:每月 amount+cost 两个接口,月与月之间间隔 ~300ms
   - 返回 { monthsFetched, monthsFailed, earliestDate }
 
 rescanLocalLogs({ provider, scanAll, readStore, writeStore, onProgress })
-  - scanAll() 以空游标全量扫描本机日志(复用 codex/kimi locallog 的解析与 rollupDaily)
+  - scanAll() 以空游标全量扫描本机日志(复用 codex/kimi locallog 的解析与 rollupDaily),
+    扫描时传 retainAll 绕过保留窗口过滤,否则旧日聚合在写入前即被丢弃
   - 同名 '<provider>:<date>' 键以重扫聚合值覆盖;游标推到最新位置,避免后续增量重复计数
   - 返回 { daysRebuilt, earliestDate }
 ```
@@ -77,29 +79,31 @@ rescanLocalLogs({ provider, scanAll, readStore, writeStore, onProgress })
 
 ### 视图规格
 
-- **每周模式**：每列一周（周日起始、北京日历，沿用 `buildSundayWeekTotals`)；列内方块从底向上堆积，方块数 ∝ 当周量；tooltip "X月X日 当周使用了 N 个 Token"(X = 周起始日）。
-- **累计模式**：同样方块堆积，方块数 ∝ 从年初截至该周的累计量，列高单调不减；tooltip "截至 X 年 X 月 X 日 当周累计使用 N 个 Token"。
-- **规模自适应**:`scale = max(value) / MAX_BLOCKS`,`MAX_BLOCKS = 10`；每列方块数 `Math.round(value / scale)`(value>0 至少 1 块）。
-- **样式**：方块沿用主题 primary(#74B8FC）透明度档位；周格子间隔、月份行、图例行保留现有布局。
+- **每周/累计与每日共用同一网格**(53 列 × 7 行,列宽一致,避免空周列塌缩导致月份错位)。
+- **每周模式**：每列一周（周日起始、北京日历，沿用 `buildSundayWeekTotals`)；列内按当周总量从底向上填色 N 个 inYear 格，N ∝ 当周量；tooltip "X月X日 当周使用了 N 个 Token"(X = 周起始日）。
+- **累计模式**：同样填色，N ∝ 从年初截至该周的累计量（天然单调不减）;tooltip "截至 X 年 X 月 X 日 当周累计使用 N 个 Token"。
+- **规模自适应**:`scale = max(value) / 7`（满列 7 格）；每列填色格数 `blockCount(value, scale)`(value>0 至少 1 格）。
+- **样式**：填色格 `rgba(116,184,252,0.55)`，未填的 inYear 格用最浅档 `LEVEL_ALPHA[0]`，跨年格保持 `rgba(0,0,0,0.04)` 底色；周格子间隔、月份行、图例行与每日模式完全一致。
 - **tooltip**：复用现有 portal 到 body 的机制（PR #165 已修），平台明细行逻辑不变。
+- **显示层**:`get:heatmap` 不再按 `data.historyDays` 过滤（已同步历史全量可见），清理仍由 historyDays/prune 负责，retentionHint 提示不变。
 
 ### 组件改动
 
-- `renderer/src/components/TokenHeatmap.jsx`:`renderWeekly`/`renderCumulative` 重写为统一的方块堆积渲染（可抽一个内部 `renderBlockColumns(values, tipText)`)。
-- `renderer/src/lib/heatmap.js`：新增 `blockCount(value, scale)` 纯函数（可测）。
-- `renderer/src/styles.css`：新增 `.heatmap-blocks` 等样式，删除/保留但不引用旧的每周格与累计柱样式中不再使用的部分（保留每日模式样式不动）。
+- `renderer/src/components/TokenHeatmap.jsx`:`renderWeekly`/`renderCumulative` 重写为统一的 `renderStacked`（每日网格 + 列内填色）。
+- `renderer/src/lib/heatmap.js`:`blockCount(value, scale)` 纯函数（可测）。
+- `renderer/src/styles.css`：复用 `.heatmap-grid-daily` 样式，无新增。
 
 ## 测试
 
-- `test/history-sync.test.js`:mock `fetchMonth` 验证逐月推进、连续 2 空月停止、36 月硬上限、失败跳过与汇总、覆盖写入幂等；mock scanAll 验证重扫覆盖与游标推进。
+- `test/history-sync.test.js`:mock `fetchMonth` 验证逐月推进、连续 12 空月停止、36 月硬上限、失败跳过与汇总、覆盖写入幂等、syncedMonths 独立标记；mock scanAll 验证重扫覆盖与游标推进。
 - 日边界：注入固定时间戳（如 UTC 2026-06-17T16:30:00Z = 北京 6/18 00:30)，断言聚合键为北京日。
 - `blockCount`：规模自适应边界（0、小值、最大值）。
-- 视图接线：源码级断言（项目惯例）——方块堆积渲染函数、tooltip 文案、portal 保留。
+- 视图接线：源码级断言（项目惯例）——renderStacked 每日网格渲染、tooltip 文案、portal 保留。
 - 全套 `npm test` 必须通过。
 
 ## 已确认的取舍
 
-- DeepSeek 回填探测上限 36 个月、连续 2 空月即停；
+- DeepSeek 回填探测上限 36 个月、连续 12 空月即停；
 - Codex/Kimi 同名键以重扫值覆盖（本机日志为唯一数据源）;
 - 官方无 Codex/Kimi 按日历史 API，日志不覆盖的日期不可恢复，不设预期；
 - 历史保留天数只提示不擅改；

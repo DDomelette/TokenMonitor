@@ -15,6 +15,7 @@ test('sync:history handler 编排三路同步并刷新仪表盘', () => {
   assert.match(ipcSource, /sync:progress/);
   assert.match(ipcSource, /retentionHint/);
   assert.match(ipcSource, /pollAll\(\)/);
+  assert.match(ipcSource, /retainAll: true/);
 });
 
 test('preload 白名单放行 sync:history 与 sync:progress', () => {
