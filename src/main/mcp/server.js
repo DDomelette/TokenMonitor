@@ -98,8 +98,21 @@ async function startMcpServer(options) {
     } catch (e) {
       lastError = e;
       try { server.close(); } catch (_) {}
-      if (e.code !== 'EADDRINUSE') throw e;
+      // EADDRINUSE: 端口被占用;EACCES: Windows Hyper-V/WSL 保留端口段,同样尝试下一端口
+      if (e.code !== 'EADDRINUSE' && e.code !== 'EACCES') throw e;
     }
+  }
+  if (basePort) {
+    // 整个回退窗口不可用(如 Windows 保留段全覆盖)时,交给系统分配端口兜底
+    const server = http.createServer(handler);
+    await listen(server, 0);
+    const actual = server.address().port;
+    logger.log('[mcp] ports ' + basePort + '-' + maxPort + ' unavailable, fallback to ephemeral ' + actual);
+    return {
+      port: actual,
+      url: 'http://127.0.0.1:' + actual + '/mcp',
+      close: () => new Promise((resolve) => server.close(resolve))
+    };
   }
   throw lastError || new Error('no available port');
 }
