@@ -64,7 +64,8 @@ var tokenSpeedDefinitions = [
 
 var tailDefinitions = [
   { group: '数据', key: 'data.historyDays', type: 'select', label: '历史数据保留', options: [
-    { value: 3, label: '3 天' }, { value: 7, label: '7 天' }, { value: 30, label: '30 天' }
+    { value: 3, label: '3 天' }, { value: 7, label: '7 天' }, { value: 30, label: '30 天' },
+    { value: 90, label: '90 天' }, { value: 180, label: '180 天' }, { value: 365, label: '365 天' }
   ], default: 7 },
   { group: '关于', key: 'apiKey', type: 'credential', label: 'API Key', default: '' }
 ];
