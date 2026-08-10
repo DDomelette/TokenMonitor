@@ -44,6 +44,16 @@ test('QuotaCard shows an honest retry entry when authStatus is expired', () => {
   assert.doesNotMatch(quotaCard, /重新授权/);
 });
 
+test('QuotaCard keeps last good data with a stale banner when expired but cached', () => {
+  // 过期且有缓存数据时:不替换为纯过期卡,正常渲染 windows 并加警示条(数据时间+重试)
+  assert.match(quotaCard, /expired && !quotaState/);
+  assert.match(quotaCard, /quota-stale-banner/);
+  assert.match(quotaCard, /凭证已过期,显示/);
+  assert.match(quotaCard, /quotaFetchedAt/);
+  // 纯过期卡只在没有缓存数据时出现
+  assert.match(quotaCard, /if \(expired && !quotaState\)/);
+});
+
 test('WindowBar consumes used/limit/remaining/resetsAt and colors by remaining percent', () => {
   assert.match(windowBar, /used/);
   assert.match(windowBar, /limit/);

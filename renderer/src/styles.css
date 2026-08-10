@@ -742,6 +742,35 @@ body,
   color: var(--text-secondary);
 }
 
+/* 凭证过期但有缓存数据:顶部警示条(数据时间+重试),额度条照常显示 */
+.quota-stale-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+  border-radius: var(--radius-btn);
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.quota-stale-text {
+  font-size: 10px;
+  color: var(--warning, #F59E0B);
+}
+
+.quota-stale-retry {
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-btn);
+  background: var(--primary);
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
 /* ======== Token 活动热力图 ======== */
 .heatmap-widget {
   width: 100%;
