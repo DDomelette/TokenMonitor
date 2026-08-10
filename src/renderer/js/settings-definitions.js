@@ -63,6 +63,8 @@ var tokenSpeedDefinitions = [
 ];
 
 var tailDefinitions = [
+  { group: 'MCP 服务', key: 'mcp.enabled', type: 'toggle', label: '启用 MCP 服务', default: true },
+  { group: 'MCP 服务', key: 'mcp.serverInfo', type: 'mcpServer', label: '连接信息', default: '' },
   { group: '数据', key: 'data.historyDays', type: 'select', label: '历史数据保留', options: [
     { value: 3, label: '3 天' }, { value: 7, label: '7 天' }, { value: 30, label: '30 天' },
     { value: 90, label: '90 天' }, { value: 180, label: '180 天' }, { value: 365, label: '365 天' }

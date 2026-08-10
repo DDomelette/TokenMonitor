@@ -60,7 +60,9 @@ contextBridge.exposeInMainWorld('api', {
       'get:session-state',
       'window:commit',
       'sync:history',
-      'detect:proxy-port'
+      'detect:proxy-port',
+      'mcp:getConnectionInfo',
+      'mcp:rotateToken'
     ];
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args);

@@ -289,6 +289,46 @@
     });
   }
 
+  function renderMcpConnectionInfo(info) {
+    var urlInput = document.getElementById('mcpServerUrl');
+    var tokenInput = document.getElementById('mcpServerToken');
+    var copyBtn = document.getElementById('mcpCopyBtn');
+    var rotateBtn = document.getElementById('mcpRotateBtn');
+    if (!urlInput || !tokenInput) return;
+    urlInput.value = info.running ? info.url : (info.enabled ? '启动中/未运行' : '已关闭');
+    tokenInput.value = info.token || '';
+    if (copyBtn) copyBtn.disabled = !info.running;
+    if (rotateBtn) rotateBtn.disabled = !info.enabled;
+  }
+
+  function loadMcpConnectionInfo() {
+    if (!document.getElementById('mcpServerUrl')) return;
+    window.api.invoke('mcp:getConnectionInfo').then(renderMcpConnectionInfo).catch(function () {
+      var urlInput = document.getElementById('mcpServerUrl');
+      if (urlInput) urlInput.value = '不可用';
+    });
+  }
+
+  function copyMcpConnectionInfo() {
+    var urlInput = document.getElementById('mcpServerUrl');
+    var tokenInput = document.getElementById('mcpServerToken');
+    var copyBtn = document.getElementById('mcpCopyBtn');
+    if (!urlInput || !tokenInput) return;
+    navigator.clipboard.writeText(urlInput.value + '\nAuthorization: Bearer ' + tokenInput.value);
+    if (copyBtn) {
+      copyBtn.textContent = '已复制';
+      setTimeout(function () { copyBtn.textContent = '复制连接信息'; }, 1200);
+    }
+  }
+
+  function rotateMcpToken() {
+    var rotateBtn = document.getElementById('mcpRotateBtn');
+    if (rotateBtn) rotateBtn.disabled = true;
+    window.api.invoke('mcp:rotateToken').then(renderMcpConnectionInfo).catch(function () {}).then(function () {
+      if (rotateBtn) rotateBtn.disabled = false;
+    });
+  }
+
   function render(def, val, placeholder) {
     var v = val !== undefined ? val : def.default;
     switch (def.type) {
@@ -340,6 +380,15 @@
           '<span id="historySyncResult" role="status" hidden style="font-size:12px;line-height:1.5;white-space:pre-line;"></span>' +
           '<button type="button" class="btn" id="historySyncRetentionBtn" hidden></button>' +
         '</div>';
+      case 'mcpServer':
+        return '<div style="display:flex;flex-direction:column;gap:6px;width:100%;">' +
+          '<input type="text" class="text-input" id="mcpServerUrl" readonly value="加载中…" autocomplete="off" spellcheck="false">' +
+          '<input type="text" class="text-input" id="mcpServerToken" readonly value="" autocomplete="off" spellcheck="false">' +
+          '<div style="display:flex;gap:6px;">' +
+            '<button type="button" class="btn btn-primary" id="mcpCopyBtn" disabled>复制连接信息</button>' +
+            '<button type="button" class="btn" id="mcpRotateBtn">重新生成 token</button>' +
+          '</div>' +
+        '</div>';
       case 'password':
         return '<input type="password" class="text-input" data-key="' + def.key + '" value="' + v + '"' + (placeholder ? ' placeholder="' + placeholder + '"' : '') + '>';
       default:
@@ -365,7 +414,7 @@
           if (d.key === 'apiKey' && settings.providers && settings.providers.deepseek && settings.providers.deepseek.apiKeySet) {
             placeholder = '已保存,输入新 Key 以更换';
           }
-          var vertical = d.type === 'slider' || d.type === 'credential' || d.type === 'proxy' || d.type === 'historySync';
+          var vertical = d.type === 'slider' || d.type === 'credential' || d.type === 'proxy' || d.type === 'historySync' || d.type === 'mcpServer';
           return '<div class="setting-row' + (vertical ? ' vertical' : '') + '"><div><span class="setting-label">' + d.label + '</span></div>' + render(d, getNested(settings, d.key), placeholder) + '</div>';
         }).join('') + '</div>';
     });
@@ -402,6 +451,15 @@
     var historySyncBtn = document.getElementById('historySyncBtn');
     if (historySyncBtn) {
       historySyncBtn.addEventListener('click', submitHistorySync);
+    }
+
+    var mcpCopyBtn = document.getElementById('mcpCopyBtn');
+    if (mcpCopyBtn) {
+      mcpCopyBtn.addEventListener('click', copyMcpConnectionInfo);
+    }
+    var mcpRotateBtn = document.getElementById('mcpRotateBtn');
+    if (mcpRotateBtn) {
+      mcpRotateBtn.addEventListener('click', rotateMcpToken);
     }
 
     document.querySelectorAll('input[data-key]').forEach(function (el) {
@@ -476,6 +534,7 @@
     document.getElementById('settingsBody').innerHTML = buildSessionSection() + buildPanel(settings);
     bindEvents();
     syncProxyControls();
+    loadMcpConnectionInfo();
     updateSessionSection();
     applyInitialTheme(settings);
   }
