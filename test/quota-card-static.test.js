@@ -34,10 +34,14 @@ test('QuotaCard renders windows array and shows no currency for subscription mod
   assert.doesNotMatch(quotaCard, /[¥$]/);
 });
 
-test('QuotaCard replaces card with reauthorize button when authStatus is expired', () => {
+test('QuotaCard shows an honest retry entry when authStatus is expired', () => {
   assert.match(quotaCard, /authStatus/);
   assert.match(quotaCard, /expired/);
-  assert.match(quotaCard, /重新授权/);
+  // 凭证由本机 CLI 维护,应用只读无法代授权:按钮是"立即重试"而非"重新授权",
+  // 提示语必须引导用户先去终端运行对应 CLI
+  assert.match(quotaCard, /立即重试/);
+  assert.match(quotaCard, /请先在终端运行一次/);
+  assert.doesNotMatch(quotaCard, /重新授权/);
 });
 
 test('WindowBar consumes used/limit/remaining/resetsAt and colors by remaining percent', () => {
