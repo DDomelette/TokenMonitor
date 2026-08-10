@@ -38,7 +38,9 @@ contextBridge.exposeInMainWorld('api', {
       'window:set-bounds',
       'resize:start',
       'resize:move',
-      'resize:end'
+      'resize:end',
+      'edge-dock:pointer-enter',
+      'edge-dock:pointer-leave'
     ];
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data);

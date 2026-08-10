@@ -19,7 +19,11 @@ const defaults = {
     alwaysOnTop: true,
     autoLaunch: false,
     followSystemTheme: true,
-    layoutLocked: true
+    layoutLocked: true,
+    // 贴边自动隐藏(issue #170):edgeDock 只存逻辑停靠信息(边 + 展开可见 bounds),
+    // 隐藏坐标永不落盘
+    edgeAutoHide: false,
+    edgeDock: null
   },
   components: {
     balanceCard: true,

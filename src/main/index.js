@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeTheme } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeTheme, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const store = require('./store');
@@ -10,6 +10,7 @@ const kimiProvider = require('./providers/kimi');
 const { startScheduler } = require('./core/scheduler');
 const { createTokenSpeedRuntime } = require('./core/token-speed-runtime');
 const { wakeMostRelevantWindow } = require('./core/startup-windows');
+const { createEdgeDock } = require('./core/edge-dock');
 const setupIPC = require('./ipc');
 const { captureSession } = require('./providers/deepseek/session');
 const {
@@ -35,6 +36,8 @@ let tray = null;
 let scheduler = null;
 let tokenSpeedRuntime = null;
 let moveDebounce = null;
+// 贴边自动隐藏状态机(issue #170),随主窗口创建
+let edgeDock = null;
 
 const runtime = {
   sessionToken: null,
@@ -62,6 +65,7 @@ app.on('second-instance', () => {
     getLoginWindow: () => loginWindow,
     getSettingsWindow: () => settingsWindow
   });
+  if (edgeDock) edgeDock.reveal();
 });
 
 function getWinBounds() {
@@ -78,6 +82,8 @@ function sendMainWindowBounds() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.webContents.isDestroyed()) return;
   if (resizeState.main) return;
+  // 贴边动画每帧都在变,跳过广播避免高频 IPC;动画结束后的 move 事件会补发
+  if (edgeDock && edgeDock.isProgrammatic()) return;
   mainWindow.webContents.send('window:bounds-changed', mainWindow.getBounds());
 }
 
@@ -95,6 +101,31 @@ function broadcastSettings() {
 function broadcastSessionState() {
   var payload = getSessionSnapshot(runtime);
   broadcastToWindows('session:changed', payload);
+}
+
+// 贴边自动隐藏(issue #170):几何/状态机在 core/edge-dock.js,这里只做接线。
+// 隐藏坐标只存内存,持久化的永远是展开可见 bounds(window.edgeDock 元数据)。
+function createEdgeDockRuntime() {
+  edgeDock = createEdgeDock({
+    onApplyBounds: function (b) {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setBounds(b);
+    },
+    onPersistDock: function (meta) {
+      store.set('window.edgeDock', meta);
+    }
+  });
+  // 重启恢复逻辑停靠:重新匹配当前显示器,落不进现存 workArea 的由状态机修正
+  if (store.get('window.edgeAutoHide')) {
+    var meta = store.get('window.edgeDock');
+    if (meta) edgeDock.restoreDock(meta, screen.getAllDisplays());
+  }
+}
+
+// 主动唤醒(托盘/第二实例/打开设置):已收起的窗口先完整展开
+function revealMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.show();
+  if (edgeDock) edgeDock.reveal();
 }
 
 function createMainWindow() {
@@ -130,6 +161,7 @@ function createMainWindow() {
   // 禁用 setOpacity:它会加 WS_EX_LAYERED,分层窗口缩放时新区域被清成透明黑,
   // 整窗统一 alpha 混合后显示为黑边。
   loadRenderer(mainWindow);
+  createEdgeDockRuntime();
 
   // 渲染进程异常诊断:加载失败/进程崩溃时写入日志
   mainWindow.webContents.on('console-message', function (e, level, message) {
@@ -155,12 +187,17 @@ function createMainWindow() {
 
   mainWindow.on('move', function () {
     if (resizeState.main) return;
+    // 贴边状态机程序性 setBounds 的回声:不广播、不落盘、不重新评估停靠
+    if (edgeDock && edgeDock.matchesCurrent(mainWindow.getBounds())) return;
     sendMainWindowBounds();
     clearTimeout(moveDebounce);
     moveDebounce = setTimeout(function () {
-      var pos = mainWindow.getPosition();
-      store.set('window.x', pos[0]);
-      store.set('window.y', pos[1]);
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (edgeDock && (edgeDock.isProgrammatic() || edgeDock.matchesCurrent(mainWindow.getBounds()))) return;
+      if (edgeDock && store.get('window.edgeAutoHide')) {
+        edgeDock.userMoveSettled(mainWindow.getBounds(), screen.getAllDisplays());
+      }
+      persistMainWindowBounds();
     }, 300);
   });
 
@@ -170,6 +207,9 @@ function createMainWindow() {
 
   // 原生缩放结束后持久化最终尺寸(原生缩放不经过 window:set-bounds / resize:end)
   mainWindow.on('resized', function () {
+    if (edgeDock && edgeDock.getDockMeta()) {
+      edgeDock.resizeSettled(mainWindow.getBounds(), screen.getAllDisplays());
+    }
     persistMainWindowBounds();
   });
 
@@ -288,7 +328,7 @@ function createTray() {
     if (mainWindow && mainWindow.isVisible()) {
       mainWindow.hide();
     } else if (mainWindow) {
-      mainWindow.show();
+      revealMainWindow();
     }
   });
 }
@@ -300,7 +340,7 @@ function updateTrayMenu() {
       label: '显示/隐藏悬浮窗',
       click: () => {
         if (mainWindow && mainWindow.isVisible()) mainWindow.hide();
-        else if (mainWindow) mainWindow.show();
+        else if (mainWindow) revealMainWindow();
       }
     },
     {
@@ -312,7 +352,7 @@ function updateTrayMenu() {
       label: '设置',
       click: () => {
         if (mainWindow) {
-          mainWindow.show();
+          revealMainWindow();
           mainWindow.webContents.send('open:settings');
         }
       }
@@ -363,7 +403,9 @@ function buildCurvePoints(stats) {
 function persistMainWindowBounds() {
   if (!mainWindow || mainWindow.isDestroyed()) return null;
 
-  var bounds = mainWindow.getBounds();
+  // 停靠中(含已收起)持久化展开可见 bounds,隐藏坐标永不落盘(issue #170)
+  var meta = edgeDock && edgeDock.getDockMeta();
+  var bounds = meta ? { x: meta.expandedBounds.x, y: meta.expandedBounds.y, width: meta.expandedBounds.width, height: meta.expandedBounds.height } : mainWindow.getBounds();
 
   store.set('window.width', bounds.width);
   store.set('window.height', bounds.height);
@@ -421,6 +463,11 @@ function createSettingsWindow() {
     settingsWindow.close();
     return;
   }
+  // 打开设置时主窗口保持完整展开并暂停自动收起(issue #170)
+  if (edgeDock) {
+    edgeDock.setSuspended(true);
+    edgeDock.reveal();
+  }
   settingsWindow = new BrowserWindow({
     width: 370,
     height: 520,
@@ -451,7 +498,10 @@ function createSettingsWindow() {
   revealWhenReady(settingsWindow);
   settingsWindow.on('blur', function () { notifyFocusState(settingsWindow, false); });
   settingsWindow.on('focus', function () { notifyFocusState(settingsWindow, true); });
-  settingsWindow.on('closed', () => { settingsWindow = null; });
+  settingsWindow.on('closed', () => {
+    settingsWindow = null;
+    if (edgeDock) edgeDock.setSuspended(false);
+  });
 }
 
 /* ======== 设置应用 ======== */
@@ -480,6 +530,10 @@ function applySetting(key, value) {
     case 'window.followSystemTheme':
     case 'window.darkMode':
       applyTheme();
+      break;
+    case 'window.edgeAutoHide':
+      // 关闭开关:即使已收起也先完整恢复,再清停靠状态(issue #170)
+      if (!value && edgeDock) edgeDock.disable();
       break;
   }
 }
@@ -625,6 +679,7 @@ app.whenReady().then(() => {
     getMainWindow: () => mainWindow,
     getSettingsWindow: () => settingsWindow,
     getLoginWindow: () => loginWindow,
+    getEdgeDock: () => edgeDock,
     createMainWindow,
     createLoginWindow,
     createSessionWindow,
