@@ -6,7 +6,7 @@ const EDGE_SNAP_THRESHOLD = 12;
 const REVEAL_STRIP_SIZE = 12;
 const COLLAPSE_DELAY = 500;
 const EXPAND_DURATION = 160;
-const COLLAPSE_DURATION = 180;
+const COLLAPSE_DURATION = 260;
 const FRAME_MS = 16;
 // 可停靠边:只吸附左右和上。下边缘吸附实测体验差(任务栏侧难以拖离),不接。
 // 角落平局时的稳定优先级:先左右后上
@@ -92,9 +92,15 @@ function pickWorkArea(bounds, displays) {
   return best;
 }
 
-// 阻尼感缓动:起步快、末端急减速落定(easeOutQuint),收起/展开同一手感
+// 展开缓动:阻尼感(起步快、末端急减速落定,easeOutQuint)
 function easeDamped(t) {
   return 1 - Math.pow(1 - t, 5);
+}
+
+// 收起缓动:缓起步后加速离场(easeInCubic)。首帧位移小,肉眼能看到窗口开始滑走,
+// 不会像阻尼缓动那样首帧就跳掉大半、观感像闪现
+function easeAccelerate(t) {
+  return t * t * t;
 }
 
 function lerpBounds(from, to, t) {
@@ -129,6 +135,9 @@ function createEdgeDock(options) {
   let edge = null;
   let expandedBounds = null;
   let currentBounds = null;
+  // 上一帧坐标:Windows 的 move 事件可能滞后一帧到达(getBounds 返回的是
+  // 事件对应的旧位置),回声判定要同时容忍当前帧与上一帧
+  let prevBounds = null;
   let collapseTimer = null;
   let anim = null;
 
@@ -173,18 +182,23 @@ function createEdgeDock(options) {
     };
     // 与当前坐标一致则不下发:setBounds 会再触发 move 事件,避免回声循环
     if (sameBounds(next, currentBounds)) return;
+    prevBounds = currentBounds;
     currentBounds = next;
     onApplyBounds(currentBounds);
   }
 
-  // 动画主循环:基于单调时间计算进度,可取消/反向,末帧精确落目标
-  function startAnimation(target, duration, stateAfter) {
+  // 动画主循环:基于单调时间计算进度,可取消/反向,末帧精确落目标。
+  // 注意:apply() 触发的回调(move 事件等非回声路径)可能同步取消动画,
+  // tick 内每次操作前都要重新确认自己还是当前动画
+  function startAnimation(target, duration, stateAfter, ease) {
     cancelAnimation();
+    const easeFn = ease || easeDamped;
     const from = currentBounds ? { ...currentBounds } : { ...target };
     const start = now();
-    anim = { target: { ...target }, timer: null };
+    const self = { target: { ...target }, timer: null };
+    anim = self;
     const tick = () => {
-      if (anim === null) return;
+      if (anim !== self) return;
       const t = duration <= 0 ? 1 : Math.min(1, (now() - start) / duration);
       if (t >= 1) {
         anim = null;
@@ -192,10 +206,11 @@ function createEdgeDock(options) {
         setState(stateAfter);
         return;
       }
-      apply(lerpBounds(from, target, easeDamped(t)));
-      anim.timer = setTimeoutImpl(tick, frameMs);
+      apply(lerpBounds(from, target, easeFn(t)));
+      if (anim !== self) return; // apply 的回调里被取消:不再排下一帧
+      self.timer = setTimeoutImpl(tick, frameMs);
     };
-    anim.timer = setTimeoutImpl(tick, frameMs);
+    self.timer = setTimeoutImpl(tick, frameMs);
   }
 
   function scheduleCollapse() {
@@ -206,7 +221,7 @@ function createEdgeDock(options) {
       if (suspended || pointerInside) return;
       if (state !== 'expanded-docked' && state !== 'expanding') return;
       setState('collapsing');
-      startAnimation(collapsedBounds(expandedBounds, edge, strip), collapseDuration, 'collapsed');
+      startAnimation(collapsedBounds(expandedBounds, edge, strip), collapseDuration, 'collapsed', easeAccelerate);
     }, collapseDelay);
   }
 
@@ -318,8 +333,9 @@ function createEdgeDock(options) {
     getState: () => state,
     // 程序性动画进行中:主进程据此抑制 move 持久化与高频 bounds 广播
     isProgrammatic: () => anim !== null,
-    // move 事件回声识别:bounds 与机器最后下发的坐标一致时,说明是 setBounds 的回声
-    matchesCurrent: (bounds) => sameBounds(bounds, currentBounds),
+    // move 事件回声识别:bounds 与机器最后下发(或上一帧)的坐标一致时,说明是 setBounds 的回声。
+    // Windows 的 move 事件可能滞后一帧,getBounds 返回旧位置,两帧都要容忍
+    matchesCurrent: (bounds) => sameBounds(bounds, currentBounds) || sameBounds(bounds, prevBounds),
     getDockMeta: () => (edge && expandedBounds
       ? { edge, expandedBounds: { ...expandedBounds } }
       : null)
@@ -339,6 +355,7 @@ module.exports = {
   intersectionArea,
   pickWorkArea,
   easeDamped,
+  easeAccelerate,
   lerpBounds,
   createEdgeDock
 };

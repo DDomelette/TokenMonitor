@@ -296,6 +296,78 @@ test('restoreDock rejects edges that are no longer dockable (legacy bottom meta)
   assert.equal(h.dock.getState(), 'undocked');
 });
 
+test('animation cancelled synchronously inside onApplyBounds does not crash (move-echo race)', () => {
+  // 复现主进程崩溃:动画 tick → apply → onApplyBounds(setBounds)同步触发
+  // move 事件 → 非回声判定 → userMoveStarted → cancelAnimation 把 anim 置空,
+  // 回到 tick 继续写 anim.timer → TypeError。修复后应安静取消
+  const timers = new Map();
+  let nextId = 1;
+  let nowMs = 1000;
+  let dock = null;
+  const applied = [];
+  dock = createEdgeDock({
+    now: () => nowMs,
+    setTimeout: (fn, ms) => { const id = nextId++; timers.set(id, { fn, at: nowMs + ms }); return id; },
+    clearTimeout: (id) => { timers.delete(id); },
+    onApplyBounds: (b) => {
+      applied.push(b);
+      // 第二帧起模拟 Windows 滞后 move 事件触发的拖动打断
+      if (applied.length >= 2 && dock) dock.userMoveStarted();
+    }
+  });
+  const advance = (ms) => {
+    const end = nowMs + ms;
+    for (;;) {
+      let fired = false;
+      for (const [id, t] of [...timers.entries()]) {
+        if (t.at <= end && timers.has(id)) { timers.delete(id); nowMs = Math.max(nowMs, t.at); t.fn(); fired = true; }
+      }
+      if (!fired) break;
+    }
+    nowMs = end;
+  };
+  dock.userMoveSettled({ x: 4, y: 200, ...WIN }, [{ id: 1, workArea: WA }]);
+  dock.pointerLeave();
+  assert.doesNotThrow(() => advance(500 + 300));
+  assert.equal(dock.getState(), 'undocked');
+  assert.equal(dock.isProgrammatic(), false);
+});
+
+test('matchesCurrent tolerates the previous animation frame (lagging move events)', () => {
+  const h = makeHarness();
+  h.dock.userMoveSettled({ x: 4, y: 200, ...WIN }, [{ id: 1, workArea: WA }]);
+  h.dock.pointerLeave();
+  h.advance(500 + 64); // 收起动画走了几帧
+  const frames = h.applied.slice(1); // 第一帧是吸附落定
+  assert.ok(frames.length >= 2);
+  // 当前帧与上一帧都算回声
+  assert.equal(h.dock.matchesCurrent(frames.at(-1)), true);
+  assert.equal(h.dock.matchesCurrent(frames.at(-2)), true);
+  // 更早的帧/任意位置不算
+  assert.equal(h.dock.matchesCurrent({ x: 500, y: 300, ...WIN }), false);
+});
+
+test('collapse eases in slowly (no flash), expand starts fast with damping', () => {
+  // 收起:前 ~15% 时长位移应很小(缓起步,肉眼可见窗口开始滑走)
+  const h = makeHarness();
+  h.dock.userMoveSettled({ x: 4, y: 200, ...WIN }, [{ id: 1, workArea: WA }]);
+  h.dock.pointerLeave();
+  h.advance(500 + 32); // 260ms 收起的前 32ms
+  const collapseFrame = h.applied.at(-1);
+  const collapsedX = 0 - (420 - REVEAL_STRIP_SIZE);
+  const collapseTravel = Math.abs(collapseFrame.x - 0) / Math.abs(collapsedX - 0);
+  assert.ok(collapseTravel < 0.05, `collapse early travel ${collapseTravel} should be < 5%`);
+
+  // 展开:前 25% 时长位移应过半(阻尼感,快速弹出后减速落定)
+  h.advance(300);
+  h.dock.pointerEnter();
+  const fromX = h.applied.at(-1).x;
+  h.advance(40); // 160ms 展开的前 40ms
+  const expandFrame = h.applied.at(-1);
+  const expandTravel = Math.abs(expandFrame.x - fromX) / Math.abs(0 - fromX);
+  assert.ok(expandTravel > 0.5, `expand early travel ${expandTravel} should be > 50%`);
+});
+
 test('reveal fully expands a collapsed window (tray / second-instance)', () => {
   const h = makeHarness();
   h.dock.userMoveSettled({ x: 4, y: 200, ...WIN }, [{ id: 1, workArea: WA }]);
