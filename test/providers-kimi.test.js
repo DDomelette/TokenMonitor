@@ -7,7 +7,7 @@ const path = require('node:path');
 // 注: kimi /usages 真实抓取被过期 access_token 阻断(401 REASON_INVALID_AUTH_TOKEN,见 Task 0 Spike),
 // 本 fixture 依据计划"已验证的事实"文档化结构合成,断言值为计划规定的周/5h 窗口语义。
 const fixture = require('./fixtures/kimi-usages.json');
-const { normalizeKimiUsage } = require('../src/main/providers/kimi/quota');
+const { normalizeKimiUsage, classifyAuthFailure } = require('../src/main/providers/kimi/quota');
 const { readCred, isExpired } = require('../src/main/providers/kimi/auth');
 
 test('normalizeKimiUsage maps weekly + 5h windows from the fixture', () => {
@@ -73,4 +73,24 @@ test('kimi credential access is read-only (CLI owns refresh; proactive refresh r
   assert.doesNotMatch(quotaSource, /ensureFresh|refreshCred/);
   // refresh_token 一次性轮换:任何主动刷新成功都会作废 CLI 内存中的旧 RT
   assert.doesNotMatch(authSource, /refreshCred|writeCredentialAtomic|oauth\/token/);
+});
+
+test('classifyAuthFailure: CLI 刷新空窗的 401 不算过期,真过期才算', () => {
+  const used = { accessToken: 'old-token', expiresAt: Date.now() - 1000 };
+  // 文件 token 已换新(CLI 刚轮转回写)→ 空窗,下轮自愈
+  assert.equal(classifyAuthFailure(used, { accessToken: 'new-token', expiresAt: Date.now() + 3600e3 }), 'rotating');
+  // 文件 token 相同但仍未过期(边界撞车)→ 空窗
+  assert.equal(classifyAuthFailure(used, { accessToken: 'old-token', expiresAt: Date.now() + 60e3 }), 'rotating');
+  // 文件读不出(mid-write)→ 空窗
+  assert.equal(classifyAuthFailure(used, null), 'rotating');
+  // 文件 token 也真过期(CLI 长时间未运行)→ 真过期,显示"已过期"是准确的
+  assert.equal(classifyAuthFailure(used, { accessToken: 'old-token', expiresAt: Date.now() - 5000 }), 'expired');
+});
+
+test('空窗错误消息不触发 scheduler 的认证错误判定(不闪"已过期"卡片)', () => {
+  const { isAuthError } = require('../src/main/core/scheduler');
+  assert.equal(isAuthError(new Error('Kimi 凭证刷新中,下个周期自动恢复')), false);
+  const quotaSource = fs.readFileSync(path.resolve(__dirname, '../src/main/providers/kimi/quota.js'), 'utf8');
+  // 401 时必须复核凭证文件区分空窗/真过期
+  assert.match(quotaSource, /classifyAuthFailure\(cred, readCred\(\)\)/);
 });
