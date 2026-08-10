@@ -105,9 +105,19 @@ function broadcastSessionState() {
 
 // 贴边自动隐藏(issue #170):几何/状态机在 core/edge-dock.js,这里只做接线。
 // 隐藏坐标只存内存,持久化的永远是展开可见 bounds(window.edgeDock 元数据)。
+//
+// 程序性 setBounds 的静默期:Windows 的 setBounds 是异步的,move 事件可能严重
+// 滞后到达(动画已结束,而 getBounds 返回 DWM 未播完的几帧前中间位置)——
+// 靠坐标猜回声会误判成用户拖动 → 取消停靠 → debounce 在收起位置重新吸附
+// (收起位置距边缘为负值,仍 ≤ 阈值)→ 窗口弹出 → 再收起,循环抖动。
+// 所以动画进行中及最后一次程序性 setBounds 后 250ms 内的 move 事件一律忽略。
+const EDGE_DOCK_MOVE_QUIET_MS = 250;
+let lastEdgeDockApplyAt = 0;
+
 function createEdgeDockRuntime() {
   edgeDock = createEdgeDock({
     onApplyBounds: function (b) {
+      lastEdgeDockApplyAt = Date.now();
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setBounds(b);
     },
     onPersistDock: function (meta) {
@@ -187,11 +197,9 @@ function createMainWindow() {
 
   mainWindow.on('move', function () {
     if (resizeState.main) return;
-    // 动画进行中的 move 事件一律忽略:用户要抓窗口,鼠标必先进入窗口触发
-    // pointerEnter(动画会自动反向展开),所以动画期间不存在真实的用户拖动;
-    // 滞后的帧事件坐标可能落后好几帧,靠坐标猜回声会误判成拖动、打断动画,
-    // 然后 debounce 又在边缘位置重新吸附——窗口来回抖动
-    if (edgeDock && edgeDock.isProgrammatic()) return;
+    // 静默期(动画中 + 末帧后 250ms)的 move 事件一律视为程序性回声,见上方注释。
+    // 用户真实拖动不刷新 lastEdgeDockApplyAt,不受影响
+    if (edgeDock && (edgeDock.isProgrammatic() || Date.now() - lastEdgeDockApplyAt < EDGE_DOCK_MOVE_QUIET_MS)) return;
     // 非动画的程序性 setBounds(吸附落定/恢复)的回声:不广播、不落盘、不重新评估停靠
     if (edgeDock && edgeDock.matchesCurrent(mainWindow.getBounds())) return;
     // 非回声 move = 用户在拖动:立即解除停靠,窗口才不会被吸附拽住

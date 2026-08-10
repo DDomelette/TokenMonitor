@@ -461,8 +461,11 @@ test('main process wires edge dock: runtime, move handler, persistence guard, wa
   assert.match(index, /edgeDock\.matchesCurrent/);
   assert.match(index, /edgeDock\.userMoveSettled/);
   assert.match(index, /edgeDock\.userMoveStarted\(\)/);
-  // 动画进行中的 move 事件一律忽略(滞后帧事件靠坐标猜回声会误判成拖动→来回抖动)
-  assert.match(index, /edgeDock\.isProgrammatic\(\)\) return;/);
+  // 动画中+末帧后 250ms 静默期内的 move 事件一律视为程序性回声
+  // (滞后帧事件靠坐标猜回声会误判成拖动→取消→重新吸附→缩进又弹出的循环)
+  assert.match(index, /edgeDock\.isProgrammatic\(\)/);
+  assert.match(index, /EDGE_DOCK_MOVE_QUIET_MS/);
+  assert.match(index, /lastEdgeDockApplyAt/);
   // 动画帧不广播、不落盘
   assert.match(index, /edgeDock\.isProgrammatic\(\)/);
   // 停靠中持久化展开可见 bounds
