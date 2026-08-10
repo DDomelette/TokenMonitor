@@ -69,7 +69,7 @@ function WidgetBody({ id, onContentChange }) {
         provider={provider}
         quotaState={provider.quota}
         authStatus={provider.authStatus}
-        onReauthorize={() => send('refresh:dashboard')}
+        onRetry={() => send('refresh:dashboard')}
       />
     );
   }
