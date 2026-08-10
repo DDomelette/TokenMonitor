@@ -33,9 +33,10 @@ test('逐月向前直到连续 12 个空月停止,同名键以 API 覆盖', asyn
   assert.equal(r.monthsFetched, 14);
   assert.deepEqual(r.monthsFailed, []);
   assert.equal(r.earliestDate, '2026-07-15');
-  assert.equal(store.data['providers.deepseek.syncedMonths'].length, 14);
-  assert.ok(store.data['providers.deepseek.syncedMonths'].includes('2026-08'));
-  assert.ok(store.data['providers.deepseek.syncedMonths'].includes('2025-07'));
+  // 数据月进 syncedMonths,空月进 syncedEmptyMonths(标记必须与数据共存才可信)
+  assert.deepEqual(store.data['providers.deepseek.syncedMonths'].sort(), ['2026-07', '2026-08']);
+  assert.equal(store.data['providers.deepseek.syncedEmptyMonths'].length, 12);
+  assert.ok(store.data['providers.deepseek.syncedEmptyMonths'].includes('2025-07'));
 });
 
 test('单月失败重试一次后跳过并计入 failed,流程不中断', async () => {
@@ -72,8 +73,14 @@ test('最多向前探测 36 个月', async () => {
   assert.equal(calls[35], '2023-9');
 });
 
-test('已在 syncedMonths 中的月份直接跳过不重复请求', async () => {
-  const store = makeStore({ 'providers.deepseek.syncedMonths': ['2026-08', '2026-07'] });
+test('已在 syncedMonths 且数据仍在的月份直接跳过不重复请求', async () => {
+  const store = makeStore({
+    'providers.deepseek.syncedMonths': ['2026-08', '2026-07'],
+    usageDaily: {
+      'deepseek:2026-08-01': { input: 0, cached: 0, output: 0, total: 10 },
+      'deepseek:2026-07-15': { input: 0, cached: 0, output: 0, total: 50 }
+    }
+  });
   const calls = [];
   const fetchMonth = async (year, month) => {
     calls.push(year + '-' + month);
@@ -87,6 +94,102 @@ test('已在 syncedMonths 中的月份直接跳过不重复请求', async () => 
   assert.deepEqual(calls, ['2026-6', '2026-5', '2026-4', '2026-3', '2026-2', '2026-1',
     '2025-12', '2025-11', '2025-10', '2025-9', '2025-8', '2025-7', '2025-6']);
   assert.equal(r.earliestDate, '2026-06-17');
+});
+
+// 回归(2026-08 真实案例):syncedMonths 标记了 2023-09 起全部月份,但保留窗口
+// 清理把 7 月之前的日数据物理删除,重同步只信标记全部跳过,历史永久缺失。
+// 标记必须与数据共存才可信:标记在但数据不在 => 重新抓取。
+test('syncedMonths 标记在但数据已被清理的月份必须重新抓取', async () => {
+  const store = makeStore({
+    'providers.deepseek.syncedMonths': ['2026-08', '2026-07', '2026-06'],
+    usageDaily: { 'deepseek:2026-08-01': { input: 0, cached: 0, output: 0, total: 10 } }
+  });
+  const calls = [];
+  const fetchMonth = async (year, month) => {
+    calls.push(year + '-' + month);
+    if (year === 2026 && month === 6) return [{ date: '2026-06-17', total: 5, cacheHit: 0, models: [] }];
+    return [];
+  };
+  const r = await syncDeepSeekHistory({
+    fetchMonth, readStore: store.get, writeStore: store.set,
+    now: '2026-08-07T12:00:00', sleep: noopSleep
+  });
+  // 2026-08 标记+数据都在 => 跳过;2026-07/06 只有标记 => 重抓
+  assert.ok(calls.includes('2026-7'), '2026-07 标记在但数据缺失,必须重抓,calls: ' + calls.join(','));
+  assert.ok(calls.includes('2026-6'), '2026-06 标记在但数据缺失,必须重抓,calls: ' + calls.join(','));
+  assert.ok(!calls.includes('2026-8'), '2026-08 标记与数据都在,不应重抓,calls: ' + calls.join(','));
+  assert.equal(store.data.usageDaily['deepseek:2026-06-17'].total, 5);
+  // 2026-07 抓回为空 => 移入空月集并移出数据月标记
+  assert.ok(store.data['providers.deepseek.syncedEmptyMonths'].includes('2026-07'));
+  assert.ok(!store.data['providers.deepseek.syncedMonths'].includes('2026-07'));
+  assert.equal(r.earliestDate, '2026-06-17');
+});
+
+// 空月单独记录:真正抓过且为空的月份下次直接跳过(与"数据被清"区分开)
+test('syncedEmptyMonths 中的空月直接跳过不重复请求', async () => {
+  const store = makeStore({
+    'providers.deepseek.syncedEmptyMonths': ['2026-07', '2026-06'],
+    usageDaily: { 'deepseek:2026-08-01': { input: 0, cached: 0, output: 0, total: 10 } },
+    'providers.deepseek.syncedMonths': ['2026-08']
+  });
+  const calls = [];
+  const fetchMonth = async (year, month) => {
+    calls.push(year + '-' + month);
+    if (year === 2026 && month === 5) return [{ date: '2026-05-10', total: 7, cacheHit: 0, models: [] }];
+    return [];
+  };
+  await syncDeepSeekHistory({
+    fetchMonth, readStore: store.get, writeStore: store.set,
+    now: '2026-08-07T12:00:00', sleep: noopSleep
+  });
+  assert.ok(!calls.includes('2026-7'), '空月 2026-07 不应重抓,calls: ' + calls.join(','));
+  assert.ok(!calls.includes('2026-6'), '空月 2026-06 不应重抓,calls: ' + calls.join(','));
+  assert.ok(calls.includes('2026-5'), '2026-05 无任何标记,应抓取,calls: ' + calls.join(','));
+});
+
+// 保留窗口过滤:整月落在窗口外的月份不抓不标记(窗口调大后仍可补抓);
+// 部分在窗口内的月份只持久化窗口内的日数据。
+test('保留窗口外的月份不抓取,窗口边界月只保留窗口内的日数据', async () => {
+  const store = makeStore({ 'data.historyDays': 30 });
+  const calls = [];
+  const fetchMonth = async (year, month) => {
+    calls.push(year + '-' + month);
+    if (year === 2026 && month === 8) return [{ date: '2026-08-01', total: 10, cacheHit: 0, models: [] }];
+    if (year === 2026 && month === 7) {
+      return [
+        { date: '2026-07-01', total: 99, cacheHit: 0, models: [] },
+        { date: '2026-07-15', total: 50, cacheHit: 0, models: [] }
+      ];
+    }
+    return [{ date: '2026-06-15', total: 1, cacheHit: 0, models: [] }];
+  };
+  const r = await syncDeepSeekHistory({
+    fetchMonth, readStore: store.get, writeStore: store.set,
+    now: '2026-08-07T12:00:00', sleep: noopSleep
+  });
+  // 保留 30 天 => 窗口起点 2026-07-09;2026-06 整月在窗口外,循环到此终止
+  assert.deepEqual(calls, ['2026-8', '2026-7']);
+  assert.equal(store.data.usageDaily['deepseek:2026-07-15'].total, 50);
+  assert.ok(!store.data.usageDaily['deepseek:2026-07-01'], '窗口外的日数据不应持久化');
+  assert.ok(!store.data['providers.deepseek.syncedMonths'].includes('2026-06'), '窗口外月份不得标记');
+  assert.equal(r.earliestDate, '2026-07-15');
+});
+
+// 未设置保留天数时保持原行为(无窗口过滤,向前探测到 36 月上限/连续空月)
+test('未设置 data.historyDays 时不做窗口过滤', async () => {
+  const store = makeStore({});
+  const calls = [];
+  const fetchMonth = async (year, month) => {
+    calls.push(year + '-' + month);
+    if (year === 2026 && month === 8) return [{ date: '2026-08-01', total: 10, cacheHit: 0, models: [] }];
+    return [];
+  };
+  await syncDeepSeekHistory({
+    fetchMonth, readStore: store.get, writeStore: store.set,
+    now: '2026-08-07T12:00:00', sleep: noopSleep
+  });
+  // 2026-07 起连续 12 个空月(2026-07..2025-08)后停止
+  assert.deepEqual(calls, ['2026-8', '2026-7', ...TWELVE_EMPTY_CALLS.slice(0, 11)]);
 });
 
 // 回归:backfill 的 fetchedMonths 标记的月份,其数据可能已被保留窗口丢弃,

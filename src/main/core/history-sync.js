@@ -1,5 +1,7 @@
 // 历史用量同步:DeepSeek 逐月全量回填 + Codex/Kimi 本机日志全量重扫。
 // 纯逻辑模块,依赖全部注入,便于 node --test 直测。
+const { retentionStartDay, localDayString } = require('./usage-retention');
+
 const MAX_MONTHS = 36;
 // 连续空月停止阈值:12,容忍使用量稀疏的长间隔(曾有 5/6 月空、4 月有数据的真实案例)
 const EMPTY_STREAK_STOP = 12;
@@ -9,6 +11,10 @@ const MAX_SCAN_PASSES = 200;
 // backfill 抓取时 persistDaily 会按保留窗口丢弃旧日数据,月份却照标"已抓",
 // 信任它会让被丢弃的月份永远不再抓(数据永久缺失)。
 const SYNCED_MONTHS_KEY = 'providers.deepseek.syncedMonths';
+// 本标记自身也有同样陷阱:保留窗口清理会删日数据但不删标记(2026-08 真实案例:
+// 标记 2023-09 起全齐,数据只剩 7 月,重同步全部跳过)。因此"有数据月份"标记
+// 必须与 usageDaily 实际数据共存才可信;真正抓过且无数据的月份单独记在这里。
+const EMPTY_MONTHS_KEY = 'providers.deepseek.syncedEmptyMonths';
 
 function defaultSleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -26,8 +32,11 @@ async function fetchMonthWithRetry(fetchMonth, year, month) {
   }
 }
 
-// 从当月起逐月向前回填:连续 2 空月停止,硬上限 36 个月;
+// 从当月起逐月向前回填:连续 12 空月停止,硬上限 36 个月;
 // 同名 'deepseek:<date>' 键以 API 数据直接覆盖(幂等,API 为准)。
+// 跳过规则:整月落在保留窗口外 => 直接终止(不抓不标记,窗口调大后可补抓);
+// 空月集中的月份 => 跳过;syncedMonths 标记且 usageDaily 中该月数据仍在 => 跳过;
+// 其余(含"标记在但数据已被保留窗口清理")=> 重新抓取。
 async function syncDeepSeekHistory(options) {
   const fetchMonth = options.fetchMonth;
   const readStore = options.readStore;
@@ -40,10 +49,18 @@ async function syncDeepSeekHistory(options) {
 
   const usageDaily = readStore('usageDaily') || {};
   const syncedMonths = new Set(readStore(SYNCED_MONTHS_KEY) || []);
+  const emptyMonths = new Set(readStore(EMPTY_MONTHS_KEY) || []);
+  // 保留窗口起点(本地日历日,含);未设置保留天数时不做窗口过滤
+  const cutoff = retentionStartDay(readStore('data.historyDays'));
+  // usageDaily 中实际有数据的 deepseek 月份,抓取写入时同步更新
+  const dataMonths = new Set();
   let earliestDate = null;
   Object.keys(usageDaily).forEach((k) => {
-    const m = /^deepseek:(\d{4}-\d{2}-\d{2})$/.exec(k);
-    if (m && (!earliestDate || m[1] < earliestDate)) earliestDate = m[1];
+    const m = /^deepseek:(\d{4}-\d{2})-\d{2}$/.exec(k);
+    if (m) {
+      dataMonths.add(m[1]);
+      if (!earliestDate || k.slice(9) < earliestDate) earliestDate = k.slice(9);
+    }
   });
 
   let monthsFetched = 0;
@@ -52,7 +69,11 @@ async function syncDeepSeekHistory(options) {
 
   for (let i = 0; i < MAX_MONTHS && emptyStreak < EMPTY_STREAK_STOP; i++) {
     const key = monthKey(year, month);
-    if (!syncedMonths.has(key)) {
+    // 月份按新到旧迭代,整月(new Date(y, m, 0) = 该月最后一天)落在窗口外时,
+    // 更老的月份必然也在窗外,直接终止。
+    if (cutoff && localDayString(new Date(year, month, 0).getTime()) < cutoff) break;
+    const trusted = emptyMonths.has(key) || (syncedMonths.has(key) && dataMonths.has(key));
+    if (!trusted) {
       let daily = null;
       try {
         daily = await fetchMonthWithRetry(fetchMonth, year, month);
@@ -63,9 +84,12 @@ async function syncDeepSeekHistory(options) {
         monthsFetched++;
         const days = (Array.isArray(daily) ? daily : []).filter(
           (d) => d && d.date && Math.round(Number(d.total) || 0) > 0
+            && (!cutoff || d.date >= cutoff)
         );
         if (!days.length) {
           emptyStreak++;
+          emptyMonths.add(key);
+          syncedMonths.delete(key);
         } else {
           emptyStreak = 0;
           days.forEach((d) => {
@@ -78,8 +102,10 @@ async function syncDeepSeekHistory(options) {
             };
             if (!earliestDate || d.date < earliestDate) earliestDate = d.date;
           });
+          dataMonths.add(key);
+          syncedMonths.add(key);
+          emptyMonths.delete(key);
         }
-        syncedMonths.add(key);
       }
       if (onProgress) onProgress({ stage: 'deepseek', detail: key });
       await sleep(MONTH_GAP_MS);
@@ -93,6 +119,7 @@ async function syncDeepSeekHistory(options) {
 
   writeStore('usageDaily', usageDaily);
   writeStore(SYNCED_MONTHS_KEY, Array.from(syncedMonths));
+  writeStore(EMPTY_MONTHS_KEY, Array.from(emptyMonths));
   return { monthsFetched, monthsFailed, earliestDate };
 }
 
