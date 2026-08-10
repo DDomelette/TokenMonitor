@@ -451,4 +451,18 @@ module.exports = function setupIPC(deps) {
       deps.sendMainWindowBounds();
     }
   });
+
+  /* ======== 贴边自动隐藏(issue #170):渲染端指针事件驱动展开/收起 ======== */
+
+  ipcMain.on('edge-dock:pointer-enter', (event) => {
+    if (BrowserWindow.fromWebContents(event.sender) !== getMain()) return;
+    var dock = deps.getEdgeDock && deps.getEdgeDock();
+    if (dock) dock.pointerEnter();
+  });
+
+  ipcMain.on('edge-dock:pointer-leave', (event) => {
+    if (BrowserWindow.fromWebContents(event.sender) !== getMain()) return;
+    var dock = deps.getEdgeDock && deps.getEdgeDock();
+    if (dock) dock.pointerLeave();
+  });
 };
