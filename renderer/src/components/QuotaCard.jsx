@@ -1,6 +1,7 @@
 // 订阅制额度卡片:由 windows 数组驱动(不写死两条);subscription 模式不显示任何金额;
-// authStatus==='expired' 时替换为重试入口(凭证由本机 CLI 维护,应用只读无法代授权,
-// 按钮只做立即重试,提示用户先去终端跑一次对应 CLI)。
+// authStatus==='expired' 且无缓存数据时替换为重试入口(凭证由本机 CLI 维护,应用只读
+// 无法代授权,按钮只做立即重试,提示用户先去终端跑一次对应 CLI);
+// 过期但有缓存数据时正常显示额度,顶部加警示条(显示数据时间+重试),下轮成功自动更新。
 // 套餐徽标:prolite→5x Pro / pro→20x Pro / plus→Plus 套餐;未检测到(API 用户)不显示。
 import React from 'react';
 import WindowBar from './WindowBar.jsx';
@@ -21,8 +22,16 @@ function kimiPlanLabel(planName) {
   return p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
 }
 
-export default function QuotaCard({ provider, quotaState, authStatus, onRetry }) {
-  if (authStatus === 'expired') {
+function formatFetchedAt(fetchedAt) {
+  const d = new Date(Number(fetchedAt));
+  if (!Number.isFinite(d.getTime())) return '上次';
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+export default function QuotaCard({ provider, quotaState, authStatus, quotaFetchedAt, onRetry }) {
+  const expired = authStatus === 'expired';
+
+  if (expired && !quotaState) {
     return (
       <div className="quota-card quota-expired">
         <div className="quota-card-head">
@@ -52,6 +61,12 @@ export default function QuotaCard({ provider, quotaState, authStatus, onRetry })
   const kimiPlan = isKimi ? kimiPlanLabel(quotaState.planName) : null;
   return (
     <div className="quota-card">
+      {expired ? (
+        <div className="quota-stale-banner">
+          <span className="quota-stale-text">凭证已过期,显示 {formatFetchedAt(quotaFetchedAt)} 的数据</span>
+          <button className="quota-stale-retry" onClick={onRetry}>重试</button>
+        </div>
+      ) : null}
       <div className="quota-card-head">
         <span className="quota-card-plan">{title}</span>
         {badge ? <span className="quota-card-plan-badge">{badge}</span> : null}

@@ -69,6 +69,7 @@ function WidgetBody({ id, onContentChange }) {
         provider={provider}
         quotaState={provider.quota}
         authStatus={provider.authStatus}
+        quotaFetchedAt={provider.quotaFetchedAt}
         onRetry={() => send('refresh:dashboard')}
       />
     );
