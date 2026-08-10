@@ -125,6 +125,114 @@ test('syncedMonths 标记在但数据已被清理的月份必须重新抓取', a
   assert.equal(r.earliestDate, '2026-06-17');
 });
 
+// 回归(2026-08 真实案例二):7 月 1-12 日被旧 30 天窗口清掉、7 月 13 日起数据还在,
+// "标记+有数据"导致整月可信被跳过,上旬永久显示 0(平台侧其实每天都有用量)。
+// 信任必须再加一条:该月的覆盖范围(同步时的窗口起点)不晚于当前窗口起点;
+// 无覆盖记录的老标记用"现存最早日"兜底推断。
+test('部分被清理的月份(标记+部分数据)在窗口调大后必须重抓补洞', async () => {
+  const store = makeStore({
+    'data.historyDays': 365,
+    'providers.deepseek.syncedMonths': ['2026-08', '2026-07'],
+    usageDaily: {
+      'deepseek:2026-08-01': { input: 0, cached: 0, output: 0, total: 10 },
+      'deepseek:2026-07-13': { input: 0, cached: 0, output: 0, total: 20 }
+    }
+  });
+  const calls = [];
+  const fetchMonth = async (year, month) => {
+    calls.push(year + '-' + month);
+    if (year === 2026 && month === 7) {
+      return [
+        { date: '2026-07-01', total: 30, cacheHit: 0, models: [] },
+        { date: '2026-07-13', total: 21, cacheHit: 0, models: [] }
+      ];
+    }
+    return [];
+  };
+  await syncDeepSeekHistory({
+    fetchMonth, readStore: store.get, writeStore: store.set,
+    now: '2026-08-10T12:00:00', sleep: noopSleep
+  });
+  // 窗口起点 2025-08-11;2026-07 现存最早日 07-13 晚于起点 => 覆盖不足 => 重抓
+  assert.ok(calls.includes('2026-7'), '7 月覆盖不足必须重抓,calls: ' + calls.join(','));
+  assert.ok(!calls.includes('2026-8'), '8 月数据从 08-01 起完整,不应重抓,calls: ' + calls.join(','));
+  assert.equal(store.data.usageDaily['deepseek:2026-07-01'].total, 30, '上旬空洞必须补上');
+  assert.equal(store.data.usageDaily['deepseek:2026-07-13'].total, 21, '同名键以 API 覆盖');
+  // 重抓后记录覆盖范围为当前窗口起点
+  const coverage = store.data['providers.deepseek.syncedCoverage'];
+  assert.equal(coverage['2026-07'], '2025-08-11');
+});
+
+// 覆盖范围不晚于当前窗口起点的月份直接跳过( syncedCoverage 显式记录 )
+test('syncedCoverage 覆盖充足的月份直接跳过', async () => {
+  const store = makeStore({
+    'data.historyDays': 365,
+    'providers.deepseek.syncedMonths': ['2026-08', '2026-07'],
+    'providers.deepseek.syncedCoverage': { '2026-08': 'FULL', '2026-07': '2025-08-11' },
+    usageDaily: {
+      'deepseek:2026-08-01': { input: 0, cached: 0, output: 0, total: 10 },
+      'deepseek:2026-07-13': { input: 0, cached: 0, output: 0, total: 20 }
+    }
+  });
+  const calls = [];
+  const fetchMonth = async (year, month) => {
+    calls.push(year + '-' + month);
+    return [];
+  };
+  await syncDeepSeekHistory({
+    fetchMonth, readStore: store.get, writeStore: store.set,
+    now: '2026-08-10T12:00:00', sleep: noopSleep
+  });
+  assert.ok(!calls.includes('2026-8'), 'FULL 覆盖的 8 月不应重抓,calls: ' + calls.join(','));
+  assert.ok(!calls.includes('2026-7'), '覆盖到 2025-08-11 的 7 月不应重抓,calls: ' + calls.join(','));
+});
+
+// 空月也有覆盖语义:旧窗口下抓为空并记录的月份,窗口调大后可能其实有数据,必须重抓
+test('空月覆盖不足(窗口调大)时重抓并可翻转为数据月', async () => {
+  const store = makeStore({
+    'data.historyDays': 365,
+    'providers.deepseek.syncedEmptyMonths': ['2026-07'],
+    'providers.deepseek.syncedCoverage': { '2026-07': '2026-07-09' },
+    usageDaily: { 'deepseek:2026-08-01': { input: 0, cached: 0, output: 0, total: 10 } },
+    'providers.deepseek.syncedMonths': ['2026-08']
+  });
+  const calls = [];
+  const fetchMonth = async (year, month) => {
+    calls.push(year + '-' + month);
+    if (year === 2026 && month === 7) return [{ date: '2026-07-05', total: 8, cacheHit: 0, models: [] }];
+    return [];
+  };
+  await syncDeepSeekHistory({
+    fetchMonth, readStore: store.get, writeStore: store.set,
+    now: '2026-08-10T12:00:00', sleep: noopSleep
+  });
+  assert.ok(calls.includes('2026-7'), '空月覆盖只到 07-09,窗口起点 2025-08-11,必须重抓,calls: ' + calls.join(','));
+  assert.equal(store.data.usageDaily['deepseek:2026-07-05'].total, 8);
+  assert.ok(store.data['providers.deepseek.syncedMonths'].includes('2026-07'), '翻转回数据月');
+  assert.ok(!store.data['providers.deepseek.syncedEmptyMonths'].includes('2026-07'));
+});
+
+// 空月覆盖充足(显式记录不晚于当前窗口起点)时直接跳过
+test('syncedCoverage 覆盖充足的空月直接跳过', async () => {
+  const store = makeStore({
+    'data.historyDays': 365,
+    'providers.deepseek.syncedEmptyMonths': ['2026-07'],
+    'providers.deepseek.syncedCoverage': { '2026-07': '2025-08-11' },
+    usageDaily: { 'deepseek:2026-08-01': { input: 0, cached: 0, output: 0, total: 10 } },
+    'providers.deepseek.syncedMonths': ['2026-08']
+  });
+  const calls = [];
+  const fetchMonth = async (year, month) => {
+    calls.push(year + '-' + month);
+    return [];
+  };
+  await syncDeepSeekHistory({
+    fetchMonth, readStore: store.get, writeStore: store.set,
+    now: '2026-08-10T12:00:00', sleep: noopSleep
+  });
+  assert.ok(!calls.includes('2026-7'), '覆盖充足的空月不应重抓,calls: ' + calls.join(','));
+});
+
 // 空月单独记录:真正抓过且为空的月份下次直接跳过(与"数据被清"区分开)
 test('syncedEmptyMonths 中的空月直接跳过不重复请求', async () => {
   const store = makeStore({
