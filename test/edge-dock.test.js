@@ -9,7 +9,7 @@ const {
   collapsedBounds,
   clampToWorkArea,
   pickWorkArea,
-  easeInOut,
+  easeDamped,
   lerpBounds,
   createEdgeDock
 } = require('../src/main/core/edge-dock');
@@ -23,18 +23,21 @@ test('nearestEdge picks the closest workArea edge within threshold', () => {
   assert.equal(nearestEdge({ x: 5, y: 200, ...WIN }, WA, 12), 'left');
   assert.equal(nearestEdge({ x: 1920 - 420 - 8, y: 200, ...WIN }, WA, 12), 'right');
   assert.equal(nearestEdge({ x: 400, y: 3, ...WIN }, WA, 12), 'top');
-  assert.equal(nearestEdge({ x: 400, y: 1040 - 680 - 10, ...WIN }, WA, 12), 'bottom');
+  // 下边缘不接:贴底也不停靠(任务栏侧吸附实测难以拖离)
+  assert.equal(nearestEdge({ x: 400, y: 1040 - 680 - 2, ...WIN }, WA, 12), null);
   assert.equal(nearestEdge({ x: 500, y: 300, ...WIN }, WA, 12), null);
 });
 
 test('corner window docks to a single nearest edge (stable tie-break)', () => {
-  // 右下角:右距 2,下距 2 → 平局按稳定优先级取 left/right 先于 top/bottom
+  // 右下角:右距 2,下距 2 → bottom 不是候选,取右边
   const corner = { x: 1920 - 420 - 2, y: 1040 - 680 - 2, ...WIN };
   assert.equal(nearestEdge(corner, WA, 12), 'right');
-  // 右距 2,下距 9 → 最近的右边
+  // 右距 2,下距 9 → 最近的候选边是右边
   assert.equal(nearestEdge({ x: 1920 - 422, y: 1040 - 689, ...WIN }, WA, 12), 'right');
-  // 右距 9,下距 2 → 最近的下边
-  assert.equal(nearestEdge({ x: 1920 - 429, y: 1040 - 682, ...WIN }, WA, 12), 'bottom');
+  // 右距 9,下距 2 → bottom 不是候选,右距 9 ≤ 阈值仍取右边
+  assert.equal(nearestEdge({ x: 1920 - 429, y: 1040 - 682, ...WIN }, WA, 12), 'right');
+  // 只贴底(其余边都超阈值)→ 不停靠
+  assert.equal(nearestEdge({ x: 500, y: 1040 - 682, ...WIN }, WA, 12), null);
 });
 
 test('collapsedBounds keeps only the reveal strip inside the workArea', () => {
@@ -96,9 +99,12 @@ test('clampToWorkArea rescues bounds that fell off a removed display', () => {
   assert.ok(clamped.x >= WA.x && clamped.y >= WA.y);
 });
 
-test('easeInOut endpoints and lerpBounds rounding', () => {
-  assert.equal(easeInOut(0), 0);
-  assert.equal(easeInOut(1), 1);
+test('easeDamped endpoints, damping shape and lerpBounds rounding', () => {
+  assert.equal(easeDamped(0), 0);
+  assert.equal(easeDamped(1), 1);
+  // 阻尼感:起步快(easeOutQuint 前 20% 走完约 67%),末端减速落定
+  assert.ok(easeDamped(0.2) > 0.6);
+  assert.ok(easeDamped(0.8) < 1 && easeDamped(0.8) > 0.9);
   const mid = lerpBounds({ x: 0, y: 0, width: 100, height: 100 }, { x: 100, y: 50, width: 100, height: 100 }, 0.5);
   assert.deepEqual(mid, { x: 50, y: 25, width: 100, height: 100 });
 });
@@ -242,6 +248,54 @@ test('user drag away from the edge undocks and clears persisted dock', () => {
   assert.equal(h.dock.getState(), 'undocked');
 });
 
+test('userMoveStarted immediately undocks so the window is never yanked mid-drag', () => {
+  const h = makeHarness();
+  h.dock.userMoveSettled({ x: 4, y: 200, ...WIN }, [{ id: 1, workArea: WA }]);
+  assert.equal(h.dock.getState(), 'expanded-docked');
+  // 用户抓住已停靠窗口拖动:第一个非回声 move 就解除停靠
+  h.dock.userMoveStarted();
+  assert.equal(h.dock.getState(), 'undocked');
+  assert.equal(h.persisted.at(-1), null);
+  // 之后即使停在原边缘附近,也要等 userMoveSettled 才重新停靠
+  h.advance(2000);
+  assert.equal(h.dock.getState(), 'undocked');
+});
+
+test('userMoveStarted cancels a running collapse animation mid-frame (no flicker)', () => {
+  const h = makeHarness();
+  h.dock.userMoveSettled({ x: 4, y: 200, ...WIN }, [{ id: 1, workArea: WA }]);
+  h.dock.pointerLeave();
+  h.advance(500 + 100); // 收起动画进行中
+  assert.equal(h.dock.getState(), 'collapsing');
+  const framesBefore = h.applied.length;
+  h.dock.userMoveStarted(); // 用户在动画途中抓住窗口
+  assert.equal(h.dock.getState(), 'undocked');
+  assert.equal(h.dock.isProgrammatic(), false);
+  h.advance(1000); // 动画已取消,不再产生新帧
+  assert.equal(h.applied.length, framesBefore);
+});
+
+test('userMoveStarted frees a collapsed window grabbed by its reveal strip', () => {
+  const h = makeHarness();
+  h.dock.userMoveSettled({ x: 4, y: 200, ...WIN }, [{ id: 1, workArea: WA }]);
+  h.dock.pointerLeave();
+  h.advance(500 + 300);
+  assert.equal(h.dock.getState(), 'collapsed');
+  h.dock.userMoveStarted();
+  assert.equal(h.dock.getState(), 'undocked');
+  assert.equal(h.persisted.at(-1), null);
+});
+
+test('restoreDock rejects edges that are no longer dockable (legacy bottom meta)', () => {
+  const h = makeHarness();
+  const ok = h.dock.restoreDock(
+    { edge: 'bottom', expandedBounds: { x: 300, y: 1040 - 680, ...WIN } },
+    [{ id: 1, workArea: WA }]
+  );
+  assert.equal(ok, false);
+  assert.equal(h.dock.getState(), 'undocked');
+});
+
 test('reveal fully expands a collapsed window (tray / second-instance)', () => {
   const h = makeHarness();
   h.dock.userMoveSettled({ x: 4, y: 200, ...WIN }, [{ id: 1, workArea: WA }]);
@@ -331,9 +385,10 @@ test('main process wires edge dock: runtime, move handler, persistence guard, wa
   const index = readSrc('src/main/index.js');
   assert.match(index, /require\('\.\/core\/edge-dock'\)/);
   assert.match(index, /createEdgeDock\(/);
-  // move 回声识别 + 拖拽停止后评估停靠
+  // move 回声识别 + 拖拽停止后评估停靠 + 拖动开始立即解除停靠
   assert.match(index, /edgeDock\.matchesCurrent/);
   assert.match(index, /edgeDock\.userMoveSettled/);
+  assert.match(index, /edgeDock\.userMoveStarted\(\)/);
   // 动画帧不广播、不落盘
   assert.match(index, /edgeDock\.isProgrammatic\(\)/);
   // 停靠中持久化展开可见 bounds

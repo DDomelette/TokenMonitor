@@ -189,6 +189,8 @@ function createMainWindow() {
     if (resizeState.main) return;
     // 贴边状态机程序性 setBounds 的回声:不广播、不落盘、不重新评估停靠
     if (edgeDock && edgeDock.matchesCurrent(mainWindow.getBounds())) return;
+    // 非回声 move = 用户在拖动:立即解除停靠/打断动画,窗口才不会被吸附拽住
+    if (edgeDock && store.get('window.edgeAutoHide')) edgeDock.userMoveStarted();
     sendMainWindowBounds();
     clearTimeout(moveDebounce);
     moveDebounce = setTimeout(function () {
