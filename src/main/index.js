@@ -187,9 +187,14 @@ function createMainWindow() {
 
   mainWindow.on('move', function () {
     if (resizeState.main) return;
-    // 贴边状态机程序性 setBounds 的回声:不广播、不落盘、不重新评估停靠
+    // 动画进行中的 move 事件一律忽略:用户要抓窗口,鼠标必先进入窗口触发
+    // pointerEnter(动画会自动反向展开),所以动画期间不存在真实的用户拖动;
+    // 滞后的帧事件坐标可能落后好几帧,靠坐标猜回声会误判成拖动、打断动画,
+    // 然后 debounce 又在边缘位置重新吸附——窗口来回抖动
+    if (edgeDock && edgeDock.isProgrammatic()) return;
+    // 非动画的程序性 setBounds(吸附落定/恢复)的回声:不广播、不落盘、不重新评估停靠
     if (edgeDock && edgeDock.matchesCurrent(mainWindow.getBounds())) return;
-    // 非回声 move = 用户在拖动:立即解除停靠/打断动画,窗口才不会被吸附拽住
+    // 非回声 move = 用户在拖动:立即解除停靠,窗口才不会被吸附拽住
     if (edgeDock && store.get('window.edgeAutoHide')) edgeDock.userMoveStarted();
     sendMainWindowBounds();
     clearTimeout(moveDebounce);
