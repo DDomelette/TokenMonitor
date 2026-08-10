@@ -368,6 +368,41 @@ test('collapse eases in slowly (no flash), expand starts fast with damping', () 
   assert.ok(expandTravel > 0.5, `expand early travel ${expandTravel} should be > 50%`);
 });
 
+test('collapse is vetoed while the real cursor is inside the window (boundary self-oscillation guard)', () => {
+  const timers = new Map();
+  let nextId = 1;
+  let nowMs = 1000;
+  let cursor = { x: 6, y: 400 }; // 光标停在触发条/窗口区域内
+  const dock = createEdgeDock({
+    now: () => nowMs,
+    setTimeout: (fn, ms) => { const id = nextId++; timers.set(id, { fn, at: nowMs + ms }); return id; },
+    clearTimeout: (id) => { timers.delete(id); },
+    getCursorPoint: () => cursor,
+    onApplyBounds: () => {},
+    onPersistDock: () => {}
+  });
+  const advance = (ms) => {
+    const end = nowMs + ms;
+    for (;;) {
+      let fired = false;
+      for (const [id, t] of [...timers.entries()]) {
+        if (t.at <= end && timers.has(id)) { timers.delete(id); nowMs = Math.max(nowMs, t.at); t.fn(); fired = true; }
+      }
+      if (!fired) break;
+    }
+    nowMs = end;
+  };
+  // 模拟边界事件丢失:用户拖走后 mouseleave 到了,但光标实际停在窗口边缘区域内
+  dock.userMoveSettled({ x: 4, y: 200, ...WIN }, [{ id: 1, workArea: WA }]);
+  dock.pointerLeave();
+  advance(500 + 5000); // delay 触发,但光标在窗口内 → 否决并重新等待,永不收起
+  assert.equal(dock.getState(), 'expanded-docked');
+  // 光标真正移开后,下一轮 delay 正常收起
+  cursor = { x: 900, y: 400 };
+  advance(500 + 300);
+  assert.equal(dock.getState(), 'collapsed');
+});
+
 test('reveal fully expands a collapsed window (tray / second-instance)', () => {
   const h = makeHarness();
   h.dock.userMoveSettled({ x: 4, y: 200, ...WIN }, [{ id: 1, workArea: WA }]);
@@ -466,6 +501,8 @@ test('main process wires edge dock: runtime, move handler, persistence guard, wa
   assert.match(index, /edgeDock\.isProgrammatic\(\)/);
   assert.match(index, /EDGE_DOCK_MOVE_QUIET_MS/);
   assert.match(index, /lastEdgeDockApplyAt/);
+  // 收起前查询真实光标位置做最终裁决(边界自激振荡/窗口抽搐的防护)
+  assert.match(index, /getCursorPoint/);
   // 动画帧不广播、不落盘
   assert.match(index, /edgeDock\.isProgrammatic\(\)/);
   // 停靠中持久化展开可见 bounds
