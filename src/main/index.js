@@ -27,6 +27,7 @@ const {
   getTraySessionLabel,
   restoreSession
 } = require('./core/session-state');
+const { startMCP } = require('./mcp');
 
 let mainWindow = null;
 let loginWindow = null;
@@ -35,6 +36,7 @@ let settingsWindow = null;
 let tray = null;
 let scheduler = null;
 let tokenSpeedRuntime = null;
+let mcpRuntime = null;
 let moveDebounce = null;
 // 贴边自动隐藏状态机(issue #170),随主窗口创建
 let edgeDock = null;
@@ -536,6 +538,11 @@ function applySetting(key, value) {
       if (tokenSpeedRuntime) tokenSpeedRuntime.rebaselineAll();
       return;
   }
+  if (key === 'mcp.enabled') {
+    if (store.get('mcp.enabled') !== false) mcpRuntime.start();
+    else mcpRuntime.stop();
+    return;
+  }
   if (!mainWindow) return;
   switch (key) {
     // window.opacity 不再应用:setOpacity 的分层窗口机制会导致缩放露黑边,
@@ -688,6 +695,9 @@ app.whenReady().then(() => {
   registry.register(kimiProvider);
   startSchedulerRuntime();
 
+  mcpRuntime = startMCP({ store, scheduler, logger: console });
+  mcpRuntime.start();
+
   setupIPC({
     store,
     registry,
@@ -749,6 +759,7 @@ app.on('before-quit', () => {
   if (tokenSpeedRuntime) tokenSpeedRuntime.stop();
   if (scheduler) scheduler.stop();
   if (tray) { tray.destroy(); tray = null; }
+  if (mcpRuntime) { mcpRuntime.stop(); mcpRuntime = null; }
 });
 
 app.on('activate', () => {

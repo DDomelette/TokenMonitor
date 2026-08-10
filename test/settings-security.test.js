@@ -52,3 +52,14 @@ test('settings:update handler rejects non-whitelisted keys', () => {
   assert.ok(handler);
   assert.match(handler[0], /isWritableSettingKey/);
 });
+
+test('mcp.enabled is writable but mcp.token stays a protected credential', () => {
+  assert.equal(isWritableSettingKey('mcp.enabled'), true);
+  assert.equal(isWritableSettingKey('mcp.token'), false);
+});
+
+test('sanitizeSettings strips mcp.token from renderer-bound copies', () => {
+  const out = sanitizeSettings({ mcp: { enabled: true, token: 'secret-token' } });
+  assert.equal(out.mcp.enabled, true);
+  assert.equal(out.mcp.token, undefined);
+});
