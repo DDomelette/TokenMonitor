@@ -24,8 +24,12 @@ function readCred(credPath) {
   }
 }
 
+// 只有真正过期的 token 才判 expired。
+// 只读模式下我们不自己刷新,由 CLI 刷新回写;若按旧的 5 分钟提前量预判,
+// token 剩余<5min 且 CLI 尚未回写的空窗期会被误报"已过期"(API 实际仍可用),
+// CLI 刷新后又自动恢复——表现为间歇性过期提示。真过期由 401 路径兜底判 expired。
 function isExpired(cred) {
-  return cred && cred.expiresAt ? cred.expiresAt - Date.now() < 5 * 60 * 1000 : false;
+  return cred && cred.expiresAt ? cred.expiresAt <= Date.now() : false;
 }
 
 module.exports = { readCred, isExpired, DEFAULT_CRED_PATH };

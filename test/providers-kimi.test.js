@@ -57,8 +57,11 @@ test('readCred returns null for missing file', () => {
   assert.equal(readCred(path.join(os.tmpdir(), 'no-such-cred-' + Date.now() + '.json')), null);
 });
 
-test('isExpired flags near-expiry credentials', () => {
-  assert.equal(isExpired({ expiresAt: Date.now() + 60 * 1000 }), true);
+test('isExpired only flags actually-past expiry (read-only cred: no proactive margin)', () => {
+  // 只读模式下由 CLI 刷新回写;剩余<5min 但未过期的 token 仍可用,不能误报过期,
+  // 否则 CLI 刷新空窗期会出现间歇性"已过期"提示
+  assert.equal(isExpired({ expiresAt: Date.now() + 60 * 1000 }), false);
+  assert.equal(isExpired({ expiresAt: Date.now() - 1000 }), true);
   assert.equal(isExpired({ expiresAt: Date.now() + 10 * 60 * 1000 }), false);
   assert.equal(isExpired({ expiresAt: null }), false);
 });
