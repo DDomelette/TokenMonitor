@@ -5,11 +5,12 @@
 const EDGE_SNAP_THRESHOLD = 12;
 const REVEAL_STRIP_SIZE = 12;
 const COLLAPSE_DELAY = 500;
-const EXPAND_DURATION = 220;
-const COLLAPSE_DURATION = 260;
+const EXPAND_DURATION = 160;
+const COLLAPSE_DURATION = 180;
 const FRAME_MS = 16;
-// 角落平局时的稳定优先级:先左右后上下
-const EDGE_PRIORITY = ['left', 'right', 'top', 'bottom'];
+// 可停靠边:只吸附左右和上。下边缘吸附实测体验差(任务栏侧难以拖离),不接。
+// 角落平局时的稳定优先级:先左右后上
+const EDGE_PRIORITY = ['left', 'right', 'top'];
 
 function edgeDistances(bounds, wa) {
   return {
@@ -91,8 +92,9 @@ function pickWorkArea(bounds, displays) {
   return best;
 }
 
-function easeInOut(t) {
-  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+// 阻尼感缓动:起步快、末端急减速落定(easeOutQuint),收起/展开同一手感
+function easeDamped(t) {
+  return 1 - Math.pow(1 - t, 5);
 }
 
 function lerpBounds(from, to, t) {
@@ -150,6 +152,12 @@ function createEdgeDock(options) {
     }
   }
 
+  // 取整并归一化 -0(Math.round 可能产出 -0,与 0 的深比较不相等)
+  function round0(v) {
+    const r = Math.round(v);
+    return r === 0 ? 0 : r;
+  }
+
   function sameBounds(a, b) {
     return !!a && !!b
       && Math.round(a.x) === b.x && Math.round(a.y) === b.y
@@ -158,10 +166,10 @@ function createEdgeDock(options) {
 
   function apply(bounds) {
     const next = {
-      x: Math.round(bounds.x),
-      y: Math.round(bounds.y),
-      width: Math.round(bounds.width),
-      height: Math.round(bounds.height)
+      x: round0(bounds.x),
+      y: round0(bounds.y),
+      width: round0(bounds.width),
+      height: round0(bounds.height)
     };
     // 与当前坐标一致则不下发:setBounds 会再触发 move 事件,避免回声循环
     if (sameBounds(next, currentBounds)) return;
@@ -184,7 +192,7 @@ function createEdgeDock(options) {
         setState(stateAfter);
         return;
       }
-      apply(lerpBounds(from, target, easeInOut(t)));
+      apply(lerpBounds(from, target, easeDamped(t)));
       anim.timer = setTimeoutImpl(tick, frameMs);
     };
     anim.timer = setTimeoutImpl(tick, frameMs);
@@ -203,6 +211,19 @@ function createEdgeDock(options) {
   }
 
   return {
+    // 用户开始拖动(非回声 move 事件):立即取消停靠与进行中的动画。
+    // 拖动用 -webkit-app-region:drag,主进程拿不到 drag-end;若等 debounce 再处理,
+    // 收起态窗口会在拖动中途被重新吸附/收起,从鼠标下抽走(吸住拖不走/闪烁的根因)
+    userMoveStarted() {
+      if (state === 'undocked') return;
+      cancelCollapseTimer();
+      cancelAnimation();
+      onPersistDock(null);
+      edge = null;
+      expandedBounds = null;
+      setState('undocked');
+    },
+
     // 用户拖动停止(debounce 后):贴边则停靠,离边则取消停靠
     userMoveSettled(bounds, displays) {
       cancelCollapseTimer();
@@ -282,6 +303,8 @@ function createEdgeDock(options) {
     // 重启恢复逻辑停靠:重新匹配当前显示器,落不进现存 workArea 的先修正
     restoreDock(meta, displays) {
       if (!meta || !meta.edge || !meta.expandedBounds) return false;
+      // 旧版本可能持久化了已不接的边(如 bottom),按不支持处理
+      if (EDGE_PRIORITY.indexOf(meta.edge) === -1) return false;
       const wa = pickWorkArea(meta.expandedBounds, displays);
       if (!wa) return false;
       edge = meta.edge;
@@ -315,7 +338,7 @@ module.exports = {
   clampToWorkArea,
   intersectionArea,
   pickWorkArea,
-  easeInOut,
+  easeDamped,
   lerpBounds,
   createEdgeDock
 };
