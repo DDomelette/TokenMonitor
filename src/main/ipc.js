@@ -207,6 +207,20 @@ module.exports = function setupIPC(deps) {
     return summary;
   });
 
+  /* ======== MCP 服务 ======== */
+
+  ipcMain.handle('mcp:getConnectionInfo', () => {
+    const rt = typeof deps.getMcpRuntime === 'function' ? deps.getMcpRuntime() : null;
+    return rt ? rt.getConnectionInfo() : { enabled: false, running: false, port: null, url: null, token: null };
+  });
+
+  ipcMain.handle('mcp:rotateToken', async () => {
+    const rt = typeof deps.getMcpRuntime === 'function' ? deps.getMcpRuntime() : null;
+    if (!rt) throw new Error('MCP 服务未初始化');
+    await rt.rotateToken();
+    return rt.getConnectionInfo();
+  });
+
   /* ======== Settings ======== */
 
   ipcMain.on('settings:update', (event, { key: rawKey, value }) => {

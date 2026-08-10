@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeTheme, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeTheme, screen, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const store = require('./store');
@@ -370,6 +370,14 @@ function updateTrayMenu() {
     },
     { type: 'separator' },
     {
+      label: '复制 MCP 连接信息',
+      enabled: !!(mcpRuntime && mcpRuntime.isRunning()),
+      click: () => {
+        const info = mcpRuntime.getConnectionInfo();
+        clipboard.writeText(info.url + '\nAuthorization: Bearer ' + info.token);
+      }
+    },
+    {
       label: '设置',
       click: () => {
         if (mainWindow) {
@@ -705,6 +713,7 @@ app.whenReady().then(() => {
     tokenSpeedRuntime,
     runtime,
     resizeState,
+    getMcpRuntime: () => mcpRuntime,
     getMainWindow: () => mainWindow,
     getSettingsWindow: () => settingsWindow,
     getLoginWindow: () => loginWindow,
