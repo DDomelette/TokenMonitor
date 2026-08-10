@@ -122,6 +122,10 @@ function createEdgeDockRuntime() {
     },
     onPersistDock: function (meta) {
       store.set('window.edgeDock', meta);
+    },
+    // 收起前的最终裁决依据:光标真实位置(enter/leave 事件在边界会丢失/乱序)
+    getCursorPoint: function () {
+      try { return screen.getCursorScreenPoint(); } catch (_) { return null; }
     }
   });
   // 重启恢复逻辑停靠:重新匹配当前显示器,落不进现存 workArea 的由状态机修正

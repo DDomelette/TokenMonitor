@@ -112,6 +112,12 @@ function lerpBounds(from, to, t) {
   };
 }
 
+function pointInRect(p, r) {
+  return !!p && !!r
+    && p.x >= r.x && p.x < r.x + r.width
+    && p.y >= r.y && p.y < r.y + r.height;
+}
+
 // 状态机:undocked / expanded-docked / collapsing / collapsed / expanding。
 // 任何动画状态都可被反向事件打断(从当前坐标反向,不排队、不跳变)。
 function createEdgeDock(options) {
@@ -128,6 +134,9 @@ function createEdgeDock(options) {
   const onApplyBounds = opts.onApplyBounds || (() => {});
   const onPersistDock = opts.onPersistDock || (() => {});
   const onStateChange = opts.onStateChange || (() => {});
+  // 可选:查询真实光标屏幕坐标(主进程注入 screen.getCursorScreenPoint),
+  // 收起前做最终裁决,见 scheduleCollapse
+  const getCursorPoint = opts.getCursorPoint || null;
 
   let state = 'undocked';
   let suspended = false;
@@ -220,6 +229,14 @@ function createEdgeDock(options) {
       collapseTimer = null;
       if (suspended || pointerInside) return;
       if (state !== 'expanded-docked' && state !== 'expanding') return;
+      // 最终裁决:光标实际还在窗口区域内就不收起,重新等待。
+      // 边界场景下 enter/leave 事件会丢失/乱序(窗口在光标下滑动时系统
+      // 合成事件不可靠),纯事件驱动会形成"收起→触发条滑到光标下→
+      // mouseenter→展开→mouseleave→再收起"的自激振荡(窗口抽搐)
+      if (getCursorPoint && pointInRect(getCursorPoint(), expandedBounds)) {
+        scheduleCollapse();
+        return;
+      }
       setState('collapsing');
       startAnimation(collapsedBounds(expandedBounds, edge, strip), collapseDuration, 'collapsed', easeAccelerate);
     }, collapseDelay);
@@ -354,6 +371,7 @@ module.exports = {
   clampToWorkArea,
   intersectionArea,
   pickWorkArea,
+  pointInRect,
   easeDamped,
   easeAccelerate,
   lerpBounds,
