@@ -28,7 +28,8 @@ function startScheduler({
   const enabled = intervals === false ? false : Object.assign({}, DEFAULT_INTERVALS, intervals || {});
   const timers = [];
   const states = Object.create(null);
-  const inflight = new Set();
+  // 按 provider:channel key 跟踪进行中/排队中的任务,实现同 key 串行与合并
+  const inflight = new Map();
 
   function getProxyUrl() {
     if (typeof getProxyInput === 'function') return getProxyInput();
@@ -193,15 +194,36 @@ function startScheduler({
     return true;
   }
 
-  async function runOnce(providerId, channel, fn) {
+  // 排他执行:同一 provider:channel key 下串行。无前序任务时同步启动 fn,
+  // 有前序任务时在前序完成后启动;吞掉前序任务自身的拒绝以保证队列连续性,
+  // 当前任务的拒绝仍会传播给 await 方。
+  function runExclusive(providerId, channel, fn) {
     const key = providerId + ':' + channel;
-    if (inflight.has(key)) return;
-    inflight.add(key);
-    try {
-      await fn();
-    } finally {
-      inflight.delete(key);
+    const prior = inflight.get(key);
+    let task;
+    if (!prior) {
+      try {
+        task = Promise.resolve(fn());
+      } catch (error) {
+        task = Promise.reject(error);
+      }
+    } else {
+      task = Promise.resolve(prior).catch(() => {}).then(fn);
     }
+    inflight.set(key, task);
+    const cleanup = () => {
+      if (inflight.get(key) === task) inflight.delete(key);
+    };
+    task.then(cleanup, cleanup);
+    return task;
+  }
+
+  // 合并执行:同 key 已有排队/运行中的任务时直接返回它,不重复调用 fn。
+  function runOnce(providerId, channel, fn) {
+    const key = providerId + ':' + channel;
+    const existing = inflight.get(key);
+    if (existing) return existing;
+    return runExclusive(providerId, channel, fn);
   }
 
   async function pollBalance(provider) {
@@ -357,7 +379,7 @@ function startScheduler({
 
   start();
 
-  return { stop, getState, getSnapshot, poll, pollAll };
+  return { stop, getState, getSnapshot, poll, pollAll, runExclusive };
 }
 
 module.exports = { startScheduler, DEFAULT_INTERVALS, isAuthError };

@@ -184,13 +184,18 @@ module.exports = function setupIPC(deps) {
         summary[pid] = { daysRebuilt: 0, earliestDate: null, skipped: true };
         continue;
       }
-      summary[pid] = await rescanLocalLogs({
+      // 整个重扫放在调度器的 provider:localLog 排他 key 下执行,与后台定时轮询串行,
+      // 避免两个读者并发扫描同一日志导致重复累加;兼容无 runExclusive 的 IPC 测试环境。
+      const runRescan = () => rescanLocalLogs({
         providerId: pid,
         readLocalLog: () => provider.readLocalLog({ store: deps.store }, { retainAll: true }),
         readStore,
         writeStore,
         onProgress: sendProgress
       });
+      summary[pid] = typeof deps.scheduler.runExclusive === 'function'
+        ? await deps.scheduler.runExclusive(pid, 'localLog', runRescan)
+        : await runRescan();
     }
 
     // 历史保留提示:最早日期落在保留窗口外时给出建议天数(只提示不擅改)
