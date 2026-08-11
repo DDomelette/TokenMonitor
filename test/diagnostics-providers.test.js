@@ -141,17 +141,55 @@ test('provider checks read raw snapshots without Store mutations, refreshes, ada
   }
 });
 
-test('malformed dependencies and rejected quota requests become safe check results', async () => {
-  const checks = createProviderChecks({
-    store: null,
-    httpGet: () => Promise.reject(Object.assign(new Error('private token'), { code: 'EFAIL' }))
-  });
-  assert.equal(checks.length, 10);
-  const results = await Promise.all(checks.map(async (check) => {
-    try { return await check.run(); } catch (error) { return { thrown: error }; }
-  }));
-  assert.equal(results.some((result) => result.thrown), false);
-  assert.doesNotMatch(JSON.stringify(results), /private token|token|auth\.json|kimi-code/);
+test('isolated provider fixtures normalize rejected quota errors without exposing private paths or error text', async () => {
+  const root = tempDir();
+  const nowMs = 2_000_000_000_000;
+  const rejectedQuotaSentinel = 'rejected-quota-private-sentinel-39c9d1';
+  const codexAuthPath = path.join(root, 'codex-sensitive-credentials.json');
+  const kimiCredPath = path.join(root, 'kimi-sensitive-credentials.json');
+  const codexSessionsRoot = path.join(root, 'codex-sensitive-sessions');
+  const kimiSessionsRoot = path.join(root, 'kimi-sensitive-sessions');
+  try {
+    fs.mkdirSync(path.join(codexSessionsRoot, 'run'), { recursive: true });
+    fs.mkdirSync(path.join(kimiSessionsRoot, 'run'), { recursive: true });
+    fs.writeFileSync(codexAuthPath, JSON.stringify({
+      tokens: { access_token: 'codex-fixture-access', refresh_token: 'codex-fixture-refresh', account_id: 'codex-fixture-account' }
+    }));
+    fs.writeFileSync(kimiCredPath, JSON.stringify({
+      access_token: 'kimi-fixture-access', refresh_token: 'kimi-fixture-refresh', expires_at: nowMs / 1000 + 3600
+    }));
+    fs.writeFileSync(path.join(codexSessionsRoot, 'run', 'rollout-fixture.jsonl'), '{"type":"event_msg"}\n');
+    fs.writeFileSync(path.join(kimiSessionsRoot, 'run', 'wire-fixture.jsonl'), '{"type":"usage.record"}\n');
+
+    const checks = createProviderChecks({
+      fs,
+      store: { get() { return undefined; } },
+      now: () => nowMs,
+      tokenExpiryMs: () => nowMs + 3600_000,
+      codexAuthPath,
+      codexSessionsRoot,
+      kimiCredPath,
+      kimiSessionsRoot,
+      httpGet: async () => { throw Object.assign(new Error(rejectedQuotaSentinel), { code: 'EFAIL' }); }
+    });
+    assert.equal(checks.length, 10);
+    const results = await Promise.all(checks.map(async (check) => {
+      try { return { id: check.id, result: await check.run() }; } catch (error) { return { id: check.id, thrown: error }; }
+    }));
+    assert.equal(results.some((entry) => entry.thrown), false);
+    assert.deepEqual(
+      results.filter((entry) => entry.result.errorCode === 'QUOTA_REQUEST_FAILED').map((entry) => entry.id),
+      ['codex.quota', 'kimi.quota']
+    );
+    const safe = JSON.stringify(results);
+    assert.equal(safe.includes(rejectedQuotaSentinel), false);
+    for (const sensitivePath of [codexAuthPath, kimiCredPath, codexSessionsRoot, kimiSessionsRoot]) {
+      assert.equal(safe.includes(sensitivePath), false);
+      assert.equal(safe.includes(path.basename(sensitivePath)), false);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('provider check definitions keep credential and local-log probes local and quota probes remote', () => {
