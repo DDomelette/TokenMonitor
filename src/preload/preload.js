@@ -12,7 +12,8 @@ contextBridge.exposeInMainWorld('api', {
       'session:changed',
       'providers:changed',
       'token-speed:changed',
-      'sync:progress'
+      'sync:progress',
+      'diagnostics:progress'
     ];
     if (validChannels.includes(channel)) {
       const listener = (event, ...args) => callback(...args);
@@ -39,6 +40,8 @@ contextBridge.exposeInMainWorld('api', {
       'resize:start',
       'resize:move',
       'resize:end',
+      'open:diagnostics',
+      'window:close-diagnostics',
       'edge-dock:pointer-enter',
       'edge-dock:pointer-leave'
     ];
@@ -60,6 +63,9 @@ contextBridge.exposeInMainWorld('api', {
       'get:session-state',
       'window:commit',
       'sync:history',
+      'diagnostics:run',
+      'diagnostics:copy-report',
+      'diagnostics:open-guide',
       'detect:proxy-port',
       'mcp:getConnectionInfo',
       'mcp:rotateToken'

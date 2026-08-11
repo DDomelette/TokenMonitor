@@ -13,6 +13,7 @@ const { syncDeepSeekHistory, rescanLocalLogs } = require('./core/history-sync');
 const { UsageFetcher } = require('./providers/deepseek/usage');
 const { httpGet } = require('./core/http');
 const { SYSTEM_PROXY_VALUE, resolveElectronSystemProxy } = require('./core/proxy-settings');
+const { registerDiagnosticsIpc } = require('./core/diagnostics/ipc-registration');
 const { detectProxyPort } = require('./core/proxy-detect');
 
 function deepseekApiKeyCtx(deps, apiKey) {
@@ -30,6 +31,14 @@ function deepseekApiKeyCtx(deps, apiKey) {
 module.exports = function setupIPC(deps) {
   let mainResizeState = null;
   let settingsResizeState = null;
+
+  registerDiagnosticsIpc({
+    ipcMain,
+    diagnostics: deps.diagnostics,
+    getDiagnosticsWindow: deps.getDiagnosticsWindow,
+    createDiagnosticsWindow: deps.createDiagnosticsWindow,
+    getDiagnosticsTheme: deps.getDiagnosticsTheme
+  });
 
   function getMain() {
     return deps.getMainWindow();
@@ -465,7 +474,6 @@ module.exports = function setupIPC(deps) {
       deps.sendMainWindowBounds();
     }
   });
-
   /* ======== 贴边自动隐藏(issue #170):渲染端指针事件驱动展开/收起 ======== */
 
   ipcMain.on('edge-dock:pointer-enter', (event) => {

@@ -70,12 +70,16 @@ function createSilentProxy(t) {
 }
 
 function createStalledTlsProxy(t) {
-  return trackedServer(t, (socket) => {
+  let connectResponses = 0;
+  const tracked = trackedServer(t, (socket) => {
     socket.once('data', () => {
+      connectResponses += 1;
       socket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
       // Ignore the following TLS ClientHello so secureConnect never fires.
     });
   });
+  Object.defineProperty(tracked, 'connectResponses', { get: () => connectResponses });
+  return tracked;
 }
 
 test('TCP connect timeout destroys the socket and rejects exactly once', async (t) => {
@@ -164,6 +168,56 @@ test('TLS handshake after a successful CONNECT has its own timeout', async (t) =
     }
   );
   await waitFor(() => sockets.size === 0);
+});
+
+test('abort during proxy CONNECT destroys the active socket and rejects once', async (t) => {
+  const { server, sockets } = createSilentProxy(t);
+  const port = await listen(server);
+  const abortController = new AbortController();
+  let rejectionCount = 0;
+  const pending = httpGet(
+    'https://example.com/data',
+    {},
+    `http://127.0.0.1:${port}`,
+    Object.assign({}, FAST_TIMEOUTS, { signal: abortController.signal })
+  ).catch((error) => {
+    rejectionCount += 1;
+    throw error;
+  });
+
+  await waitFor(() => sockets.size === 1);
+  abortController.abort();
+  await assert.rejects(
+    withWatchdog(pending),
+    (error) => error && error.code === 'DIAGNOSTIC_ABORTED'
+  );
+  await waitFor(() => sockets.size === 0);
+  assert.equal(rejectionCount, 1);
+});
+
+test('abort during proxy TLS handshake destroys the active socket and rejects once', async (t) => {
+  const proxy = createStalledTlsProxy(t);
+  const port = await listen(proxy.server);
+  const abortController = new AbortController();
+  let rejectionCount = 0;
+  const pending = httpGet(
+    'https://example.com/data',
+    {},
+    `http://127.0.0.1:${port}`,
+    Object.assign({}, FAST_TIMEOUTS, { signal: abortController.signal })
+  ).catch((error) => {
+    rejectionCount += 1;
+    throw error;
+  });
+
+  await waitFor(() => proxy.connectResponses === 1);
+  abortController.abort();
+  await assert.rejects(
+    withWatchdog(pending),
+    (error) => error && error.code === 'DIAGNOSTIC_ABORTED'
+  );
+  await waitFor(() => proxy.sockets.size === 0);
+  assert.equal(rejectionCount, 1);
 });
 
 test('scheduler releases inflight after proxy handshake timeout so the channel can retry', async (t) => {

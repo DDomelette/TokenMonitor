@@ -23,6 +23,12 @@ function stageTimeoutError(code, message) {
   return error;
 }
 
+function abortError() {
+  const error = new Error('Diagnostics request aborted');
+  error.code = 'DIAGNOSTIC_ABORTED';
+  return error;
+}
+
 function safeProxyStatusLine(line) {
   return String(line || '')
     .replace(/[\x00-\x1f\x7f]/g, ' ')
@@ -132,6 +138,9 @@ function assertSupportedProxy(proxy) {
 }
 
 function requestWithProxyInput(method, url, headers, body, proxyInput, timeoutOptions) {
+  if (timeoutOptions && timeoutOptions.signal && timeoutOptions.signal.aborted) {
+    return Promise.reject(abortError());
+  }
   if (typeof proxyInput === 'function') {
     return Promise.resolve()
       .then(() => proxyInput(url))
@@ -221,6 +230,8 @@ function requestCore(method, url, headers, body, proxyUrl, timeoutOptions) {
     let connectResponseTimer = null;
     let tlsHandshakeTimer = null;
     let connectBuffer = Buffer.alloc(0);
+    const signal = timeoutOptions && timeoutOptions.signal;
+    let onAbort = null;
 
     function clearTimer(timer) {
       if (timer) clearTimeout(timer);
@@ -235,16 +246,28 @@ function requestCore(method, url, headers, body, proxyUrl, timeoutOptions) {
       tlsHandshakeTimer = null;
     }
 
+    function removeAbortListener() {
+      if (!signal || !onAbort || typeof signal.removeEventListener !== 'function') return;
+      try {
+        signal.removeEventListener('abort', onAbort);
+      } catch (_) {
+        // Abort listener cleanup cannot expose transport details.
+      }
+      onAbort = null;
+    }
+
     function destroyActiveTransport() {
       if (request && !request.destroyed) {
-        request.destroy();
+        try { request.destroy(); } catch (_) { /* cleanup is best-effort */ }
         return;
       }
       if (tlsSocket && !tlsSocket.destroyed) {
-        tlsSocket.destroy();
+        try { tlsSocket.destroy(); } catch (_) { /* cleanup is best-effort */ }
         return;
       }
-      if (proxySocket && !proxySocket.destroyed) proxySocket.destroy();
+      if (proxySocket && !proxySocket.destroyed) {
+        try { proxySocket.destroy(); } catch (_) { /* cleanup is best-effort */ }
+      }
     }
 
     function rejectOnce(error, destroyTransport) {
@@ -252,6 +275,7 @@ function requestCore(method, url, headers, body, proxyUrl, timeoutOptions) {
       settled = true;
       connectBuffer = Buffer.alloc(0);
       clearStageTimers();
+      removeAbortListener();
       if (destroyTransport) destroyActiveTransport();
       reject(error);
     }
@@ -261,7 +285,28 @@ function requestCore(method, url, headers, body, proxyUrl, timeoutOptions) {
       settled = true;
       connectBuffer = Buffer.alloc(0);
       clearStageTimers();
+      removeAbortListener();
       resolve(value);
+    }
+
+    if (signal) {
+      onAbort = () => rejectOnce(abortError(), true);
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      if (typeof signal.addEventListener === 'function') {
+        try {
+          signal.addEventListener('abort', onAbort, { once: true });
+        } catch (error) {
+          rejectOnce(error, false);
+          return;
+        }
+      }
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
     }
 
     const doRequest = (socket) => {
