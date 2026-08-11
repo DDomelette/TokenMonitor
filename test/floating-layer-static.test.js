@@ -31,3 +31,9 @@ test('heatmap tooltip uses shared clamp and flip primitives', () => {
   assert.doesNotMatch(source, /clampTipX = \(x\) => Math\.max/);
   assert.doesNotMatch(source, /r\.top < 140/);
 });
+
+test('custom select menu uses shared flip decision', () => {
+  const source = read('renderer/src/components/CustomSelect.jsx');
+  assert.match(source, /import \{ resolveVerticalFlip \} from '\.\.\/lib\/floating-layer\.js'/);
+  assert.match(source, /resolveVerticalFlip\(rect, menuHeight/);
+});
