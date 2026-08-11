@@ -1,6 +1,6 @@
 const crypto = require('node:crypto');
 const { createRunSnapshot, runDiagnostics } = require('./runner');
-const { sanitizeDiagnosticResult, formatDiagnosticReport } = require('./report');
+const { redactText, sanitizeDiagnosticResult, formatDiagnosticReport } = require('./report');
 const { GUIDE_IDS, openGuide } = require('./guides');
 
 const TERMINAL = new Set(['pass', 'fail', 'skipped']);
@@ -237,13 +237,15 @@ function createDiagnosticsController(dependencies = {}) {
         { runId: record.runId, checks: cloneChecks(record.checks, record.environment) },
         copyEnvironment(record.environment)
       );
+      if (recordFor(sender, runId) !== record) return invalidRun();
       if (typeof report !== 'string') throw new TypeError('Diagnostics report must be text');
-      if (!recordFor(sender, runId)) return invalidRun();
+      const safeReport = redactText(report, record.environment);
       const clipboard = dependency(deps, 'clipboard');
       if (!clipboard || typeof clipboard.writeText !== 'function') throw new Error('Clipboard unavailable');
-      await clipboard.writeText(report);
-      if (!recordFor(sender, runId)) return invalidRun();
-      return { ok: true, length: report.length };
+      if (recordFor(sender, runId) !== record) return invalidRun();
+      await clipboard.writeText(safeReport);
+      if (recordFor(sender, runId) !== record) return invalidRun();
+      return { ok: true, length: safeReport.length };
     } catch (_) {
       return { ok: false, errorCode: 'DIAGNOSTICS_REPORT_FAILED' };
     }

@@ -19,6 +19,12 @@ function fakeIpcMain() {
       handle(channel, callback) {
         if (handle.has(channel)) throw new Error('duplicate handle');
         handle.set(channel, callback);
+      },
+      removeListener(channel, callback) {
+        if (on.get(channel) === callback) on.delete(channel);
+      },
+      removeHandler(channel) {
+        handle.delete(channel);
       }
     }
   };
@@ -163,6 +169,29 @@ test('IPC registration rolls back partial listeners atomically and can retry aft
   assert.deepEqual([...handle.keys()].sort(), [
     'diagnostics:copy-report', 'diagnostics:open-guide', 'diagnostics:run'
   ]);
+  assert.equal(registerDiagnosticsIpc(dependencies), false);
+});
+
+test('IPC registration rejects missing rollback APIs before registering any channel and remains retryable', () => {
+  const registrations = [];
+  const ipcMain = {
+    on(channel) { registrations.push(['on', channel]); },
+    handle(channel) { registrations.push(['handle', channel]); }
+  };
+  const dependencies = {
+    ipcMain,
+    diagnostics: { start() {}, copy() {}, openGuide() {} },
+    getDiagnosticsWindow: () => null,
+    createDiagnosticsWindow() {}
+  };
+
+  assert.throws(() => registerDiagnosticsIpc(dependencies), TypeError);
+  assert.deepEqual(registrations, []);
+
+  ipcMain.removeListener = () => {};
+  ipcMain.removeHandler = () => {};
+  assert.equal(registerDiagnosticsIpc(dependencies), true);
+  assert.equal(registrations.length, 5);
   assert.equal(registerDiagnosticsIpc(dependencies), false);
 });
 

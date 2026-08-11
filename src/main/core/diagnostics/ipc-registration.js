@@ -20,7 +20,8 @@ function activeSender(event, getDiagnosticsWindow) {
 }
 
 function registerDiagnosticsIpc({ ipcMain, diagnostics, getDiagnosticsWindow, createDiagnosticsWindow }) {
-  if (!ipcMain || typeof ipcMain.on !== 'function' || typeof ipcMain.handle !== 'function') {
+  if (!ipcMain || typeof ipcMain.on !== 'function' || typeof ipcMain.handle !== 'function' ||
+      typeof ipcMain.removeListener !== 'function' || typeof ipcMain.removeHandler !== 'function') {
     throw new TypeError('ipcMain is required');
   }
   if (registered.has(ipcMain)) return false;

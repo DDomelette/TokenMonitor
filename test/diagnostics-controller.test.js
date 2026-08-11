@@ -159,6 +159,29 @@ test('home paths are redacted before every boundary and all returned, sent, and 
   assert.deepEqual(formatterInputs[1], formatterInputs[0]);
 });
 
+test('copy redacts a hostile formatter result before writing it to the clipboard', async () => {
+  const homeDir = 'C:\\Users\\Alice';
+  const copied = [];
+  const sender = fakeSender(607);
+  const controller = createDiagnosticsController({
+    checks: oneCheck(),
+    randomUUID: () => 'hostile-formatter-run',
+    setImmediate: () => {},
+    safeEnvironment: () => ({ homeDir }),
+    formatDiagnosticReport(snapshot, environment) {
+      return `leaked home: ${environment.homeDir}`;
+    },
+    clipboard: { writeText: (text) => copied.push(text) },
+    openGuide: async () => ({ ok: true })
+  });
+
+  controller.start(sender);
+  const result = await controller.copy(sender, 'hostile-formatter-run');
+
+  assert.deepEqual(copied, ['leaked home: ~']);
+  assert.deepEqual(result, { ok: true, length: 'leaked home: ~'.length });
+});
+
 test('synchronous start consumes rejecting schedule and sender thenables without unhandled rejections', async () => {
   let runnerOptions;
   let scheduleThenCalls = 0;
@@ -242,6 +265,31 @@ test('copy relies on one standard await assimilation for formatter thenables and
     errorCode: 'DIAGNOSTICS_REPORT_FAILED'
   });
   assert.equal(thenCalls, 1);
+});
+
+test('a replaced run cannot finish an old copy when the same runId is reused', async () => {
+  const formatter = deferred();
+  const copied = [];
+  const sender = fakeSender(709);
+  const controller = createDiagnosticsController({
+    checks: oneCheck(),
+    randomUUID: () => 'intentionally-reused-run',
+    setImmediate: () => {},
+    formatDiagnosticReport: () => formatter.promise,
+    clipboard: { writeText: (text) => copied.push(text) },
+    openGuide: async () => ({ ok: true })
+  });
+
+  controller.start(sender);
+  const staleCopy = controller.copy(sender, 'intentionally-reused-run');
+  controller.start(sender);
+  formatter.resolve('old report');
+
+  assert.deepEqual(await staleCopy, {
+    ok: false,
+    errorCode: 'DIAGNOSTICS_RUN_INVALID'
+  });
+  assert.deepEqual(copied, []);
 });
 
 test('controller keeps sanitized runs owned by the exact live sender and ignores stale progress', async () => {
