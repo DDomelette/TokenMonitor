@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+  <title>诊断中心</title>
+  <link rel="stylesheet" href="css/diagnostics.css">
+</head>
+<body>
+  <div id="app">
+    <div class="titlebar">
+      <div class="titlebar-left">
+        <span class="titlebar-text">诊断中心</span>
+      </div>
+      <div class="titlebar-actions">
+        <button class="titlebar-btn" id="diagnosticsCloseBtn" type="button" title="关闭" aria-label="关闭诊断中心">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <header class="diagnostics-summary" id="diagnosticsSummary" aria-live="polite"></header>
+    <main id="diagnosticsGroups"></main>
+    <footer class="diagnostics-actions">
+      <span id="diagnosticsActionStatus" role="status"></span>
+      <button class="btn btn-secondary" id="rerunDiagnosticsBtn" type="button">重新诊断</button>
+      <button class="btn btn-primary" id="copyDiagnosticsBtn" type="button" disabled>复制诊断结果</button>
+    </footer>
+  </div>
+  <script src="js/theme-mode-link.js"></script>
+  <script src="js/diagnostics-state.js"></script>
+  <script src="js/diagnostics-view.js"></script>
+  <script src="js/diagnostics-window.js"></script>
+</body>
+</html>

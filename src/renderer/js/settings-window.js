@@ -316,6 +316,8 @@
           '<span id="historySyncResult" role="status" hidden style="font-size:12px;line-height:1.5;white-space:pre-line;"></span>' +
           '<button type="button" class="btn" id="historySyncRetentionBtn" hidden></button>' +
         '</div>';
+      case 'diagnostics':
+        return '<button type="button" class="btn btn-primary" id="openDiagnosticsBtn" style="width:100%;">打开诊断中心</button>';
       case 'password':
         return '<input type="password" class="text-input" data-key="' + def.key + '" value="' + v + '"' + (placeholder ? ' placeholder="' + placeholder + '"' : '') + '>';
       default:
@@ -337,8 +339,9 @@
           if (d.key === 'apiKey' && settings.providers && settings.providers.deepseek && settings.providers.deepseek.apiKeySet) {
             placeholder = '已保存,输入新 Key 以更换';
           }
-          var vertical = d.type === 'slider' || d.type === 'credential' || d.type === 'proxy' || d.type === 'historySync';
-          return '<div class="setting-row' + (vertical ? ' vertical' : '') + '"><div><span class="setting-label">' + d.label + '</span></div>' + render(d, getNested(settings, d.key), placeholder) + '</div>';
+          var vertical = d.type === 'slider' || d.type === 'credential' || d.type === 'proxy' || d.type === 'historySync' || d.type === 'diagnostics';
+          var value = d.key ? getNested(settings, d.key) : undefined;
+          return '<div class="setting-row' + (vertical ? ' vertical' : '') + '"><div><span class="setting-label">' + d.label + '</span></div>' + render(d, value, placeholder) + '</div>';
         }).join('') + '</div>';
     });
     return html;
@@ -374,6 +377,18 @@
     var historySyncBtn = document.getElementById('historySyncBtn');
     if (historySyncBtn) {
       historySyncBtn.addEventListener('click', submitHistorySync);
+    }
+
+    var openDiagnosticsBtn = document.getElementById('openDiagnosticsBtn');
+    if (openDiagnosticsBtn) {
+      var diagnosticsAction = definitions.find(function (definition) {
+        return definition.type === 'diagnostics';
+      });
+      openDiagnosticsBtn.addEventListener('click', function () {
+        if (diagnosticsAction && diagnosticsAction.channel) {
+          window.api.send(diagnosticsAction.channel);
+        }
+      });
     }
 
     document.querySelectorAll('input[data-key]').forEach(function (el) {

@@ -26,6 +26,10 @@ var historyDefinitions = [
   { group: '历史数据', key: 'history.sync', type: 'historySync', label: '用量历史同步', default: '' }
 ];
 
+var diagnosticsDefinitions = [
+  { group: '诊断', type: 'diagnostics', label: '诊断中心', channel: 'open:diagnostics' }
+];
+
 var componentDefinitions = window.ComponentRegistry.list().map(function (component) {
   return {
     group: '组件',
@@ -46,6 +50,7 @@ var tailDefinitions = [
 window.SettingsDefinitions = windowDefinitions.concat(
   networkDefinitions,
   historyDefinitions,
+  diagnosticsDefinitions,
   componentDefinitions,
   tailDefinitions
 );
