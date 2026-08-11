@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeTheme, clipboard, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeTheme, screen, clipboard, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -16,7 +16,9 @@ const {
   normalizeStoredProxyValue,
   resolveElectronSystemProxy
 } = require('./core/proxy-settings');
+const { createTokenSpeedRuntime } = require('./core/token-speed-runtime');
 const { wakeMostRelevantWindow } = require('./core/startup-windows');
+const { createEdgeDock } = require('./core/edge-dock');
 const setupIPC = require('./ipc');
 const { captureSession } = require('./providers/deepseek/session');
 const {
@@ -33,6 +35,7 @@ const {
   getTraySessionLabel,
   restoreSession
 } = require('./core/session-state');
+const { startMCP } = require('./mcp');
 
 let mainWindow = null;
 let loginWindow = null;
@@ -43,13 +46,16 @@ let tray = null;
 let scheduler = null;
 let diagnostics = null;
 let getProxyInput = null;
+let tokenSpeedRuntime = null;
+let mcpRuntime = null;
 let moveDebounce = null;
+// 贴边自动隐藏状态机(issue #170),随主窗口创建
+let edgeDock = null;
 
 const runtime = {
   sessionToken: null,
   sessionStatus: 'missing',
-  sessionError: null,
-  proxyStatus: { running: false, port: 0, error: '未获取数据' }
+  sessionError: null
 };
 
 // 缩放状态机运行标记(状态本体在 ipc.js,这里只消费布尔值)
@@ -72,6 +78,7 @@ app.on('second-instance', () => {
     getLoginWindow: () => loginWindow,
     getSettingsWindow: () => settingsWindow
   });
+  if (edgeDock) edgeDock.reveal();
 });
 
 function getWinBounds() {
@@ -88,6 +95,8 @@ function sendMainWindowBounds() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.webContents.isDestroyed()) return;
   if (resizeState.main) return;
+  // 贴边动画每帧都在变,跳过广播避免高频 IPC;动画结束后的 move 事件会补发
+  if (edgeDock && edgeDock.isProgrammatic()) return;
   mainWindow.webContents.send('window:bounds-changed', mainWindow.getBounds());
 }
 
@@ -105,6 +114,45 @@ function broadcastSettings() {
 function broadcastSessionState() {
   var payload = getSessionSnapshot(runtime);
   broadcastToWindows('session:changed', payload);
+}
+
+// 贴边自动隐藏(issue #170):几何/状态机在 core/edge-dock.js,这里只做接线。
+// 隐藏坐标只存内存,持久化的永远是展开可见 bounds(window.edgeDock 元数据)。
+//
+// 程序性 setBounds 的静默期:Windows 的 setBounds 是异步的,move 事件可能严重
+// 滞后到达(动画已结束,而 getBounds 返回 DWM 未播完的几帧前中间位置)——
+// 靠坐标猜回声会误判成用户拖动 → 取消停靠 → debounce 在收起位置重新吸附
+// (收起位置距边缘为负值,仍 ≤ 阈值)→ 窗口弹出 → 再收起,循环抖动。
+// 所以动画进行中及最后一次程序性 setBounds 后 250ms 内的 move 事件一律忽略。
+const EDGE_DOCK_MOVE_QUIET_MS = 250;
+let lastEdgeDockApplyAt = 0;
+
+function createEdgeDockRuntime() {
+  edgeDock = createEdgeDock({
+    onApplyBounds: function (b) {
+      lastEdgeDockApplyAt = Date.now();
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setBounds(b);
+    },
+    onPersistDock: function (meta) {
+      store.set('window.edgeDock', meta);
+    },
+    // 收起前的最终裁决依据:光标真实位置(enter/leave 事件在边界会丢失/乱序)
+    getCursorPoint: function () {
+      try { return screen.getCursorScreenPoint(); } catch (_) { return null; }
+    }
+  });
+  // 重启恢复逻辑停靠:重新匹配当前显示器,落不进现存 workArea 的由状态机修正
+  if (store.get('window.edgeAutoHide')) {
+    var meta = store.get('window.edgeDock');
+    if (meta) edgeDock.restoreDock(meta, screen.getAllDisplays());
+  }
+}
+
+// 主动唤醒(托盘/第二实例/打开设置):已收起的窗口先完整展开
+function revealMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.show();
+  if (edgeDock) edgeDock.reveal();
 }
 
 function createMainWindow() {
@@ -140,6 +188,7 @@ function createMainWindow() {
   // 禁用 setOpacity:它会加 WS_EX_LAYERED,分层窗口缩放时新区域被清成透明黑,
   // 整窗统一 alpha 混合后显示为黑边。
   loadRenderer(mainWindow);
+  createEdgeDockRuntime();
 
   // 渲染进程异常诊断:加载失败/进程崩溃时写入日志
   mainWindow.webContents.on('console-message', function (e, level, message) {
@@ -165,12 +214,22 @@ function createMainWindow() {
 
   mainWindow.on('move', function () {
     if (resizeState.main) return;
+    // 静默期(动画中 + 末帧后 250ms)的 move 事件一律视为程序性回声,见上方注释。
+    // 用户真实拖动不刷新 lastEdgeDockApplyAt,不受影响
+    if (edgeDock && (edgeDock.isProgrammatic() || Date.now() - lastEdgeDockApplyAt < EDGE_DOCK_MOVE_QUIET_MS)) return;
+    // 非动画的程序性 setBounds(吸附落定/恢复)的回声:不广播、不落盘、不重新评估停靠
+    if (edgeDock && edgeDock.matchesCurrent(mainWindow.getBounds())) return;
+    // 非回声 move = 用户在拖动:立即解除停靠,窗口才不会被吸附拽住
+    if (edgeDock && store.get('window.edgeAutoHide')) edgeDock.userMoveStarted();
     sendMainWindowBounds();
     clearTimeout(moveDebounce);
     moveDebounce = setTimeout(function () {
-      var pos = mainWindow.getPosition();
-      store.set('window.x', pos[0]);
-      store.set('window.y', pos[1]);
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (edgeDock && (edgeDock.isProgrammatic() || edgeDock.matchesCurrent(mainWindow.getBounds()))) return;
+      if (edgeDock && store.get('window.edgeAutoHide')) {
+        edgeDock.userMoveSettled(mainWindow.getBounds(), screen.getAllDisplays());
+      }
+      persistMainWindowBounds();
     }, 300);
   });
 
@@ -180,6 +239,9 @@ function createMainWindow() {
 
   // 原生缩放结束后持久化最终尺寸(原生缩放不经过 window:set-bounds / resize:end)
   mainWindow.on('resized', function () {
+    if (edgeDock && edgeDock.getDockMeta()) {
+      edgeDock.resizeSettled(mainWindow.getBounds(), screen.getAllDisplays());
+    }
     persistMainWindowBounds();
   });
 
@@ -261,7 +323,6 @@ function createSessionWindow() {
         const snapshot = getSessionSnapshot(runtime);
         if (!snapshot.loggedIn && snapshot.status !== 'expired') {
           clearSession(runtime, '未登录 DeepSeek 平台');
-          runtime.proxyStatus = { running: false, port: 0, error: '未登录 DeepSeek 平台' };
         }
         broadcastSessionState();
         updateTrayMenu();
@@ -272,7 +333,6 @@ function createSessionWindow() {
     .then((token) => {
       restoreSession(runtime, token);
       store.set('providers.deepseek.sessionToken', token);
-      runtime.proxyStatus = { running: true, port: 0, activeSince: Date.now() };
       broadcastSessionState();
       updateTrayMenu();
       if (scheduler) scheduler.poll('deepseek', 'usage');
@@ -283,7 +343,6 @@ function createSessionWindow() {
       if (!snapshot.loggedIn && snapshot.status !== 'expired') {
         clearSession(runtime, message);
       }
-      runtime.proxyStatus = { running: false, port: 0, error: message };
       broadcastSessionState();
       updateTrayMenu();
     });
@@ -305,7 +364,7 @@ function createTray() {
     if (mainWindow && mainWindow.isVisible()) {
       mainWindow.hide();
     } else if (mainWindow) {
-      mainWindow.show();
+      revealMainWindow();
     }
   });
 }
@@ -317,7 +376,7 @@ function updateTrayMenu() {
       label: '显示/隐藏悬浮窗',
       click: () => {
         if (mainWindow && mainWindow.isVisible()) mainWindow.hide();
-        else if (mainWindow) mainWindow.show();
+        else if (mainWindow) revealMainWindow();
       }
     },
     {
@@ -326,10 +385,18 @@ function updateTrayMenu() {
     },
     { type: 'separator' },
     {
+      label: '复制 MCP 连接信息',
+      enabled: !!(mcpRuntime && mcpRuntime.isRunning()),
+      click: () => {
+        const info = mcpRuntime.getConnectionInfo();
+        clipboard.writeText(info.url + '\nAuthorization: Bearer ' + info.token);
+      }
+    },
+    {
       label: '设置',
       click: () => {
         if (mainWindow) {
-          mainWindow.show();
+          revealMainWindow();
           mainWindow.webContents.send('open:settings');
         }
       }
@@ -380,7 +447,9 @@ function buildCurvePoints(stats) {
 function persistMainWindowBounds() {
   if (!mainWindow || mainWindow.isDestroyed()) return null;
 
-  var bounds = mainWindow.getBounds();
+  // 停靠中(含已收起)持久化展开可见 bounds,隐藏坐标永不落盘(issue #170)
+  var meta = edgeDock && edgeDock.getDockMeta();
+  var bounds = meta ? { x: meta.expandedBounds.x, y: meta.expandedBounds.y, width: meta.expandedBounds.width, height: meta.expandedBounds.height } : mainWindow.getBounds();
 
   store.set('window.width', bounds.width);
   store.set('window.height', bounds.height);
@@ -438,6 +507,11 @@ function createSettingsWindow() {
     settingsWindow.close();
     return;
   }
+  // 打开设置时主窗口保持完整展开并暂停自动收起(issue #170)
+  if (edgeDock) {
+    edgeDock.setSuspended(true);
+    edgeDock.reveal();
+  }
   settingsWindow = new BrowserWindow({
     width: 370,
     height: 520,
@@ -468,7 +542,10 @@ function createSettingsWindow() {
   revealWhenReady(settingsWindow);
   settingsWindow.on('blur', function () { notifyFocusState(settingsWindow, false); });
   settingsWindow.on('focus', function () { notifyFocusState(settingsWindow, true); });
-  settingsWindow.on('closed', () => { settingsWindow = null; });
+  settingsWindow.on('closed', () => {
+    settingsWindow = null;
+    if (edgeDock) edgeDock.setSuspended(false);
+  });
 }
 
 /* ======== 设置应用 ======== */
@@ -514,6 +591,21 @@ function createDiagnosticsWindow() {
 }
 
 function applySetting(key, value) {
+  switch (key) {
+    case 'components.tokenSpeed':
+    case 'data.tokenSpeed.intervalSeconds':
+    case 'data.tokenSpeed.providerFilter':
+      if (tokenSpeedRuntime) tokenSpeedRuntime.applySettings();
+      return;
+    case 'data.historyDays':
+      if (tokenSpeedRuntime) tokenSpeedRuntime.rebaselineAll();
+      return;
+  }
+  if (key === 'mcp.enabled') {
+    if (store.get('mcp.enabled') !== false) mcpRuntime.start();
+    else mcpRuntime.stop();
+    return;
+  }
   if (!mainWindow) return;
   switch (key) {
     // window.opacity 不再应用:setOpacity 的分层窗口机制会导致缩放露黑边,
@@ -527,6 +619,10 @@ function applySetting(key, value) {
     case 'window.followSystemTheme':
     case 'window.darkMode':
       applyTheme();
+      break;
+    case 'window.edgeAutoHide':
+      // 关闭开关:即使已收起也先完整恢复,再清停靠状态(issue #170)
+      if (!value && edgeDock) edgeDock.disable();
       break;
   }
 }
@@ -644,12 +740,24 @@ function startSchedulerRuntime() {
       if (state.authStatus === 'expired' && state.lastError) {
         expireSession(runtime, '会话已过期，请重新登录');
         store.delete('providers.deepseek.sessionToken');
-        runtime.proxyStatus = { running: false, port: 0, error: '会话已过期，请重新登录' };
         updateTrayMenu();
         broadcastSessionState();
       }
+    },
+    onUsageObservation: (providerId, detail) => {
+      if (tokenSpeedRuntime) tokenSpeedRuntime.observeProvider(providerId, detail.observedAt);
+    },
+    onUsageUnavailable: (providerId, detail) => {
+      if (tokenSpeedRuntime) tokenSpeedRuntime.markProviderUnavailable(providerId, detail);
     }
   });
+  tokenSpeedRuntime = createTokenSpeedRuntime({
+    store,
+    registry,
+    scheduler,
+    broadcast: (channel, payload) => broadcastToWindows(channel, payload)
+  });
+  tokenSpeedRuntime.start();
 }
 
 /* ======== App 生命周期 ======== */
@@ -737,16 +845,22 @@ app.whenReady().then(() => {
   startSchedulerRuntime();
   diagnostics = createDiagnosticsRuntime();
 
+  mcpRuntime = startMCP({ store, scheduler, logger: console });
+  mcpRuntime.start();
+
   setupIPC({
     store,
     registry,
     scheduler,
+    tokenSpeedRuntime,
     runtime,
     resizeState,
+    getMcpRuntime: () => mcpRuntime,
     getMainWindow: () => mainWindow,
     getSettingsWindow: () => settingsWindow,
     getLoginWindow: () => loginWindow,
     getDiagnosticsWindow: () => diagnosticsWindow,
+    getEdgeDock: () => edgeDock,
     createMainWindow,
     createLoginWindow,
     createSessionWindow,
@@ -777,11 +891,9 @@ app.whenReady().then(() => {
       if (getSessionSnapshot(runtime).loggedIn) {
         console.log('[session] startup with stored token, starting usage timer');
         scheduler.poll('deepseek', 'usage');
-        runtime.proxyStatus = { running: true, port: 0, activeSince: Date.now() };
       } else {
         console.log('[session] startup without token, opening platform login window');
         clearSession(runtime, '请登录平台获取用量');
-        runtime.proxyStatus = { running: false, port: 0, error: '请登录平台获取用量' };
         createSessionWindow();
       }
       broadcastSessionState();
@@ -798,8 +910,10 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   app.isQuitting = true;
+  if (tokenSpeedRuntime) tokenSpeedRuntime.stop();
   if (scheduler) scheduler.stop();
   if (tray) { tray.destroy(); tray = null; }
+  if (mcpRuntime) { mcpRuntime.stop(); mcpRuntime = null; }
 });
 
 app.on('activate', () => {

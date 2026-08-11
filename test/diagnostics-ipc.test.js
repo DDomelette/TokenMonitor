@@ -302,6 +302,21 @@ test('main creates, reuses, broadcasts to, and disposes the diagnostics window b
   };
   const fakeDiagnostics = { dispose: (id) => disposed.push(id) };
   const fakeScheduler = { stop() {}, getSnapshot: () => [], getState: () => null };
+  const fakeTokenSpeedRuntime = {
+    start() { sequence.push('token-speed'); },
+    stop() {},
+    applySettings() {},
+    rebaselineAll() {},
+    observeProvider() {},
+    markProviderUnavailable() {}
+  };
+  const fakeMcpRuntime = {
+    start() { sequence.push('mcp'); },
+    stop() {},
+    isRunning: () => false,
+    getConnectionInfo: () => ({ enabled: false, url: null, token: null }),
+    rotateToken: () => ({ enabled: false, url: null, token: null })
+  };
 
   Module._load = function (request, parent, isMain) {
     const parentFile = parent && parent.filename || '';
@@ -316,6 +331,12 @@ test('main creates, reuses, broadcasts to, and disposes the diagnostics window b
           schedulerDependencies = dependencies;
           return fakeScheduler;
         }
+      };
+      if (request === './core/token-speed-runtime') return {
+        createTokenSpeedRuntime: () => fakeTokenSpeedRuntime
+      };
+      if (request === './mcp') return {
+        startMCP: () => fakeMcpRuntime
       };
       if (request === './core/proxy-settings') return Object.assign({}, realProxySettings, {
         resolveElectronSystemProxy: injectedSystemResolver
@@ -352,8 +373,10 @@ test('main creates, reuses, broadcasts to, and disposes the diagnostics window b
 
   require(mainPath);
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(sequence.slice(0, 3), ['scheduler', 'diagnostics', 'ipc']);
+  assert.deepEqual(sequence.slice(0, 5), ['scheduler', 'token-speed', 'diagnostics', 'mcp', 'ipc']);
   assert.equal(setupDependencies.diagnostics, fakeDiagnostics);
+  assert.equal(setupDependencies.tokenSpeedRuntime, fakeTokenSpeedRuntime);
+  assert.equal(setupDependencies.getMcpRuntime(), fakeMcpRuntime);
   assert.equal(typeof setupDependencies.createDiagnosticsWindow, 'function');
   assert.equal(typeof setupDependencies.getDiagnosticsWindow, 'function');
   assert.equal(diagnosticsDependencies.scheduler, fakeScheduler);

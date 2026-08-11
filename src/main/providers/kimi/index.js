@@ -1,7 +1,7 @@
 // Kimi Provider 适配器(accountQuota 通道 + localLog 通道)。
 const { fetchQuota } = require('./quota');
 const { readCred, isExpired } = require('./auth');
-const { readLocalLog } = require('./locallog');
+const { readLocalLog, DEFAULT_ROOT } = require('./locallog');
 
 module.exports = {
   id: 'kimi',
@@ -16,6 +16,10 @@ module.exports = {
   },
 
   fetchQuota,
+
+  localLogRoot(ctx) {
+    return (ctx && ctx.store && ctx.store.get('providers.kimi.localLogRoot')) || DEFAULT_ROOT();
+  },
 
   readLocalLog
 };

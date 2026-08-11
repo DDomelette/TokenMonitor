@@ -3,7 +3,8 @@
 
 const SECRET_SETTING_PATHS = [
   ['providers', 'deepseek', 'apiKey'],
-  ['providers', 'deepseek', 'sessionToken']
+  ['providers', 'deepseek', 'sessionToken'],
+  ['mcp', 'token']
 ];
 
 function sanitizeSettings(storeData) {
@@ -26,7 +27,7 @@ function sanitizeSettings(storeData) {
 }
 
 // 通用 settings:update/settings:save 的键白名单。凭证只能通过专用验证通道写入。
-const WRITABLE_SETTING_KEYS = new Set(['layout', 'componentOrder', 'providers.proxyUrl']);
+const WRITABLE_SETTING_KEYS = new Set(['layout', 'componentOrder', 'providers.proxyUrl', 'mcp.enabled']);
 const WRITABLE_SETTING_PREFIXES = ['window.', 'components.', 'data.'];
 const WRITABLE_KEY_ALIASES = Object.freeze({});
 

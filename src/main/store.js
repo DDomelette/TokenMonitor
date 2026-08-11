@@ -7,7 +7,8 @@ const defaults = {
       apiKey: '',
       sessionToken: ''
     },
-    proxyUrl: ''
+    proxyUrl: '',
+    proxyUrlLastCustom: ''
   },
   window: {
     x: undefined,
@@ -18,7 +19,11 @@ const defaults = {
     alwaysOnTop: true,
     autoLaunch: false,
     followSystemTheme: true,
-    layoutLocked: true
+    layoutLocked: true,
+    // 贴边自动隐藏(issue #170):edgeDock 只存逻辑停靠信息(边 + 展开可见 bounds),
+    // 隐藏坐标永不落盘
+    edgeAutoHide: false,
+    edgeDock: null
   },
   components: {
     balanceCard: true,
@@ -26,6 +31,7 @@ const defaults = {
     cacheRateCard: true,
     modelBar: true,
     providerBar: true,
+    tokenSpeed: false,
     tokenLine: true,
     costLine: true
   },
@@ -36,14 +42,18 @@ const defaults = {
     'cache-rate-card',
     'model-bar',
     'provider-bar',
+    'token-speed',
     'token-line',
     'cost-line'
   ],
   data: {
     sampleInterval: 30,
     defaultTimeRange: '1h',
-    proxyPort: 7890,
-    historyDays: 7
+    historyDays: 7,
+    tokenSpeed: {
+      intervalSeconds: 30,
+      providerFilter: 'all'
+    }
   }
 };
 

@@ -1,6 +1,7 @@
 (function () {
   var definitions = window.SettingsDefinitions;
   var sessionState = { loggedIn: false, error: null };
+  var lastCustomProxyUrl = '';
   var closingSettingsWindow = false;
   var failedSaveKeys = Object.create(null);
   var settingsUpdateQueue = window.SettingsDebounce.createKeyedDebouncer({
@@ -148,6 +149,29 @@
     input.disabled = !custom;
     input.placeholder = custom ? 'http://127.0.0.1:7890' : '仅自定义模式需要地址';
     showProxyFeedback('', false);
+    if (custom && !input.value.trim()) prefillProxyUrl();
+  }
+
+  // 自定义模式且输入为空时预填默认值:优先探测本机正在监听的代理端口,
+  // 探测不到再回填上次使用过的地址(忘记 IP/端口 是常态)
+  function prefillProxyUrl() {
+    var input = document.getElementById('proxyUrlInput');
+    if (!input || input.value.trim()) return;
+    function fillLastCustom() {
+      if (lastCustomProxyUrl && !input.value.trim()) {
+        input.value = lastCustomProxyUrl;
+        showProxyFeedback('已填入上次使用的代理地址,可按需修改。', false);
+      }
+    }
+    window.api.invoke('detect:proxy-port').then(function (result) {
+      var port = result && result.port;
+      if (port && !input.value.trim()) {
+        input.value = 'http://127.0.0.1:' + port;
+        showProxyFeedback('已填入检测到的本机代理端口 ' + port + ',可按需修改。', false);
+        return;
+      }
+      if (!port) fillLastCustom();
+    }).catch(fillLastCustom);
   }
 
   function setProxyPending(pending) {
@@ -265,6 +289,46 @@
     });
   }
 
+  function renderMcpConnectionInfo(info) {
+    var urlInput = document.getElementById('mcpServerUrl');
+    var tokenInput = document.getElementById('mcpServerToken');
+    var copyBtn = document.getElementById('mcpCopyBtn');
+    var rotateBtn = document.getElementById('mcpRotateBtn');
+    if (!urlInput || !tokenInput) return;
+    urlInput.value = info.running ? info.url : (info.enabled ? '启动中/未运行' : '已关闭');
+    tokenInput.value = info.token || '';
+    if (copyBtn) copyBtn.disabled = !info.running;
+    if (rotateBtn) rotateBtn.disabled = !info.enabled;
+  }
+
+  function loadMcpConnectionInfo() {
+    if (!document.getElementById('mcpServerUrl')) return;
+    window.api.invoke('mcp:getConnectionInfo').then(renderMcpConnectionInfo).catch(function () {
+      var urlInput = document.getElementById('mcpServerUrl');
+      if (urlInput) urlInput.value = '不可用';
+    });
+  }
+
+  function copyMcpConnectionInfo() {
+    var urlInput = document.getElementById('mcpServerUrl');
+    var tokenInput = document.getElementById('mcpServerToken');
+    var copyBtn = document.getElementById('mcpCopyBtn');
+    if (!urlInput || !tokenInput) return;
+    navigator.clipboard.writeText(urlInput.value + '\nAuthorization: Bearer ' + tokenInput.value);
+    if (copyBtn) {
+      copyBtn.textContent = '已复制';
+      setTimeout(function () { copyBtn.textContent = '复制连接信息'; }, 1200);
+    }
+  }
+
+  function rotateMcpToken() {
+    var rotateBtn = document.getElementById('mcpRotateBtn');
+    if (rotateBtn) rotateBtn.disabled = true;
+    window.api.invoke('mcp:rotateToken').then(renderMcpConnectionInfo).catch(function () {}).then(function () {
+      if (rotateBtn) rotateBtn.disabled = false;
+    });
+  }
+
   function render(def, val, placeholder) {
     var v = val !== undefined ? val : def.default;
     switch (def.type) {
@@ -318,6 +382,15 @@
         '</div>';
       case 'diagnostics':
         return '<button type="button" class="btn btn-primary" id="openDiagnosticsBtn" style="width:100%;">打开诊断中心</button>';
+      case 'mcpServer':
+        return '<div style="display:flex;flex-direction:column;gap:6px;width:100%;">' +
+          '<input type="text" class="text-input" id="mcpServerUrl" readonly value="加载中…" autocomplete="off" spellcheck="false">' +
+          '<input type="text" class="text-input" id="mcpServerToken" readonly value="" autocomplete="off" spellcheck="false">' +
+          '<div style="display:flex;gap:6px;">' +
+            '<button type="button" class="btn btn-primary" id="mcpCopyBtn" disabled>复制连接信息</button>' +
+            '<button type="button" class="btn" id="mcpRotateBtn">重新生成 token</button>' +
+          '</div>' +
+        '</div>';
       case 'password':
         return '<input type="password" class="text-input" data-key="' + def.key + '" value="' + v + '"' + (placeholder ? ' placeholder="' + placeholder + '"' : '') + '>';
       default:
@@ -327,7 +400,11 @@
 
   function buildPanel(settings) {
     var groups = {};
-    definitions.forEach(function (d) {
+    var visibleDefinitions = definitions.filter(function (d) {
+      if (!d.visibleWhen) return true;
+      return getNested(settings, d.visibleWhen.key) === d.visibleWhen.equals;
+    });
+    visibleDefinitions.forEach(function (d) {
       if (!groups[d.group]) groups[d.group] = [];
       groups[d.group].push(d);
     });
@@ -339,7 +416,7 @@
           if (d.key === 'apiKey' && settings.providers && settings.providers.deepseek && settings.providers.deepseek.apiKeySet) {
             placeholder = '已保存,输入新 Key 以更换';
           }
-          var vertical = d.type === 'slider' || d.type === 'credential' || d.type === 'proxy' || d.type === 'historySync' || d.type === 'diagnostics';
+          var vertical = d.type === 'slider' || d.type === 'credential' || d.type === 'proxy' || d.type === 'historySync' || d.type === 'diagnostics' || d.type === 'mcpServer';
           var value = d.key ? getNested(settings, d.key) : undefined;
           return '<div class="setting-row' + (vertical ? ' vertical' : '') + '"><div><span class="setting-label">' + d.label + '</span></div>' + render(d, value, placeholder) + '</div>';
         }).join('') + '</div>';
@@ -389,6 +466,15 @@
           window.api.send(diagnosticsAction.channel);
         }
       });
+    }
+
+    var mcpCopyBtn = document.getElementById('mcpCopyBtn');
+    if (mcpCopyBtn) {
+      mcpCopyBtn.addEventListener('click', copyMcpConnectionInfo);
+    }
+    var mcpRotateBtn = document.getElementById('mcpRotateBtn');
+    if (mcpRotateBtn) {
+      mcpRotateBtn.addEventListener('click', rotateMcpToken);
     }
 
     document.querySelectorAll('input[data-key]').forEach(function (el) {
@@ -459,9 +545,11 @@
   }
 
   function renderAll(settings) {
+    lastCustomProxyUrl = getNested(settings, 'providers.proxyUrlLastCustom') || '';
     document.getElementById('settingsBody').innerHTML = buildSessionSection() + buildPanel(settings);
     bindEvents();
     syncProxyControls();
+    loadMcpConnectionInfo();
     updateSessionSection();
     applyInitialTheme(settings);
   }

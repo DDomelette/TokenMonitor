@@ -305,6 +305,8 @@ body[data-theme='acrylic-light'] {
   /* 文本直接落在透明窗口底(透出灰黑桌面)上,整体转白色系 */
   --text-primary: #F3F4F6;
   --text-secondary: rgba(255, 255, 255, 0.75);
+  /* 下拉菜单等浮层:高透卡片底会透出后面的文字,需实色底 */
+  --bg-menu: rgba(45, 48, 56, 0.97);
 }
 body[data-theme='acrylic-light'] #app {
   background: rgba(255, 255, 255, 0.08);
@@ -313,12 +315,15 @@ body[data-theme='acrylic-light'] #app {
 body[data-theme='acrylic-dark'] {
   --bg-window-dark: rgba(20, 22, 28, 0.15);
   --bg-card: rgba(255, 255, 255, 0.05);
+  /* 下拉菜单等浮层:高透卡片底会透出后面的文字,需实色底 */
+  --bg-menu: rgba(28, 30, 38, 0.97);
 }
 
 /* ======== 失焦实心化:退回接近常规主题的实底与深文字 ======== */
 body[data-theme='acrylic-light'][data-window-active='false'] {
   --text-primary: #1A1A2E;
   --text-secondary: #6B7280;
+  --bg-menu: rgba(255, 255, 255, 0.98);
 }
 body[data-theme='acrylic-light'][data-window-active='false'] #app {
   background: rgba(255, 255, 255, 0.93);

@@ -3,14 +3,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const https = require('node:https');
-const { EventEmitter } = require('node:events');
 
 // 注: kimi /usages 真实抓取被过期 access_token 阻断(401 REASON_INVALID_AUTH_TOKEN,见 Task 0 Spike),
 // 本 fixture 依据计划"已验证的事实"文档化结构合成,断言值为计划规定的周/5h 窗口语义。
 const fixture = require('./fixtures/kimi-usages.json');
-const { normalizeKimiUsage } = require('../src/main/providers/kimi/quota');
-const { readCred, isExpired, ensureFresh } = require('../src/main/providers/kimi/auth');
+const { normalizeKimiUsage, classifyAuthFailure } = require('../src/main/providers/kimi/quota');
+const { readCred, isExpired } = require('../src/main/providers/kimi/auth');
 
 test('normalizeKimiUsage maps weekly + 5h windows from the fixture', () => {
   const quota = normalizeKimiUsage(fixture);
@@ -59,67 +57,40 @@ test('readCred returns null for missing file', () => {
   assert.equal(readCred(path.join(os.tmpdir(), 'no-such-cred-' + Date.now() + '.json')), null);
 });
 
-test('isExpired flags near-expiry credentials', () => {
-  assert.equal(isExpired({ expiresAt: Date.now() + 60 * 1000 }), true);
+test('isExpired only flags actually-past expiry (read-only cred: no proactive margin)', () => {
+  // 只读模式下由 CLI 刷新回写;剩余<5min 但未过期的 token 仍可用,不能误报过期,
+  // 否则 CLI 刷新空窗期会出现间歇性"已过期"提示
+  assert.equal(isExpired({ expiresAt: Date.now() + 60 * 1000 }), false);
+  assert.equal(isExpired({ expiresAt: Date.now() - 1000 }), true);
   assert.equal(isExpired({ expiresAt: Date.now() + 10 * 60 * 1000 }), false);
   assert.equal(isExpired({ expiresAt: null }), false);
 });
 
-test('ensureFresh skips refresh while the token is still fresh', async () => {
-  const p = tempCredFile({
-    access_token: 'acc', refresh_token: 'ref', expires_at: Math.floor(Date.now() / 1000) + 3600
-  });
-  const original = https.request;
-  let called = false;
-  https.request = function () { called = true; throw new Error('should not be called'); };
-  try {
-    const cred = await ensureFresh({ getProxyUrl: () => null }, p);
-    assert.equal(called, false);
-    assert.equal(cred.accessToken, 'acc');
-  } finally {
-    https.request = original;
-    fs.unlinkSync(p);
-  }
+test('kimi credential access is read-only (CLI owns refresh; proactive refresh raced the CLI)', () => {
+  const quotaSource = fs.readFileSync(path.resolve(__dirname, '../src/main/providers/kimi/quota.js'), 'utf8');
+  const authSource = fs.readFileSync(path.resolve(__dirname, '../src/main/providers/kimi/auth.js'), 'utf8');
+  assert.match(quotaSource, /readCred\(\)/);
+  assert.doesNotMatch(quotaSource, /ensureFresh|refreshCred/);
+  // refresh_token 一次性轮换:任何主动刷新成功都会作废 CLI 内存中的旧 RT
+  assert.doesNotMatch(authSource, /refreshCred|writeCredentialAtomic|oauth\/token/);
 });
 
-test('ensureFresh refreshes via form POST and writes back rotated tokens', async () => {
-  const p = tempCredFile({
-    access_token: 'old-acc', refresh_token: 'old-ref', expires_at: Math.floor(Date.now() / 1000) + 60, scope: 'kimi-code'
-  });
-  const original = https.request;
-  let sentBody = '';
-  https.request = function (options, callback) {
-    assert.equal(options.method, 'POST');
-    assert.equal(options.hostname, 'auth.kimi.com');
-    assert.equal(options.path, '/api/oauth/token');
-    assert.equal(options.headers['Content-Type'], 'application/x-www-form-urlencoded');
-    const req = new EventEmitter();
-    req.setTimeout = function () {};
-    req.destroy = function () {};
-    req.write = function (chunk) { sentBody += chunk; };
-    req.end = function () {
-      const res = new EventEmitter();
-      res.statusCode = 200;
-      callback(res);
-      process.nextTick(function () {
-        res.emit('data', JSON.stringify({ access_token: 'new-acc', refresh_token: 'new-ref', expires_in: 900, scope: 'kimi-code', token_type: 'Bearer' }));
-        res.emit('end');
-      });
-    };
-    return req;
-  };
-  try {
-    const cred = await ensureFresh({ getProxyUrl: () => null }, p);
-    assert.equal(cred.accessToken, 'new-acc');
-    assert.equal(cred.refreshToken, 'new-ref');
-    assert.ok(sentBody.includes('grant_type=refresh_token'));
-    assert.ok(sentBody.includes('refresh_token=old-ref'));
-    const persisted = JSON.parse(fs.readFileSync(p, 'utf8'));
-    assert.equal(persisted.access_token, 'new-acc');
-    assert.equal(persisted.refresh_token, 'new-ref');
-    assert.ok(persisted.expires_at > Math.floor(Date.now() / 1000) + 800);
-  } finally {
-    https.request = original;
-    fs.unlinkSync(p);
-  }
+test('classifyAuthFailure: CLI 刷新空窗的 401 不算过期,真过期才算', () => {
+  const used = { accessToken: 'old-token', expiresAt: Date.now() - 1000 };
+  // 文件 token 已换新(CLI 刚轮转回写)→ 空窗,下轮自愈
+  assert.equal(classifyAuthFailure(used, { accessToken: 'new-token', expiresAt: Date.now() + 3600e3 }), 'rotating');
+  // 文件 token 相同但仍未过期(边界撞车)→ 空窗
+  assert.equal(classifyAuthFailure(used, { accessToken: 'old-token', expiresAt: Date.now() + 60e3 }), 'rotating');
+  // 文件读不出(mid-write)→ 空窗
+  assert.equal(classifyAuthFailure(used, null), 'rotating');
+  // 文件 token 也真过期(CLI 长时间未运行)→ 真过期,显示"已过期"是准确的
+  assert.equal(classifyAuthFailure(used, { accessToken: 'old-token', expiresAt: Date.now() - 5000 }), 'expired');
+});
+
+test('空窗错误消息不触发 scheduler 的认证错误判定(不闪"已过期"卡片)', () => {
+  const { isAuthError } = require('../src/main/core/scheduler');
+  assert.equal(isAuthError(new Error('Kimi 凭证刷新中,下个周期自动恢复')), false);
+  const quotaSource = fs.readFileSync(path.resolve(__dirname, '../src/main/providers/kimi/quota.js'), 'utf8');
+  // 401 时必须复核凭证文件区分空窗/真过期
+  assert.match(quotaSource, /classifyAuthFailure\(cred, readCred\(\)\)/);
 });

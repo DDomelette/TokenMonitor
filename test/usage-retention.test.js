@@ -16,6 +16,19 @@ test('retention starts at the inclusive local-calendar boundary for 3, 7, and 30
   assert.equal(retentionStartDay(3, NOW), '2026-08-03');
   assert.equal(retentionStartDay(7, NOW), '2026-07-30');
   assert.equal(retentionStartDay(30, NOW), '2026-07-07');
+  assert.equal(retentionStartDay(365, NOW), '2025-08-06');
+});
+
+test('normalizeHistoryDays accepts any positive integer and rejects invalid values', () => {
+  const { normalizeHistoryDays } = loadRetention();
+
+  assert.equal(normalizeHistoryDays(365), 365);
+  assert.equal(normalizeHistoryDays('90'), 90);
+  assert.equal(normalizeHistoryDays(0), null);
+  assert.equal(normalizeHistoryDays(-3), null);
+  assert.equal(normalizeHistoryDays(1.5), null);
+  assert.equal(normalizeHistoryDays('abc'), null);
+  assert.equal(normalizeHistoryDays(undefined), null);
 });
 
 test('usage filtering keeps only valid dated keys inside the configured window', () => {
@@ -88,16 +101,17 @@ test('expired records remain filtered when a collector replays them after cleanu
   });
 });
 
-test('both local-log providers filter rolled-up records before merging while keeping cursor scanning intact', () => {
+test('both local-log providers filter rolled-up records before merging unless retainAll (full rescan)', () => {
   ['codex', 'kimi'].forEach((provider) => {
     const source = fs.readFileSync(
       path.resolve(__dirname, '../src/main/providers/' + provider + '/locallog.js'),
       'utf8'
     );
     assert.match(source, /require\('\.\.\/\.\.\/core\/usage-retention'\)/);
+    assert.match(source, /const rolled = rollupDaily\(records, diagnostics, nowMs\);/);
     assert.match(
       source,
-      /filterUsageDaily\(\s*rollupDaily\(records,\s*diagnostics,\s*nowMs\),\s*store\.get\('data\.historyDays'\),\s*nowMs\s*\)/
+      /opts && opts\.retainAll\s*\?\s*rolled\s*:\s*filterUsageDaily\(rolled, store\.get\('data\.historyDays'\), nowMs\)/
     );
     assert.match(source, /scanFiles\(\{/);
     assert.match(source, /cursorKey:\s*CURSOR_KEY/);

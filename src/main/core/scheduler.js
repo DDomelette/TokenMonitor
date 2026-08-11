@@ -14,7 +14,16 @@ function isAuthError(err) {
   return /unauthoriz|401|403|登录|expired|invalid token/i.test(msg);
 }
 
-function startScheduler({ registry, store, broadcast, intervals, onStateChange, getProxyInput }) {
+function startScheduler({
+  registry,
+  store,
+  broadcast,
+  intervals,
+  onStateChange,
+  getProxyInput,
+  onUsageObservation,
+  onUsageUnavailable
+}) {
   const enabled = intervals === false ? false : Object.assign({}, DEFAULT_INTERVALS, intervals || {});
   const timers = [];
   const states = Object.create(null);
@@ -50,6 +59,7 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange, 
         id: provider.id,
         authStatus: null,
         quota: null,
+        quotaFetchedAt: null,
         balance: null,
         usage: null,
         channelErrors: Object.create(null),
@@ -60,6 +70,13 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange, 
         lastFetchedAt: null,
         stale: false
       };
+      // 冷启动回填上次成功的额度:凭证过期/网络失败时卡片仍可显示旧数据,
+      // 由下一轮轮询的结果决定更新还是保持。
+      const persisted = store.get('providers.' + provider.id + '.lastQuota');
+      if (persisted && persisted.quota) {
+        states[provider.id].quota = persisted.quota;
+        states[provider.id].quotaFetchedAt = persisted.fetchedAt || null;
+      }
     }
     return states[provider.id];
   }
@@ -108,6 +125,20 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange, 
     if (observed !== 'missing') return true;
     setAuthStatus(provider, 'missing');
     return false;
+  }
+
+  function notifyUsageObservation(provider, channel) {
+    if (typeof onUsageObservation !== 'function') return;
+    try {
+      onUsageObservation(provider.id, { channel, observedAt: Date.now() });
+    } catch (_) {}
+  }
+
+  function notifyUsageUnavailable(provider, channel) {
+    if (typeof onUsageUnavailable !== 'function') return;
+    try {
+      onUsageUnavailable(provider.id, { channel, observedAt: Date.now() });
+    } catch (_) {}
   }
 
   function recordFailure(provider, channel, error) {
@@ -183,7 +214,10 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange, 
   }
 
   async function pollUsage(provider) {
-    if (!canPollProtected(provider)) return;
+    if (!canPollProtected(provider)) {
+      notifyUsageUnavailable(provider, 'usage');
+      return;
+    }
     const now = new Date();
     try {
       const usage = await provider.fetchUsage(ctxFor(provider), {
@@ -191,8 +225,10 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange, 
         year: now.getFullYear()
       });
       recordSuccess(provider, 'usage', 'usage', usage);
+      notifyUsageObservation(provider, 'usage');
     } catch (error) {
       recordFailure(provider, 'usage', error);
+      notifyUsageUnavailable(provider, 'usage');
     }
   }
 
@@ -200,7 +236,15 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange, 
     if (!canPollProtected(provider)) return;
     try {
       const quota = await provider.fetchQuota(ctxFor(provider));
+      const fetchedAt = Date.now();
       recordSuccess(provider, 'quota', 'quota', quota);
+      // 每次成功都持久化一份:下次失败(过期/断网)乃至重启后都能保持显示
+      if (quota) {
+        ensureState(provider).quotaFetchedAt = fetchedAt;
+        try {
+          store.set('providers.' + provider.id + '.lastQuota', { quota: quota, fetchedAt: fetchedAt });
+        } catch (_) { /* 持久化失败(磁盘/只读 store)不影响本轮结果 */ }
+      }
     } catch (error) {
       recordFailure(provider, 'quota', error);
     }
@@ -213,8 +257,10 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange, 
       const changed = Array.isArray(records) && records.length > 0;
       const recovered = recordChannelRecovery(provider, 'localLog', false);
       if (changed || recovered) touch(provider.id);
+      notifyUsageObservation(provider, 'localLog');
     } catch (error) {
       recordFailure(provider, 'localLog', error);
+      notifyUsageUnavailable(provider, 'localLog');
     }
   }
 
@@ -290,6 +336,7 @@ function startScheduler({ registry, store, broadcast, intervals, onStateChange, 
         capabilities: provider.capabilities,
         authStatus: st.authStatus || 'ok',
         quota: st.quota || null,
+        quotaFetchedAt: st.quotaFetchedAt || null,
         lastError: st.lastError || null,
         lastErrorChannel: st.lastErrorChannel || null,
         lastFailedAt: st.lastFailedAt || null,

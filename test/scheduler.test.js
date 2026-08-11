@@ -139,3 +139,120 @@ test('scheduler marks authStatus expired and broadcasts a safe summary on 401 qu
     scheduler.stop();
   }
 });
+
+test('scheduler reports successful web usage and local-log observations', async () => {
+  const observations = [];
+  const web = makeFakeAdapter({
+    id: 'web',
+    capabilities: { balance: false, webUsage: true, quota: false, localLog: false, realtimeProxy: false },
+    fetchUsage: async () => ({ amount: { aggregate: { todayTokens: 10 } } })
+  });
+  const local = makeFakeAdapter({
+    id: 'local',
+    capabilities: { balance: false, webUsage: false, quota: false, localLog: true, realtimeProxy: false },
+    readLocalLog: async () => []
+  });
+  const scheduler = startScheduler({
+    registry: makeRegistry([web, local]),
+    store: makeFakeStore({}),
+    broadcast() {},
+    intervals: false,
+    onUsageObservation(providerId, detail) { observations.push([providerId, detail.channel]); }
+  });
+  await scheduler.poll('web', 'usage');
+  await scheduler.poll('local', 'localLog');
+  assert.deepEqual(observations, [['web', 'usage'], ['local', 'localLog']]);
+  scheduler.stop();
+});
+
+test('scheduler reports usage-source failures without exposing raw errors', async () => {
+  const unavailable = [];
+  const web = makeFakeAdapter({
+    capabilities: { balance: false, webUsage: true, quota: false, localLog: false, realtimeProxy: false },
+    fetchUsage: async () => { throw new Error('secret upstream body'); }
+  });
+  const scheduler = startScheduler({
+    registry: makeRegistry([web]), store: makeFakeStore({}), broadcast() {}, intervals: false,
+    onUsageUnavailable(providerId, detail) { unavailable.push([providerId, detail.channel]); }
+  });
+  await scheduler.poll('fake', 'usage');
+  assert.deepEqual(unavailable, [['fake', 'usage']]);
+  scheduler.stop();
+});
+
+test('quota success persists lastQuota and exposes quotaFetchedAt in snapshot', async () => {
+  const quota = { provider: 'fake', billingMode: 'subscription', windows: [], planName: 'pro' };
+  const store = makeFakeStore({});
+  const scheduler = startScheduler({
+    registry: makeRegistry([makeFakeAdapter({ fetchQuota: async () => quota })]),
+    store,
+    broadcast() {},
+    intervals: false
+  });
+  try {
+    await scheduler.poll('fake', 'quota');
+    const persisted = store.get('providers.fake.lastQuota');
+    assert.equal(persisted.quota, quota);
+    assert.ok(Number.isFinite(persisted.fetchedAt));
+    const snap = scheduler.getSnapshot().find((p) => p.id === 'fake');
+    assert.equal(snap.quotaFetchedAt, persisted.fetchedAt);
+  } finally {
+    scheduler.stop();
+  }
+});
+
+test('cold start seeds quota snapshot from persisted lastQuota', () => {
+  const quota = { provider: 'fake', billingMode: 'subscription', windows: [] };
+  const store = makeFakeStore({
+    providers: { fake: { lastQuota: { quota: quota, fetchedAt: 1234567890 } } }
+  });
+  const scheduler = startScheduler({
+    registry: makeRegistry([makeFakeAdapter({})]),
+    store,
+    broadcast() {},
+    intervals: false
+  });
+  try {
+    const snap = scheduler.getSnapshot().find((p) => p.id === 'fake');
+    assert.deepEqual(snap.quota, quota, '首轮轮询前快照就应带有上次成功的额度');
+    assert.equal(snap.quotaFetchedAt, 1234567890);
+  } finally {
+    scheduler.stop();
+  }
+});
+
+test('failed poll keeps last good quota: update on success, keep on failure', async () => {
+  const quota = { provider: 'fake', billingMode: 'subscription', windows: [] };
+  let fail = false;
+  const adapter = makeFakeAdapter({
+    fetchQuota: async () => {
+      if (fail) throw new Error('Unauthorized: session expired (HTTP 401)');
+      return quota;
+    }
+  });
+  const scheduler = startScheduler({
+    registry: makeRegistry([adapter]),
+    store: makeFakeStore({}),
+    broadcast() {},
+    intervals: false
+  });
+  try {
+    await scheduler.poll('fake', 'quota');
+    const fetchedAt = scheduler.getSnapshot().find((p) => p.id === 'fake').quotaFetchedAt;
+    fail = true;
+    await scheduler.poll('fake', 'quota');
+    const snap = scheduler.getSnapshot().find((p) => p.id === 'fake');
+    assert.equal(snap.authStatus, 'expired');
+    assert.equal(snap.quota, quota, '失败后快照必须保持上次成功的额度');
+    assert.equal(snap.quotaFetchedAt, fetchedAt, '数据时间不应被失败覆盖');
+    fail = false;
+    const quota2 = Object.assign({}, quota, { planName: 'plus' });
+    adapter.fetchQuota = async () => quota2;
+    await scheduler.poll('fake', 'quota');
+    const snap2 = scheduler.getSnapshot().find((p) => p.id === 'fake');
+    assert.equal(snap2.authStatus, 'ok');
+    assert.equal(snap2.quota, quota2, '恢复成功后快照更新为新数据');
+  } finally {
+    scheduler.stop();
+  }
+});

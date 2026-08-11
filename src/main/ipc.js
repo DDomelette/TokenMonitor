@@ -14,6 +14,7 @@ const { UsageFetcher } = require('./providers/deepseek/usage');
 const { httpGet } = require('./core/http');
 const { SYSTEM_PROXY_VALUE, resolveElectronSystemProxy } = require('./core/proxy-settings');
 const { registerDiagnosticsIpc } = require('./core/diagnostics/ipc-registration');
+const { detectProxyPort } = require('./core/proxy-detect');
 
 function deepseekApiKeyCtx(deps, apiKey) {
   return {
@@ -62,7 +63,6 @@ module.exports = function setupIPC(deps) {
       payload.curveToken = curves.token;
       payload.curveCost = curves.cost;
     }
-    payload.proxyStatus = deps.runtime.proxyStatus;
     return payload;
   }
 
@@ -103,16 +103,21 @@ module.exports = function setupIPC(deps) {
     return deps.scheduler.getSnapshot();
   });
 
+  ipcMain.handle('get:token-speed', () => {
+    return deps.tokenSpeedRuntime
+      ? deps.tokenSpeedRuntime.getSnapshot()
+      : { enabled: false, providers: [], series: {} };
+  });
+
   /* ======== Heatmap ======== */
 
   ipcMain.handle('get:heatmap', (event, arg) => {
     const { provider, year } = arg || {};
     // 全部 provider 的日数据统一来自 store 键 'usageDaily' { '<provider>:<date>': { total, cached, models? } }:
     // codex/kimi 由本地日志增量聚合;deepseek 由 fetchUsage 按月抓取时持久化(含历史回填)。
-    const usageDaily = filterUsageDaily(
-      deps.store.get('usageDaily') || {},
-      deps.store.get('data.historyDays')
-    );
+    // 显示层不套用保留窗口:已同步的历史应全部可见,清理交给 data.historyDays/prune。
+    // 不传 historyDays 时 filterUsageDaily 只做畸形键过滤(无限保留)。
+    const usageDaily = filterUsageDaily(deps.store.get('usageDaily') || {});
     const byProvider = {};
     const cachedByProvider = {};
     const deepseekModels = {};
@@ -177,7 +182,7 @@ module.exports = function setupIPC(deps) {
       }
       summary[pid] = await rescanLocalLogs({
         providerId: pid,
-        readLocalLog: () => provider.readLocalLog({ store: deps.store }),
+        readLocalLog: () => provider.readLocalLog({ store: deps.store }, { retainAll: true }),
         readStore,
         writeStore,
         onProgress: sendProgress
@@ -199,11 +204,29 @@ module.exports = function setupIPC(deps) {
       };
     }
 
+    if (deps.tokenSpeedRuntime && typeof deps.tokenSpeedRuntime.rebaselineAll === 'function') {
+      deps.tokenSpeedRuntime.rebaselineAll();
+    }
+
     // 广播 providers:changed,渲染端 TokenHeatmap/ProviderBar 已订阅,会自动重取 get:heatmap
     if (deps.scheduler && typeof deps.scheduler.pollAll === 'function') {
       await deps.scheduler.pollAll();
     }
     return summary;
+  });
+
+  /* ======== MCP 服务 ======== */
+
+  ipcMain.handle('mcp:getConnectionInfo', () => {
+    const rt = typeof deps.getMcpRuntime === 'function' ? deps.getMcpRuntime() : null;
+    return rt ? rt.getConnectionInfo() : { enabled: false, running: false, port: null, url: null, token: null };
+  });
+
+  ipcMain.handle('mcp:rotateToken', async () => {
+    const rt = typeof deps.getMcpRuntime === 'function' ? deps.getMcpRuntime() : null;
+    if (!rt) throw new Error('MCP 服务未初始化');
+    await rt.rotateToken();
+    return rt.getConnectionInfo();
   });
 
   /* ======== Settings ======== */
@@ -234,8 +257,16 @@ module.exports = function setupIPC(deps) {
     return sanitizeSettings(deps.store.store);
   });
 
+  // 设置页"自定义 HTTP 代理"预填:探测本机常见代理端口是否在监听
+  ipcMain.handle('detect:proxy-port', async () => {
+    return { port: await detectProxyPort() };
+  });
+
   ipcMain.on('settings:reset', () => {
     resetSettingsStore(deps.store);
+    if (deps.tokenSpeedRuntime && typeof deps.tokenSpeedRuntime.applySettings === 'function') {
+      deps.tokenSpeedRuntime.applySettings();
+    }
     console.log('[settings] reset done (credentials and usage state preserved)');
     if (getMain()) {
       getMain().setAlwaysOnTop(true);
@@ -441,5 +472,18 @@ module.exports = function setupIPC(deps) {
       deps.persistMainWindowBounds();
       deps.sendMainWindowBounds();
     }
+  });
+  /* ======== 贴边自动隐藏(issue #170):渲染端指针事件驱动展开/收起 ======== */
+
+  ipcMain.on('edge-dock:pointer-enter', (event) => {
+    if (BrowserWindow.fromWebContents(event.sender) !== getMain()) return;
+    var dock = deps.getEdgeDock && deps.getEdgeDock();
+    if (dock) dock.pointerEnter();
+  });
+
+  ipcMain.on('edge-dock:pointer-leave', (event) => {
+    if (BrowserWindow.fromWebContents(event.sender) !== getMain()) return;
+    var dock = deps.getEdgeDock && deps.getEdgeDock();
+    if (dock) dock.pointerLeave();
   });
 };

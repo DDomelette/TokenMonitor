@@ -1,7 +1,7 @@
 {
   "name": "deepseek-monitor",
   "version": "1.0.0",
-  "description": "DeepSeek API 用量监控悬浮窗",
+  "description": "多平台 AI 用量监控悬浮窗(DeepSeek / Codex / Kimi)",
   "main": "src/main/bootstrap.js",
   "scripts": {
     "prestart": "npm run build:renderer",
@@ -16,6 +16,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "echarts": "^5.5.0",
     "electron-store": "^8.1.0",
     "gridstack": "^12.3.3",

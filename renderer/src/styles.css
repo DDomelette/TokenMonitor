@@ -321,6 +321,223 @@ body,
   width: 100%;
 }
 
+/* ======== Token 消耗速度曲线卡片 ======== */
+.token-speed-card {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.token-speed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.token-speed-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.token-speed-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  color: var(--text-secondary);
+}
+
+.token-speed-controls {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  min-width: 0;
+}
+
+/* 主题化下拉(与设置页 custom-select 同款):圆角触发器 + 主题色菜单,
+   替代原生 <select>——原生展开列表由 OS 渲染,透明/暗色窗口里是直角白底 */
+.themed-select {
+  position: relative;
+  min-width: 0;
+  max-width: 112px;
+}
+
+.themed-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.3;
+  padding: 3px 6px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 200ms ease-out, box-shadow 200ms ease-out;
+}
+
+.themed-select-trigger:hover,
+.themed-select.open .themed-select-trigger {
+  border-color: var(--primary);
+}
+
+.themed-select.open .themed-select-trigger {
+  box-shadow: 0 0 0 2px rgba(116, 184, 252, 0.18);
+}
+
+.themed-select-trigger svg {
+  flex-shrink: 0;
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.themed-select.open .themed-select-trigger svg {
+  transform: rotate(180deg);
+}
+
+.themed-select-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.themed-select-menu {
+  position: fixed;
+  z-index: 10000;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  box-shadow: 0 6px 20px rgba(31, 41, 55, 0.18);
+  overflow: hidden;
+  transform-origin: top center;
+  /* 菜单仅在打开时挂载,展开动画用 keyframes(较快、带轻微回弹的阻尼感) */
+  animation: themed-select-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.themed-select-menu.drop-up {
+  transform-origin: bottom center;
+  animation-name: themed-select-in-up;
+}
+
+@keyframes themed-select-in {
+  from { opacity: 0; transform: translateY(-6px) scaleY(0.86); }
+  to { opacity: 1; transform: translateY(0) scaleY(1); }
+}
+
+@keyframes themed-select-in-up {
+  from { opacity: 0; transform: translateY(6px) scaleY(0.86); }
+  to { opacity: 1; transform: translateY(0) scaleY(1); }
+}
+
+.themed-select-option {
+  padding: 5px 8px;
+  font-size: 10px;
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms ease-out;
+}
+
+.themed-select-option:hover {
+  background: rgba(116, 184, 252, 0.12);
+}
+
+.themed-select-option.selected {
+  color: var(--primary);
+  font-weight: 500;
+}
+
+/* 向上展开(窗口下方空间不足时)的定位由 CustomSelect 内联 bottom 控制,
+   .drop-up 仅切换 transform-origin 与动画方向(见上) */
+
+.token-speed-legends {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.token-speed-legend {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 5px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.token-speed-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 7px;
+}
+
+.token-speed-legend strong {
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.token-speed-delta,
+.token-speed-status {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.token-speed-status {
+  opacity: 0.82;
+}
+
+.token-speed-chart {
+  flex: 1;
+  min-height: 54px;
+  width: 100%;
+}
+
+@container (max-width: 220px) {
+  .token-speed-card { gap: 1px; }
+  .token-speed-header { gap: 2px; }
+  .token-speed-title { gap: 4px; font-size: 10px; }
+  .token-speed-icon { width: 14px; height: 14px; flex-basis: 14px; }
+  .token-speed-controls { width: 100%; margin-left: 0; gap: 3px; }
+  .themed-select { flex: 1; max-width: none; }
+  .themed-select-trigger {
+    border-radius: 5px;
+    font-size: 8px;
+    padding: 1px 3px;
+  }
+  .themed-select-option { font-size: 8px; padding: 3px 5px; }
+  .token-speed-legends { flex-wrap: nowrap; justify-content: space-between; gap: 1px; }
+  .token-speed-legend { flex-wrap: nowrap; gap: 1px; font-size: 7px; }
+  .token-speed-provider { display: none; }
+  .token-speed-legend strong { font-size: 7px; letter-spacing: -0.2px; }
+  .token-speed-delta,
+  .token-speed-status { display: none; }
+  .token-speed-dot { width: 4px; height: 4px; flex-basis: 4px; }
+  .token-speed-chart { min-height: 20px; }
+}
+
 /* gridstack 基础覆写:隐藏默认边框,内容占满(margin 由 --gs-item-margin-* 变量生效,勿再 inset:0 覆盖) */
 .grid-stack {
   background: transparent;
@@ -525,6 +742,35 @@ body,
   color: var(--text-secondary);
 }
 
+/* 凭证过期但有缓存数据:顶部警示条(数据时间+重试),额度条照常显示 */
+.quota-stale-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+  border-radius: var(--radius-btn);
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.quota-stale-text {
+  font-size: 10px;
+  color: var(--warning, #F59E0B);
+}
+
+.quota-stale-retry {
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-btn);
+  background: var(--primary);
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
 /* ======== Token 活动热力图 ======== */
 .heatmap-widget {
   width: 100%;
@@ -589,19 +835,6 @@ body,
 
 .heatmap-cell {
   border-radius: 2px;
-}
-
-/* 每周/累计模式:方块堆积列 */
-.heatmap-grid-blocks {
-  width: max-content;
-  align-items: flex-end;
-}
-
-.heatmap-block-col {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 2px;
 }
 
 .heatmap-months {

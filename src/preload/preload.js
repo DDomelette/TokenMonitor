@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('api', {
       'window:bounds-changed',
       'session:changed',
       'providers:changed',
+      'token-speed:changed',
       'sync:progress',
       'diagnostics:progress'
     ];
@@ -40,7 +41,9 @@ contextBridge.exposeInMainWorld('api', {
       'resize:move',
       'resize:end',
       'open:diagnostics',
-      'window:close-diagnostics'
+      'window:close-diagnostics',
+      'edge-dock:pointer-enter',
+      'edge-dock:pointer-leave'
     ];
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data);
@@ -54,6 +57,7 @@ contextBridge.exposeInMainWorld('api', {
       'settings:replace-api-key',
       'get:dashboard',
       'get:providers',
+      'get:token-speed',
       'get:heatmap',
       'get:bounds',
       'get:session-state',
@@ -61,7 +65,10 @@ contextBridge.exposeInMainWorld('api', {
       'sync:history',
       'diagnostics:run',
       'diagnostics:copy-report',
-      'diagnostics:open-guide'
+      'diagnostics:open-guide',
+      'detect:proxy-port',
+      'mcp:getConnectionInfo',
+      'mcp:rotateToken'
     ];
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args);

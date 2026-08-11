@@ -34,10 +34,24 @@ test('QuotaCard renders windows array and shows no currency for subscription mod
   assert.doesNotMatch(quotaCard, /[¥$]/);
 });
 
-test('QuotaCard replaces card with reauthorize button when authStatus is expired', () => {
+test('QuotaCard shows an honest retry entry when authStatus is expired', () => {
   assert.match(quotaCard, /authStatus/);
   assert.match(quotaCard, /expired/);
-  assert.match(quotaCard, /重新授权/);
+  // 凭证由本机 CLI 维护,应用只读无法代授权:按钮是"立即重试"而非"重新授权",
+  // 提示语必须引导用户先去终端运行对应 CLI
+  assert.match(quotaCard, /立即重试/);
+  assert.match(quotaCard, /请先在终端运行一次/);
+  assert.doesNotMatch(quotaCard, /重新授权/);
+});
+
+test('QuotaCard keeps last good data with a stale banner when expired but cached', () => {
+  // 过期且有缓存数据时:不替换为纯过期卡,正常渲染 windows 并加警示条(数据时间+重试)
+  assert.match(quotaCard, /expired && !quotaState/);
+  assert.match(quotaCard, /quota-stale-banner/);
+  assert.match(quotaCard, /凭证已过期,显示/);
+  assert.match(quotaCard, /quotaFetchedAt/);
+  // 纯过期卡只在没有缓存数据时出现
+  assert.match(quotaCard, /if \(expired && !quotaState\)/);
 });
 
 test('WindowBar consumes used/limit/remaining/resetsAt and colors by remaining percent', () => {

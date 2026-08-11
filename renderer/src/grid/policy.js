@@ -2,7 +2,7 @@
 // registry 数据源为同目录 components.js;gridstack 渲染层(React)只消费本模块的纯函数结果。
 import * as registry from './components.js';
 
-export const VERSION = 7;
+export const VERSION = 8;
 export const BREAKPOINT_WIDTH = 640;
 
 function clone(value) {
