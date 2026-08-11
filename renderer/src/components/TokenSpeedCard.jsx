@@ -55,7 +55,8 @@ export default function TokenSpeedCard() {
     series: {}
   }, {
     isDark: document.body.classList.contains('dark'),
-    compact: !!chartRef.current && chartRef.current.clientWidth < 220
+    compact: !!chartRef.current && chartRef.current.clientWidth < 220,
+    dom: chartRef.current
   }), [snapshot]);
 
   function updateFilter(value) {

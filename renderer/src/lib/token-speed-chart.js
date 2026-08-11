@@ -1,3 +1,5 @@
+import { echartsWindowPosition } from './floating-layer.js';
+
 export const PROVIDER_META = Object.freeze({
   deepseek: { label: 'DeepSeek', color: '#6E94F5' },
   codex: { label: 'Codex', color: '#F2A05C' },
@@ -133,6 +135,7 @@ export function buildTokenSpeedOption(snapshot = {}, options = {}) {
     tooltip: {
       trigger: 'axis',
       appendToBody: true,
+      position: echartsWindowPosition(options.dom),
       axisPointer: { type: 'line', lineStyle: { color: isDark ? '#6B7280' : '#9CA3AF' } },
       backgroundColor: isDark ? 'rgba(30,32,38,0.96)' : 'rgba(255,255,255,0.97)',
       borderColor: isDark ? '#3A3C45' : '#E5E7EB',
