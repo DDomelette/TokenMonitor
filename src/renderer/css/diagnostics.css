@@ -163,6 +163,9 @@ body[data-theme='acrylic-dark'][data-window-active='false'] {
 }
 
 .diagnostic-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   align-self: start;
   padding: 3px 8px;
   border-radius: 999px;
@@ -179,6 +182,28 @@ body[data-theme='acrylic-dark'][data-window-active='false'] {
 .status-running .diagnostic-status {
   color: #8a5700;
   background: #ffe8a3;
+}
+
+.status-running .diagnostic-spinner {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: diagnostics-spinner-rotate 0.8s linear infinite;
+}
+
+@keyframes diagnostics-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-running .diagnostic-spinner {
+    animation: none;
+  }
 }
 
 .status-pass .diagnostic-status {

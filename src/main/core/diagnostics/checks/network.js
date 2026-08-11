@@ -195,6 +195,7 @@ function probeProxyTcp(options = {}) {
   const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
     ? Math.floor(options.timeoutMs)
     : TRANSPORT_TIMEOUTS.connectTimeoutMs;
+  const signal = options.signal;
 
   return new Promise((resolve) => {
     let socket;
@@ -221,6 +222,9 @@ function probeProxyTcp(options = {}) {
       }
       remove('connect', onConnect);
       remove('error', onError);
+      if (signal && typeof signal.removeEventListener === 'function') {
+        try { signal.removeEventListener('abort', onAbort); } catch (_) { /* no-op */ }
+      }
     };
     const settle = (result) => {
       if (settled) return;
@@ -243,7 +247,23 @@ function probeProxyTcp(options = {}) {
         parts
       ));
     };
+    const onAbort = () => settle(proxyFailure(
+      'Custom proxy TCP connection aborted',
+      'DIAGNOSTIC_ABORTED',
+      'tcp'
+    ));
     try {
+      if (signal && signal.aborted) {
+        onAbort();
+        return;
+      }
+      if (signal && typeof signal.addEventListener === 'function') {
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+      if (signal && signal.aborted) {
+        onAbort();
+        return;
+      }
       socket = connect(parts.port, parts.host);
       if (!socket || typeof socket.once !== 'function') throw new Error('socket unavailable');
       socket.once('connect', onConnect);
@@ -294,14 +314,57 @@ function consumeThenable(value) {
   return true;
 }
 
+function captureProxySnapshot(dependencies = {}) {
+  try {
+    const store = dependencies.store;
+    const readStoredProxy = typeof dependencies.getStoredProxyValue === 'function'
+      ? dependencies.getStoredProxyValue
+      : () => store && typeof store.get === 'function' ? store.get('providers.proxyUrl') : '';
+    const normalizeStored = dependencies.normalizeStoredProxyValue || normalizeStoredProxyValue;
+    const classifyStored = dependencies.classifyStoredProxyValue || classifyStoredProxyValue;
+    const resolveSystem = dependencies.resolveElectronSystemProxy || resolveElectronSystemProxy;
+    const storedProxy = readStoredProxy();
+    if (consumeThenable(storedProxy)) throw new Error('asynchronous proxy value');
+    const proxy = classifyStored(normalizeStored(storedProxy));
+    if (proxy.mode === 'custom' && typeof proxy.url === 'string') {
+      return Object.freeze({ mode: 'custom', input: proxy.url });
+    }
+    if (proxy.mode === 'system') {
+      return Object.freeze({
+        mode: 'system',
+        input: (targetUrl) => Promise.resolve().then(() => resolveSystem(targetUrl))
+      });
+    }
+    if (proxy.mode === 'direct') return Object.freeze({ mode: 'direct', input: null });
+  } catch (_) {
+    // Invalid or asynchronous configuration is represented without retaining its value.
+  }
+  return Object.freeze({ mode: 'invalid', input: null });
+}
+
+function proxyFromContext(context) {
+  try {
+    const runScope = context && context.runScope;
+    const proxy = runScope && runScope.proxy;
+    if (!proxy || typeof proxy !== 'object') throw new Error('missing proxy scope');
+    if (proxy.mode === 'direct' && proxy.input === null) return proxy;
+    if (proxy.mode === 'custom' && typeof proxy.input === 'string') return proxy;
+    if (proxy.mode === 'system' && typeof proxy.input === 'function') return proxy;
+    if (proxy.mode === 'invalid' && proxy.input === null) return proxy;
+  } catch (_) {
+    // Missing or hostile contexts fail closed.
+  }
+  return { mode: 'invalid', input: null };
+}
+
+function transportOptions(context) {
+  return Object.assign({}, TRANSPORT_TIMEOUTS, {
+    signal: context && context.signal,
+    deadlineMs: context && context.deadlineMs
+  });
+}
+
 function createNetworkChecks(dependencies = {}) {
-  const store = dependencies.store;
-  const readStoredProxy = typeof dependencies.getStoredProxyValue === 'function'
-    ? dependencies.getStoredProxyValue
-    : () => store && typeof store.get === 'function' ? store.get('providers.proxyUrl') : '';
-  const normalizeStored = dependencies.normalizeStoredProxyValue || normalizeStoredProxyValue;
-  const classifyStored = dependencies.classifyStoredProxyValue || classifyStoredProxyValue;
-  const resolveSystem = dependencies.resolveElectronSystemProxy || resolveElectronSystemProxy;
   const transport = {
     netConnect: dependencies.netConnect,
     setTimeout: dependencies.setTimeout,
@@ -310,36 +373,23 @@ function createNetworkChecks(dependencies = {}) {
     normalizeCustomProxyUrl: dependencies.normalizeCustomProxyUrl || normalizeCustomProxyUrl
   };
 
-  let proxy;
-  let proxyConfigError = false;
-  try {
-    const storedProxy = readStoredProxy();
-    if (consumeThenable(storedProxy)) throw new Error('asynchronous proxy value');
-    const normalized = normalizeStored(storedProxy);
-    proxy = classifyStored(normalized);
-  } catch (_) {
-    proxyConfigError = true;
-    proxy = { mode: 'direct', url: '' };
-  }
-
-  const proxyInput = proxy.mode === 'custom'
-    ? proxy.url
-    : proxy.mode === 'system'
-      ? (targetUrl) => Promise.resolve().then(() => resolveSystem(targetUrl))
-      : null;
-
   const checks = [
-    definition('network.proxy-config', 'Proxy configuration', PROXY_GUIDE, 'local', () => (
-      proxyConfigError
+    definition('network.proxy-config', 'Proxy configuration', PROXY_GUIDE, 'local', (context) => {
+      const proxy = proxyFromContext(context);
+      return proxy.mode === 'invalid'
         ? { status: 'fail', summary: 'Stored proxy configuration is invalid', errorCode: 'NETWORK_PROXY_CONFIG_INVALID' }
-        : { status: 'pass', summary: 'Proxy configuration is valid', metadata: { mode: proxy.mode } }
-    ), 3000),
-    definition('network.system-proxy', 'System proxy TCP connection', PROXY_GUIDE, 'remote', async () => {
+        : { status: 'pass', summary: 'Proxy configuration is valid', metadata: { mode: proxy.mode } };
+    }, 3000),
+    definition('network.system-proxy', 'System proxy TCP connection', PROXY_GUIDE, 'remote', async (context) => {
+      const proxy = proxyFromContext(context);
       if (proxy.mode !== 'system') return skippedProxyCheck('System proxy is not selected');
       try {
-        const resolved = await resolveSystem(ENDPOINTS[0].url);
+        const resolved = await proxy.input(ENDPOINTS[0].url);
         if (!resolved) return { status: 'pass', summary: 'System proxy resolves to direct connection', metadata: { stage: 'proxy-config' } };
-        return probeProxyTcp(Object.assign({}, transport, { proxyUrl: resolved }));
+        return probeProxyTcp(Object.assign({}, transport, {
+          proxyUrl: resolved,
+          signal: context && context.signal
+        }));
       } catch (error) {
         const classified = classifyNetworkError(error);
         return {
@@ -350,19 +400,26 @@ function createNetworkChecks(dependencies = {}) {
         };
       }
     }, REQUEST_TIMEOUT_MS),
-    definition('network.custom-proxy', 'Custom proxy TCP connection', PROXY_GUIDE, 'remote', () => {
+    definition('network.custom-proxy', 'Custom proxy TCP connection', PROXY_GUIDE, 'remote', (context) => {
+      const proxy = proxyFromContext(context);
       if (proxy.mode !== 'custom') return skippedProxyCheck('Custom proxy is not selected');
-      return probeProxyTcp(Object.assign({}, transport, { proxyUrl: proxy.url }));
+      return probeProxyTcp(Object.assign({}, transport, {
+        proxyUrl: proxy.input,
+        signal: context && context.signal
+      }));
     }, REQUEST_TIMEOUT_MS)
   ];
 
   for (const endpoint of ENDPOINTS) {
-    checks.push(definition(endpoint.id, endpoint.title, endpoint.guideId, 'remote', () => probeEndpoint({
+    checks.push(definition(endpoint.id, endpoint.title, endpoint.guideId, 'remote', (context) => {
+      const proxy = proxyFromContext(context);
+      return probeEndpoint({
       url: endpoint.url,
       httpGet: dependencies.httpGet || defaultHttpGet,
-      proxyInput,
-      timeoutOptions: TRANSPORT_TIMEOUTS
-    }), REQUEST_TIMEOUT_MS));
+      proxyInput: proxy.mode === 'invalid' ? null : proxy.input,
+      timeoutOptions: transportOptions(context)
+      });
+    }, REQUEST_TIMEOUT_MS));
   }
   return checks;
 }
@@ -372,5 +429,6 @@ module.exports = {
   classifyNetworkError,
   probeEndpoint,
   probeProxyTcp,
+  captureProxySnapshot,
   createNetworkChecks
 };

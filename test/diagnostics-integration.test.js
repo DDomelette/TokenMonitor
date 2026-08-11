@@ -5,8 +5,12 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { types: utilTypes } = require('node:util');
+const vm = require('node:vm');
+const { EventEmitter } = require('node:events');
 
 const { createDiagnostics } = require('../src/main/core/diagnostics');
+const { projectDiagnosticsTheme } = require('../src/main/core/diagnostics/theme');
+const { collectWindowsCapabilities } = require('../src/main/core/diagnostics/checks/windows');
 const { validateEncryptionKey } = require('../src/main/core/encryption-key');
 const { normalizeStoredProxyValue } = require('../src/main/core/proxy-settings');
 
@@ -58,6 +62,46 @@ const EXPECTED_CHECK_IDS = Object.freeze([
   'scheduler.kimi',
   'runtime.self-check'
 ]);
+
+function loadDedicatedDiagnosticsBridge() {
+  let diagnosticsBridge;
+  const ipcRenderer = {
+    invoke() { return Promise.resolve(); },
+    send() {},
+    on() {},
+    removeListener() {}
+  };
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'preload', 'diagnostics-preload.js'), 'utf8');
+  vm.runInNewContext(source, {
+    require(name) {
+      if (name !== 'electron') throw new Error(`Unexpected preload import: ${name}`);
+      return {
+        ipcRenderer,
+        contextBridge: {
+          exposeInMainWorld(name, value) {
+            assert.equal(name, 'diagnosticsApi');
+            diagnosticsBridge = value;
+          }
+        }
+      };
+    },
+    Object,
+    Promise
+  }, { filename: 'diagnostics-preload.js' });
+  return diagnosticsBridge;
+}
+
+function successfulNetConnect() {
+  const socket = new EventEmitter();
+  socket.destroyed = false;
+  socket.destroy = () => {
+    socket.destroyed = true;
+  };
+  setImmediate(() => {
+    if (!socket.destroyed) socket.emit('connect');
+  });
+  return socket;
+}
 
 function deferred() {
   let resolve;
@@ -294,10 +338,51 @@ function createRemoteBoundary() {
   let peak = 0;
   const idleWaiters = new Set();
 
+  function signalFor(call) {
+    return call && call.timeoutOptions && call.timeoutOptions.signal;
+  }
+
+  function waitForGate(gate, label, signal) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let timer;
+      const cleanup = () => {
+        if (timer !== undefined) clearTimeout(timer);
+        if (signal && typeof signal.removeEventListener === 'function') {
+          signal.removeEventListener('abort', onAbort);
+        }
+      };
+      const settle = (method, value) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        method(value);
+      };
+      const onAbort = () => {
+        const error = new Error('diagnostics remote fixture aborted');
+        error.code = 'DIAGNOSTIC_ABORTED';
+        settle(reject, error);
+      };
+      if (signal && signal.aborted) {
+        onAbort();
+        return;
+      }
+      if (signal && typeof signal.addEventListener === 'function') {
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+      Promise.resolve(gate).then(
+        (value) => settle(resolve, value),
+        (error) => settle(reject, error)
+      );
+      timer = setTimeout(() => settle(reject, new Error(`${label} timed out after 5000ms`)), 5000);
+    });
+  }
+
   async function invoke(call, result) {
     calls.push(call);
     active += 1;
     peak = Math.max(peak, active);
+    const signal = signalFor(call);
     try {
       if (!overlapDone) {
         overlapEntries += 1;
@@ -306,9 +391,9 @@ function createRemoteBoundary() {
           overlapReleased.resolve();
         }
         try {
-          await withTimeout(overlapReleased.promise, 5000, 'remote overlap barrier');
+          await waitForGate(overlapReleased.promise, 'remote overlap barrier', signal);
         } catch (error) {
-          errors.push(error.message);
+          if (error.code !== 'DIAGNOSTIC_ABORTED') errors.push(error.message);
           throw error;
         }
       }
@@ -316,9 +401,9 @@ function createRemoteBoundary() {
         nextBlock.claimed = true;
         nextBlock.started.resolve();
         try {
-          await withTimeout(nextBlock.released.promise, 5000, 'blocked remote release');
+          await waitForGate(nextBlock.released.promise, 'blocked remote release', signal);
         } catch (error) {
-          errors.push(error.message);
+          if (error.code !== 'DIAGNOSTIC_ABORTED') errors.push(error.message);
           throw error;
         }
       }
@@ -414,6 +499,7 @@ function createRendererWindow(progressEvents) {
   };
   return {
     webContents,
+    isDestroyed: () => closed,
     close() { closed = true; },
     dispose() {
       closed = true;
@@ -538,7 +624,7 @@ function createWindowsBoundary(privateGpuValue) {
 
   const koffi = facade('koffi', {
     load(name) {
-      requireCall(expectedLibraries.has(name) && !loadedLibraries.has(name), `koffi.load:${name}`);
+      requireCall(expectedLibraries.has(name), `koffi.load:${name}`);
       loadedLibraries.add(name);
       calls.push(['load', name]);
       return libraries.get(name);
@@ -575,6 +661,9 @@ function createWindowsBoundary(privateGpuValue) {
 
   const BrowserWindow = new Proxy(function BrowserWindow() {}, {
     construct(_target, args) {
+      if (lifecycle.destroyed) {
+        for (const key of Object.keys(lifecycle)) lifecycle[key] = false;
+      }
       const options = args[0];
       requireCall(
         args.length === 1
@@ -793,6 +882,38 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
   let rendererWindow = null;
   try {
     const nowMs = 2_000_000_000_000;
+    const expectedTheme = { darkMode: 'acrylic-dark', followSystemTheme: false };
+    const themeProjection = projectDiagnosticsTheme({
+      window: expectedTheme,
+      providers: { codex: { localLogRoot: 'C:\\Users\\Private\\.codex' } },
+      localLogCursors: { private: 1 }
+    });
+    assert.deepEqual(themeProjection, { window: expectedTheme });
+    const diagnosticsBridge = loadDedicatedDiagnosticsBridge();
+    assert.equal(diagnosticsBridge.settingsSave, undefined);
+
+    let unsupportedWindowsNativeTouches = 0;
+    const unsupportedWindows = {
+      platform: 'win32',
+      release: 'unknown-build',
+      app: {
+        getGPUFeatureStatus: () => ({ gpu_compositing: 'enabled' }),
+        getGPUInfo: async () => ({ auxAttributes: {} })
+      }
+    };
+    for (const key of ['koffi', 'BrowserWindow', 'createAccentApi', 'applyAccent', 'clearAccent']) {
+      Object.defineProperty(unsupportedWindows, key, {
+        enumerable: true,
+        get() {
+          unsupportedWindowsNativeTouches += 1;
+          throw new Error(`unsupported build touched ${key}`);
+        }
+      });
+    }
+    const unsupportedSnapshot = await collectWindowsCapabilities(unsupportedWindows);
+    assert.equal(unsupportedSnapshot.platformBuildSupported, false);
+    assert.equal(unsupportedWindowsNativeTouches, 0);
+
     const userDataDir = path.join(root, 'user-data');
     const buildDir = path.join(root, 'build-inputs');
     const codexSessionsRoot = path.join(root, 'codex-sessions');
@@ -817,6 +938,10 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
     };
 
     fs.mkdirSync(userDataDir);
+    const collisionRandom = Buffer.alloc(12, 0xcd);
+    const collisionPath = path.join(userDataDir, `.diagnostics-${collisionRandom.toString('hex')}.tmp`);
+    const collisionBytesBefore = Buffer.from('assembled pre-existing collision bytes');
+    fs.writeFileSync(collisionPath, collisionBytesBefore);
     fs.mkdirSync(buildDir);
     fs.mkdirSync(path.join(codexSessionsRoot, 'run'), { recursive: true });
     fs.mkdirSync(path.dirname(kimiSessionPath), { recursive: true });
@@ -873,6 +998,14 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
     const copiedReports = [];
     const runIds = ['assembled-full-run', 'assembled-stale-run', 'assembled-replacement-run'];
     let nextRunId = 0;
+    let tempRandomCalls = 0;
+    const storageCrypto = {
+      randomBytes(size) {
+        assert.equal(size, 12);
+        tempRandomCalls += 1;
+        return tempRandomCalls === 1 ? collisionRandom : crypto.randomBytes(size);
+      }
+    };
 
     diagnostics = createDiagnostics({
       runtime: {
@@ -881,11 +1014,17 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
         arch: 'x64',
         release: '10.0.19045',
         buildPaths: Object.assign({ fs: fsAudit.fs }, buildPaths),
-        getWindows: () => ({ main: rendererWindow, settings: null, login: null, session: null })
+        getWindows: () => ({
+          main: rendererWindow,
+          settings: null,
+          login: null,
+          session: null,
+          diagnostics: rendererWindow
+        })
       },
       storage: {
         fs: fsAudit.fs,
-        crypto,
+        crypto: storageCrypto,
         path,
         userDataDir,
         store,
@@ -893,7 +1032,7 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
         normalizeStoredProxyValue
       },
       windows: windowsAudit.dependencies,
-      network: { store, httpGet: remote.httpGet },
+      network: { store, httpGet: remote.httpGet, netConnect: successfulNetConnect },
       providers: {
         fs: fsAudit.fs,
         store,
@@ -961,7 +1100,9 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
     assert.deepEqual(fsAudit.violations, []);
     assert.equal(fs.readFileSync(codexAuthPath).equals(codexBefore), true);
     assert.equal(fs.readFileSync(kimiCredPath).equals(kimiBefore), true);
-    assert.equal(findDiagnosticTempFiles(userDataDir).length, 0);
+    const collisionBytesAfter = fs.readFileSync(collisionPath);
+    assert.equal(collisionBytesAfter.equals(collisionBytesBefore), true);
+    assert.deepEqual(findDiagnosticTempFiles(userDataDir), [path.basename(collisionPath)]);
 
     const copied = await withTimeout(
       diagnostics.copy(rendererWindow.webContents, fullRun.runId),
@@ -1006,24 +1147,33 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
     for (const call of networkCalls) {
       assert.deepEqual(call.headers, {});
       assert.equal(call.proxyInput, null);
-      assert.deepEqual(call.timeoutOptions, {
+      assert.deepEqual({
+        connectTimeoutMs: call.timeoutOptions.connectTimeoutMs,
+        connectResponseTimeoutMs: call.timeoutOptions.connectResponseTimeoutMs,
+        tlsHandshakeTimeoutMs: call.timeoutOptions.tlsHandshakeTimeoutMs,
+        requestTimeoutMs: call.timeoutOptions.requestTimeoutMs
+      }, {
         connectTimeoutMs: 5000,
         connectResponseTimeoutMs: 5000,
         tlsHandshakeTimeoutMs: 5000,
         requestTimeoutMs: 8000
       });
+      assert.equal(call.timeoutOptions.signal instanceof AbortSignal, true);
+      assert.equal(Number.isFinite(call.timeoutOptions.deadlineMs), true);
     }
     const deepseekKeyCall = fullRemoteCalls.find((call) => call.type === 'provider.deepseek-api-key');
     assert.equal(deepseekKeyCall.url, 'https://api.deepseek.com/user/balance');
     assert.equal(deepseekKeyCall.key, sentinels.deepseekApiKey);
-    assert.equal(deepseekKeyCall.options.httpGet, remote.httpGet);
+    assert.equal(typeof deepseekKeyCall.options.httpGet, 'function');
+    assert.notEqual(deepseekKeyCall.options.httpGet, remote.httpGet);
     assert.equal(deepseekKeyCall.options.proxyUrl, null);
     const deepseekSessionCall = fullRemoteCalls.find((call) => call.type === 'provider.deepseek-session');
     assert.equal(deepseekSessionCall.url, 'https://platform.deepseek.com/usage');
     assert.equal(deepseekSessionCall.token, sentinels.deepseekSession);
     assert.equal(deepseekSessionCall.month, 5);
     assert.equal(deepseekSessionCall.year, 2033);
-    assert.equal(deepseekSessionCall.options.httpGet, remote.httpGet);
+    assert.equal(typeof deepseekSessionCall.options.httpGet, 'function');
+    assert.notEqual(deepseekSessionCall.options.httpGet, remote.httpGet);
     assert.equal(deepseekSessionCall.options.proxyUrl, null);
     const codexQuotaCall = fullRemoteCalls.find((call) => call.type === 'provider.codex-quota');
     assert.equal(codexQuotaCall.url, 'https://chatgpt.com/backend-api/wham/usage');
@@ -1041,17 +1191,33 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
     assert.equal(fullRemoteCalls.length, 8);
     assert.equal(JSON.stringify(fullRemoteCalls).includes('Authorization'), true);
 
+    storeValues['providers.proxyUrl'] = 'http://127.0.0.1:7890';
+    const runBRemoteCallStart = remote.calls.length;
     blockedRemote = remote.blockNext();
     const staleRun = diagnostics.start(rendererWindow.webContents);
     assert.equal(staleRun.runId, runIds[1]);
     await withTimeout(blockedRemote.started, 5000, 'blocked remote start');
+    const runBProxyMode = remote.calls.slice(runBRemoteCallStart)
+      .some((call) => call.proxyInput === 'http://127.0.0.1:7890')
+      ? 'custom'
+      : 'unknown';
+    assert.equal(runBProxyMode, 'custom');
     const staleEventsAtReplacement = progressEvents.filter((event) => event.runId === staleRun.runId).length;
     const replacementRun = diagnostics.start(rendererWindow.webContents);
     assert.equal(replacementRun.runId, runIds[2]);
+    await withTimeout(remote.waitForIdle(), 2000, 'replacement abort remote idle');
+    const activeRemoteAfterAbort = remote.active();
+    assert.equal(activeRemoteAfterAbort, 0);
+    const remotePeakAcrossReruns = remote.peak();
+    assert.equal(remotePeakAcrossReruns <= 3, true);
     await withTimeout(
-      rendererWindow.waitFor((event) => event.runId === replacementRun.runId && event.check.status === 'running'),
+      rendererWindow.waitFor((event) => (
+        event.runId === replacementRun.runId
+        && event.check.id === 'storage.temp-write'
+        && ['pass', 'fail', 'skipped'].includes(event.check.status)
+      )),
       5000,
-      'replacement run progress'
+      'replacement storage progress'
     );
     assert.equal(
       progressEvents.filter((event) => event.runId === staleRun.runId).length,
@@ -1060,6 +1226,7 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
     );
 
     rendererWindow.close();
+    diagnostics.dispose(rendererWindow.webContents.id);
     const eventsAtClose = progressEvents.length;
     blockedRemote.release();
     await withTimeout(remote.waitForIdle(), 2000, 'post-close remote idle');
@@ -1075,7 +1242,8 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
     assert.deepEqual(fsAudit.violations, []);
     assert.equal(fs.readFileSync(codexAuthPath).equals(codexBefore), true);
     assert.equal(fs.readFileSync(kimiCredPath).equals(kimiBefore), true);
-    assert.equal(findDiagnosticTempFiles(userDataDir).length, 0);
+    assert.equal(fs.readFileSync(collisionPath).equals(collisionBytesBefore), true);
+    assert.deepEqual(findDiagnosticTempFiles(userDataDir), [path.basename(collisionPath)]);
     assert.deepEqual(
       new Set(fsAudit.reads.filter((entry) => entry.method === 'readFileSync')
         .map((entry) => entry.target)
@@ -1100,6 +1268,8 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
       accentCleared: true,
       destroyed: true
     });
+    assert.equal(windowsAudit.calls.filter((entry) => Array.isArray(entry) && entry[0] === 'create').length, 3);
+    assert.equal(windowsAudit.calls.filter((entry) => Array.isArray(entry) && entry[0] === 'destroy').length, 3);
   } finally {
     try {
       if (blockedRemote) blockedRemote.release();

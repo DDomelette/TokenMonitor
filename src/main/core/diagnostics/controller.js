@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const { createRunSnapshot, runDiagnostics } = require('./runner');
+const { createResourceLimiter } = require('./limiter');
 const { redactText, sanitizeDiagnosticResult, formatDiagnosticReport } = require('./report');
 const { GUIDE_IDS, openGuide } = require('./guides');
 
@@ -85,6 +86,38 @@ function copyEnvironment(source) {
   return environment;
 }
 
+function fallbackRunScope() {
+  return Object.freeze({
+    proxy: Object.freeze({ mode: 'direct', input: null }),
+    windows: Promise.resolve({ supported: false })
+  });
+}
+
+function captureRunScope(factory) {
+  if (typeof factory !== 'function') return fallbackRunScope();
+  let scope;
+  try {
+    scope = factory();
+  } catch (_) {
+    return fallbackRunScope();
+  }
+  if (!scope || typeof scope !== 'object' || consumeThenable(scope)) return fallbackRunScope();
+  const sourceProxy = ownValue(scope, 'proxy');
+  const mode = ownValue(sourceProxy, 'mode');
+  const input = ownValue(sourceProxy, 'input');
+  const validProxy = (mode === 'direct' && input === null)
+    || (mode === 'custom' && typeof input === 'string')
+    || (mode === 'system' && typeof input === 'function')
+    || (mode === 'invalid' && input === null);
+  if (!validProxy) return fallbackRunScope();
+  const windowsValue = ownValue(scope, 'windows');
+  const windows = Promise.resolve(windowsValue).catch(() => ({ supported: false }));
+  return Object.freeze({
+    proxy: Object.freeze({ mode, input }),
+    windows
+  });
+}
+
 function createDiagnosticsController(dependencies = {}) {
   const deps = dependencies && typeof dependencies === 'object' ? dependencies : {};
   const configuredChecks = dependency(deps, 'checks');
@@ -95,6 +128,8 @@ function createDiagnosticsController(dependencies = {}) {
   const configuredFormat = dependency(deps, 'formatDiagnosticReport');
   const configuredUuid = dependency(deps, 'randomUUID');
   const configuredSchedule = dependency(deps, 'setImmediate');
+  const configuredCreateRunScope = dependency(deps, 'createRunScope');
+  const configuredRemoteLimiter = dependency(deps, 'remoteLimiter');
   const createSnapshot = typeof configuredCreateSnapshot === 'function' ? configuredCreateSnapshot : createRunSnapshot;
   const execute = typeof configuredExecute === 'function' ? configuredExecute : runDiagnostics;
   const sanitize = typeof configuredSanitize === 'function'
@@ -105,6 +140,9 @@ function createDiagnosticsController(dependencies = {}) {
     : formatDiagnosticReport;
   const uuid = typeof configuredUuid === 'function' ? configuredUuid : crypto.randomUUID;
   const schedule = typeof configuredSchedule === 'function' ? configuredSchedule : setImmediate;
+  const sharedRemoteLimiter = configuredRemoteLimiter && typeof configuredRemoteLimiter.acquire === 'function'
+    ? configuredRemoteLimiter
+    : createResourceLimiter(3);
   const records = new Map();
 
   function sanitizeOne(result, environment) {
@@ -168,14 +206,19 @@ function createDiagnosticsController(dependencies = {}) {
     const sanitizedChecks = Array.isArray(rawChecks)
       ? rawChecks.map((result) => sanitizeOne(result, environment)).filter(Boolean)
       : [];
+    const runScope = captureRunScope(configuredCreateRunScope);
     const allowedIds = new Set(sanitizedChecks.map((check) => ownValue(check, 'id')).filter((value) => typeof value === 'string'));
     const record = {
       runId,
       checks: sanitizedChecks,
       environment,
       sender,
-      allowedIds
+      allowedIds,
+      abortController: new AbortController(),
+      runScope
     };
+    const previous = records.get(id);
+    if (previous && previous.abortController) previous.abortController.abort();
     records.set(id, record);
 
     const emit = (event) => {
@@ -214,7 +257,10 @@ function createDiagnosticsController(dependencies = {}) {
             runId,
             checks,
             emit,
-            isActive: () => records.get(id) === record && senderIsLive(sender)
+            isActive: () => records.get(id) === record && senderIsLive(sender),
+            signal: record.abortController.signal,
+            remoteLimiter: sharedRemoteLimiter,
+            runScope: record.runScope
           });
           Promise.resolve(completion).catch(() => {});
         } catch (_) {
@@ -275,7 +321,11 @@ function createDiagnosticsController(dependencies = {}) {
   }
 
   function dispose(id) {
-    if (Number.isSafeInteger(id) && id >= 0) records.delete(id);
+    if (!Number.isSafeInteger(id) || id < 0) return;
+    const record = records.get(id);
+    if (!record) return;
+    records.delete(id);
+    record.abortController.abort();
   }
 
   return { start, copy, openGuide: openWhitelistedGuide, dispose };

@@ -1,4 +1,5 @@
 const { pendingResult, terminalResult, safeCode } = require('./results');
+const { createResourceLimiter } = require('./limiter');
 
 function copyMetadata(metadata) {
   try {
@@ -30,16 +31,25 @@ function runDiagnostics({
   emit = () => {},
   isActive = () => true,
   maxRemoteConcurrency = 3,
+  signal,
+  remoteLimiter,
+  runScope,
   timers = {}
 }) {
   createRunSnapshot(runId, checks);
 
   const setTimer = timers.setTimeout || setTimeout;
   const clearTimer = timers.clearTimeout || clearTimeout;
+  const fallbackLimit = Number.isFinite(maxRemoteConcurrency) && maxRemoteConcurrency > 0
+    ? Math.floor(maxRemoteConcurrency)
+    : 3;
+  const limiter = remoteLimiter && typeof remoteLimiter.acquire === 'function'
+    ? remoteLimiter
+    : createResourceLimiter(fallbackLimit);
   const terminalById = new Map();
   const isCurrent = () => {
     try {
-      return Boolean(isActive(runId));
+      return !(signal && signal.aborted) && Boolean(isActive(runId));
     } catch (_) {
       return false;
     }
@@ -57,30 +67,66 @@ function runDiagnostics({
     return true;
   };
 
-  async function runOne(definition) {
+  async function runOne(definition, isRemote) {
     if (!isCurrent()) return undefined;
     if (!emitIfCurrent(Object.assign(pendingResult(definition), { status: 'running' })) || !isCurrent()) {
       return undefined;
     }
+
     const priorResults = orderedTerminalResults();
-    const checkContext = { getResults: () => priorResults.map(copyResult) };
+    const timeoutMs = definition.timeoutMs || 8000;
+    const checkAbortController = new AbortController();
+    const checkContext = {
+      getResults: () => priorResults.map(copyResult),
+      signal: checkAbortController.signal,
+      deadlineMs: Date.now() + timeoutMs,
+      runScope
+    };
     let timer;
+    let onRunAbort;
+    let timedOut = false;
+    let release;
     try {
-      const value = await Promise.race([
-        Promise.resolve().then(() => definition.run(checkContext)),
-        new Promise((_, reject) => {
-          timer = setTimer(() => reject(Object.assign(new Error('timeout'), {
-            code: 'DIAGNOSTIC_TIMEOUT'
-          })), definition.timeoutMs || 8000);
+      const operation = Promise.resolve()
+        .then(async () => {
+          if (isRemote) release = await limiter.acquire(checkAbortController.signal);
+          return definition.run(checkContext);
         })
-      ]);
+        .finally(() => {
+          if (release) release();
+        });
+      const visibleBoundary = new Promise((_, reject) => {
+        const rejectWith = (code, message) => {
+          const error = new Error(message);
+          error.code = code;
+          reject(error);
+        };
+        onRunAbort = () => {
+          rejectWith('DIAGNOSTIC_ABORTED', 'Diagnostics run aborted');
+          checkAbortController.abort();
+        };
+        if (signal && signal.aborted) {
+          onRunAbort();
+          return;
+        }
+        if (signal && typeof signal.addEventListener === 'function') {
+          signal.addEventListener('abort', onRunAbort, { once: true });
+        }
+        timer = setTimer(() => {
+          timedOut = true;
+          rejectWith('DIAGNOSTIC_TIMEOUT', 'Diagnostics check timed out');
+          checkAbortController.abort();
+        }, timeoutMs);
+      });
+      const value = await Promise.race([operation, visibleBoundary]);
       return terminalResult(definition, value.status, value);
     } catch (error) {
+      const errorCode = timedOut ? 'DIAGNOSTIC_TIMEOUT' : safeCode(error && error.code);
       return terminalResult(definition, 'fail', {
-        errorCode: safeCode(error && error.code),
-        summary: error && error.code === 'DIAGNOSTIC_TIMEOUT'
-          ? '检查超时，请查看解决手册'
-          : '检查失败，请查看解决手册'
+        errorCode,
+        summary: errorCode === 'DIAGNOSTIC_TIMEOUT'
+          ? 'Diagnostic check timed out; see the troubleshooting guide'
+          : 'Diagnostic check failed; see the troubleshooting guide'
       });
     } finally {
       if (timer !== undefined) {
@@ -90,12 +136,19 @@ function runDiagnostics({
           // A test or host timer implementation cannot prevent cleanup.
         }
       }
+      if (signal && onRunAbort && typeof signal.removeEventListener === 'function') {
+        try {
+          signal.removeEventListener('abort', onRunAbort);
+        } catch (_) {
+          // A hostile signal cannot prevent cleanup.
+        }
+      }
     }
   }
 
-  async function start(definition) {
+  async function start(definition, isRemote = false) {
     if (!isCurrent()) return false;
-    const result = await runOne(definition);
+    const result = await runOne(definition, isRemote);
     if (!result) return false;
     terminalById.set(definition.id, result);
     emitIfCurrent(copyResult(result));
@@ -110,27 +163,24 @@ function runDiagnostics({
 
   async function runRemote(definitions) {
     let nextIndex = 0;
-    const workerCount = Math.min(
-      definitions.length,
-      Number.isFinite(maxRemoteConcurrency) && maxRemoteConcurrency > 0
-        ? Math.floor(maxRemoteConcurrency)
-        : 3
-    );
+    const workerCount = Math.min(definitions.length, fallbackLimit);
     async function worker() {
       while (isCurrent() && nextIndex < definitions.length) {
         const definition = definitions[nextIndex];
         nextIndex += 1;
-        await start(definition);
+        await start(definition, true);
       }
     }
     await Promise.all(Array.from({ length: workerCount }, worker));
   }
 
   return (async () => {
-    const sequential = checks.filter((definition) => definition.phase === 'local' || definition.phase === 'windows');
+    const local = checks.filter((definition) => definition.phase === 'local');
+    const windows = checks.filter((definition) => definition.phase === 'windows');
     const remote = checks.filter((definition) => definition.phase === 'remote');
     const final = checks.filter((definition) => definition.phase === 'final');
-    await runSequential(sequential);
+    await runSequential(local);
+    if (isCurrent()) await runSequential(windows);
     if (isCurrent()) await runRemote(remote);
     if (isCurrent()) await runSequential(final);
     return orderedTerminalResults();

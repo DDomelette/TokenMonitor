@@ -1,7 +1,7 @@
 const { createRuntimeChecks } = require('./checks/runtime');
 const { createStorageChecks } = require('./checks/storage');
-const { createWindowsChecks } = require('./checks/windows');
-const { createNetworkChecks } = require('./checks/network');
+const { createWindowsChecks, collectWindowsCapabilities } = require('./checks/windows');
+const { createNetworkChecks, captureProxySnapshot } = require('./checks/network');
 const { createProviderChecks } = require('./checks/providers');
 const { createDiagnosticsController } = require('./controller');
 const { createRunSnapshot } = require('./runner');
@@ -59,7 +59,7 @@ function validatedController(value) {
   return api;
 }
 
-function assembleController(dependencies, checks) {
+function assembleController(dependencies, checks, createRunScope) {
   const controllerDependencies = readDependency(dependencies, 'controller');
   const options = Object.create(
     controllerDependencies && typeof controllerDependencies === 'object'
@@ -71,6 +71,12 @@ function assembleController(dependencies, checks) {
     enumerable: true,
     writable: false,
     value: checks
+  });
+  Object.defineProperty(options, 'createRunScope', {
+    configurable: false,
+    enumerable: true,
+    writable: false,
+    value: createRunScope
   });
   const customFactory = readDependency(dependencies, 'createController');
   let api = null;
@@ -230,6 +236,10 @@ function createDiagnostics(dependencies = {}) {
   const network = invokeFactory('network', factories.network || createNetworkChecks, deps.network || {}, 'network-proxy', 'remote');
   const providers = invokeFactory('providers', factories.providers || createProviderChecks, deps.providers || {}, 'app-runtime', 'remote');
   const scheduler = createSchedulerChecks(deps.scheduler);
+  const createRunScope = () => Object.freeze({
+    proxy: captureProxySnapshot(deps.network || {}),
+    windows: collectWindowsCapabilities(deps.windows || {})
+  });
   const expectedCheckIds = RUNTIME_PREDECESSOR_IDS.concat(
     storage.map((check) => check.id),
     windows.map((check) => check.id),
@@ -259,10 +269,10 @@ function createDiagnostics(dependencies = {}) {
     createRunSnapshot('diagnostics-assembly-contract', checks);
   } catch (_) {
     const safeChecks = [fallbackCheck('registry'), fallbackSelfCheck(['assembly.registry'])];
-    return assembleController(deps, safeChecks);
+    return assembleController(deps, safeChecks, createRunScope);
   }
 
-  return assembleController(deps, checks);
+  return assembleController(deps, checks, createRunScope);
 }
 
 module.exports = { createDiagnostics, schedulerErrorCategory };

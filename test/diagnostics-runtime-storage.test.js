@@ -178,6 +178,34 @@ test('temp-write removes its exclusive file after an injected close failure or p
   assert.equal(fs.readdirSync(userDataDir).some((name) => name.startsWith('.diagnostics-')), false);
 });
 
+test('temp-write never removes an EEXIST collision it did not create', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'diagnostics-runtime-storage-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const userDataDir = path.join(root, 'user-data');
+  fs.mkdirSync(userDataDir);
+  const random = Buffer.alloc(12, 0xab);
+  const collisionPath = path.join(userDataDir, `.diagnostics-${random.toString('hex')}.tmp`);
+  const collisionBytes = Buffer.from('pre-existing collision bytes');
+  fs.writeFileSync(collisionPath, collisionBytes);
+  let removeCalls = 0;
+  const auditedFs = Object.assign({}, fs, {
+    rmSync(target, options) {
+      if (target === collisionPath) removeCalls += 1;
+      return fs.rmSync(target, options);
+    }
+  });
+  const store = makeStore({ 'providers.proxyUrl': '', 'data.historyDays': 1 }, []);
+  const tempWriteCheck = createStorageChecks(makeStorageDependencies(userDataDir, store, {
+    fs: auditedFs,
+    crypto: { randomBytes: () => random }
+  })).find((check) => check.id === 'storage.temp-write');
+
+  const result = (await runChecks([tempWriteCheck]))[0];
+  assert.equal(result.status, 'fail');
+  assert.deepEqual(fs.readFileSync(collisionPath), collisionBytes);
+  assert.equal(removeCalls, 0);
+});
+
 test('storage factory defers invalid user-data paths and reports stable terminal failures', async () => {
   const checks = createStorageChecks(makeStorageDependencies(undefined, makeStore({
     'providers.proxyUrl': '',
@@ -210,6 +238,64 @@ test('runtime self-check requires every injected preceding result exactly once a
   assert.equal(selfCheck.run({ getResults: () => terminal }).status, 'pass');
   assert.equal(selfCheck.run({ getResults: () => terminal.concat(terminal[0]) }).status, 'fail');
   assert.equal(selfCheck.run({ getResults: () => terminal.map((result, index) => index === 0 ? { id: result.id, status: 'running' } : result) }).status, 'fail');
+});
+
+test('runtime window references include diagnostics and fail closed for missing or destroyed required windows', () => {
+  const calls = [];
+  const live = (name) => ({
+    isDestroyed() { calls.push(name); return false; }
+  });
+  const destroyed = (name) => ({
+    isDestroyed() { calls.push(name); return true; }
+  });
+  const throwing = (name) => ({
+    isDestroyed() { calls.push(name); throw new Error('private window error'); }
+  });
+  const references = {
+    main: live('main'),
+    settings: destroyed('settings'),
+    login: throwing('login'),
+    session: null,
+    diagnostics: live('diagnostics')
+  };
+  const check = createRuntimeChecks({
+    platform: 'linux',
+    buildPaths: {},
+    getWindows: () => references
+  }).find((definition) => definition.id === 'runtime.window-references');
+
+  assert.deepEqual(check.run(), {
+    status: 'pass',
+    summary: 'Window references inspected',
+    metadata: {
+      main: true,
+      settings: false,
+      login: false,
+      session: false,
+      diagnostics: true
+    }
+  });
+  assert.deepEqual(calls, ['main', 'settings', 'login', 'diagnostics']);
+
+  references.diagnostics = null;
+  assert.deepEqual(check.run(), {
+    status: 'fail',
+    summary: 'Required window reference is unavailable',
+    errorCode: 'RUNTIME_WINDOW_REFERENCE_INVALID',
+    metadata: {
+      main: true,
+      settings: false,
+      login: false,
+      session: false,
+      diagnostics: false
+    }
+  });
+  references.diagnostics = live('diagnostics-restored');
+  references.main = destroyed('main-destroyed');
+  const failed = check.run();
+  assert.equal(failed.status, 'fail');
+  assert.equal(failed.errorCode, 'RUNTIME_WINDOW_REFERENCE_INVALID');
+  assert.doesNotMatch(JSON.stringify(failed), /private window error|isDestroyed/);
 });
 
 test('runtime and storage definitions keep their fixed diagnostics contract', () => {

@@ -27,13 +27,73 @@ test('redacts tokens, JWTs, and the home directory from diagnostic reports', () 
   assert.match(report, /~\\\.codex|<redacted>/);
 });
 
+test('projects only documented metadata keys and normalizes quoted secrets and Windows home variants', () => {
+  const unsafe = {
+    accountId: 'unsafe-account-camel',
+    account_id: 'unsafe-account-snake',
+    path: 'c:/USERS/ALICE/private-path',
+    fileName: 'unsafe-session-file.jsonl',
+    stack: 'unsafe-stack-trace',
+    credential: 'unsafe-credential',
+    AcCoUnT_Id: 'unsafe-account-mixed',
+    PaTh: 'unsafe-path-mixed',
+    FILENAME: 'unsafe-file-mixed',
+    sTaCk: 'unsafe-stack-mixed',
+    CrEdEnTiAl: 'unsafe-credential-mixed'
+  };
+  const results = [
+    {
+      id: 'runtime.versions', group: 'Runtime', title: 'Versions', status: 'pass',
+      summary: 'runtime', guideId: 'app-runtime',
+      metadata: { app: '1.2.3', electron: '40.0.0', node: '22.0.0', chromium: '140.0.0', platform: 'win32', arch: 'x64', release: '10.0.26100', ...unsafe }
+    },
+    {
+      id: 'network.proxy-config', group: 'Network', title: 'Proxy', status: 'pass',
+      summary: 'proxy', guideId: 'network-proxy', metadata: { mode: 'direct', ...unsafe }
+    },
+    {
+      id: 'network.system-proxy', group: 'Network', title: 'System proxy', status: 'pass',
+      summary: 'stage', guideId: 'network-proxy', metadata: { stage: 'proxy-config', ...unsafe }
+    },
+    {
+      id: 'deepseek.api-key', group: 'Provider', title: 'Key', status: 'pass',
+      summary: 'configured', guideId: 'deepseek-api-key', metadata: { configured: true, ...unsafe }
+    },
+    {
+      id: 'codex.sessions', group: 'Provider', title: 'Sessions', status: 'pass',
+      summary: 'logs', guideId: 'codex-local-log', metadata: { matchingFiles: 2, ...unsafe }
+    }
+  ];
+  const secretSummary = {
+    ...results[1],
+    summary: 'payload {"access_token": "quoted-json-secret"} at c:/USERS/ALICE/private-path'
+  };
+  const sanitized = results.map((result) => sanitizeDiagnosticResult(result, { homeDir: 'C:\\Users\\Alice' }));
+  const report = formatDiagnosticReport({ runId: 'safe-run', checks: [secretSummary, ...results] }, {
+    homeDir: 'C:\\Users\\Alice', appVersion: '1.2.3', platform: 'win32', release: '10.0.26100', arch: 'x64', electron: '40.0.0'
+  });
+  const allOutput = JSON.stringify(sanitized) + report;
+
+  assert.deepEqual(sanitized[0].metadata, {
+    app: '1.2.3', electron: '40.0.0', node: '22.0.0', chromium: '140.0.0',
+    platform: 'win32', arch: 'x64', release: '10.0.26100'
+  });
+  assert.deepEqual(sanitized[1].metadata, { mode: 'direct' });
+  assert.deepEqual(sanitized[2].metadata, { stage: 'proxy-config' });
+  assert.deepEqual(sanitized[3].metadata, { configured: true });
+  assert.deepEqual(sanitized[4].metadata, { matchingFiles: 2 });
+  assert.doesNotMatch(allOutput, /unsafe-|quoted-json-secret|c:\/users\/alice|c:\\users\\alice/i);
+  assert.match(report, /access_token(?:\\?"|)=<redacted>/i);
+  assert.match(report, /~\/private-path/);
+});
+
 test('sanitizes metadata defensively without mutating the original diagnostic result', () => {
   const result = {
     id: 'network.proxy', group: 'Network', title: 'Proxy', status: 'fail',
     summary: 'session_token=private', errorCode: 'PROXY_FAILED', guideId: 'network-proxy',
     metadata: {
       apiKey: 'sk-private-value',
-      safe: 'Bearer secret-value',
+      stage: 'Bearer secret-value',
       nested: { one: { two: { three: { four: { five: 'not-exposed' } } } } }
     },
     unknown: 'must-not-be-copied'
@@ -43,8 +103,8 @@ test('sanitizes metadata defensively without mutating the original diagnostic re
 
   assert.deepEqual(Object.keys(sanitized).sort(), ['errorCode', 'group', 'guideId', 'id', 'metadata', 'status', 'summary', 'title']);
   assert.equal(sanitized.metadata.apiKey, undefined);
-  assert.equal(sanitized.metadata.safe, 'Bearer <redacted>');
-  assert.equal(sanitized.metadata.nested.one.two.three.four, '<redacted-depth>');
+  assert.equal(sanitized.metadata.stage, 'Bearer <redacted>');
+  assert.equal(sanitized.metadata.nested, undefined);
   assert.equal(result.metadata.apiKey, 'sk-private-value');
   assert.equal(result.metadata.nested.one.two.three.four.five, 'not-exposed');
 });
@@ -76,13 +136,13 @@ test('does not invoke metadata toJSON while formatting a diagnostic report', () 
 test('normalizes BigInt metadata so diagnostic reports remain JSON-safe', () => {
   const report = formatDiagnosticReport({
     checks: [{
-      id: 'network.proxy', group: 'Network', title: 'Proxy', status: 'fail',
-      summary: 'failed', errorCode: 'PROXY_FAILED', guideId: 'network-proxy',
-      metadata: { retryCount: 3n }
+      id: 'codex.sessions', group: 'Codex', title: 'Sessions', status: 'fail',
+      summary: 'failed', errorCode: 'LOCAL_LOG_UNREADABLE', guideId: 'codex-local-log',
+      metadata: { matchingFiles: 3n }
     }]
   });
 
-  assert.match(report, /"retryCount": "<unsupported>"/);
+  assert.match(report, /"matchingFiles": "<unsupported>"/);
 });
 
 test('does not invoke enumerable metadata getters while formatting reports', () => {
@@ -110,15 +170,15 @@ test('does not invoke enumerable metadata getters while formatting reports', () 
 test('normalizes unsupported metadata primitives to stable JSON-safe placeholders', () => {
   const report = formatDiagnosticReport({
     checks: [{
-      id: 'network.proxy', group: 'Network', title: 'Proxy', status: 'fail',
-      summary: 'failed', errorCode: 'PROXY_FAILED', guideId: 'network-proxy',
-      metadata: { callback: () => 'sk-private-leak', marker: Symbol('private'), absent: undefined }
+      id: 'runtime.versions', group: 'Runtime', title: 'Versions', status: 'fail',
+      summary: 'failed', errorCode: 'RUNTIME_VERSION_FAILED', guideId: 'app-runtime',
+      metadata: { app: () => 'sk-private-leak', node: Symbol('private'), release: undefined }
     }]
   });
 
-  assert.match(report, /"callback": "<unsupported>"/);
-  assert.match(report, /"marker": "<unsupported>"/);
-  assert.match(report, /"absent": "<unsupported>"/);
+  assert.match(report, /"app": "<unsupported>"/);
+  assert.match(report, /"node": "<unsupported>"/);
+  assert.match(report, /"release": "<unsupported>"/);
   assert.doesNotMatch(report, /sk-private-leak/);
 });
 
@@ -152,14 +212,14 @@ test('does not invoke accessor array entries in metadata', () => {
 
   const report = formatDiagnosticReport({
     checks: [{
-      id: 'network.proxy', group: 'Network', title: 'Proxy', status: 'fail',
-      summary: 'failed', errorCode: 'PROXY_FAILED', guideId: 'network-proxy', metadata: { values }
+      id: 'windows.gpu', group: 'Windows', title: 'GPU', status: 'fail',
+      summary: 'failed', errorCode: 'WINDOWS_GPU', guideId: 'windows-gpu', metadata: { features: values }
     }]
   });
 
   assert.equal(getterCalls, 0);
   assert.doesNotMatch(report, /sk-private-leak/);
-  assert.match(report, /"values": \[\s+"<unsupported>"\s+\]/);
+  assert.match(report, /"features": \{\}/);
 });
 
 test('does not invoke a diagnostic result summary accessor', () => {

@@ -5,7 +5,6 @@ const { createAccentApi, applyAccent, clearAccent } = require('../../../windows-
 const TIMEOUT_MS = 3000;
 const ACRYLIC_GUIDE = 'windows-acrylic';
 const GPU_GUIDE = 'windows-gpu';
-const snapshots = new WeakMap();
 const defaultDependencies = {};
 
 function definition(id, title, guideId, run) {
@@ -129,6 +128,23 @@ async function createSnapshot(dependencies) {
     gpuAvailable: false,
     gpu: { features: {}, auxAttributes: {} }
   };
+
+  async function collectGpu() {
+    try {
+      const app = resolveElectron(dependencies, 'app');
+      const gpu = await safeGpuSnapshot(app);
+      snapshot.gpuAvailable = gpu.available;
+      snapshot.gpu = gpu.gpu;
+    } catch (_) {
+      // Electron is unavailable outside the main process; leave safe empty metadata.
+    }
+  }
+
+  if (!snapshot.platformBuildSupported) {
+    await collectGpu();
+    return snapshot;
+  }
+
   let koffi;
   try {
     koffi = resolveKoffi(dependencies);
@@ -197,23 +213,13 @@ async function createSnapshot(dependencies) {
     }
   }
 
-  try {
-    const app = resolveElectron(dependencies, 'app');
-    const gpu = await safeGpuSnapshot(app);
-    snapshot.gpuAvailable = gpu.available;
-    snapshot.gpu = gpu.gpu;
-  } catch (_) {
-    // Electron is unavailable outside the main process; leave only safe empty metadata.
-  }
+  await collectGpu();
   return snapshot;
 }
 
 function collectWindowsCapabilities(dependencies) {
   const key = normalizeDependencies(dependencies);
-  if (!snapshots.has(key)) {
-    snapshots.set(key, Promise.resolve().then(() => createSnapshot(key)).catch(() => unsupportedSnapshot()));
-  }
-  return snapshots.get(key);
+  return Promise.resolve().then(() => createSnapshot(key)).catch(() => unsupportedSnapshot());
 }
 
 function skipped() {
@@ -228,46 +234,53 @@ function capabilityResult(snapshot, value, summary, errorCode, metadata) {
 }
 
 function createWindowsChecks(dependencies = {}) {
-  const snapshot = () => collectWindowsCapabilities(dependencies);
+  const snapshot = (context) => {
+    try {
+      const value = context && context.runScope && context.runScope.windows;
+      return Promise.resolve(value).catch(() => unsupportedSnapshot());
+    } catch (_) {
+      return Promise.resolve(unsupportedSnapshot());
+    }
+  };
   return [
-    definition('windows.platform-build', 'Windows platform build', ACRYLIC_GUIDE, async () => {
-      const state = await snapshot();
+    definition('windows.platform-build', 'Windows platform build', ACRYLIC_GUIDE, async (context) => {
+      const state = await snapshot(context);
       return capabilityResult(state, state.platformBuildSupported, 'Windows build supports acrylic', 'WINDOWS_ACRYLIC');
     }),
-    definition('windows.dwm-composition', 'Desktop Window Manager composition', ACRYLIC_GUIDE, async () => {
-      const state = await snapshot();
+    definition('windows.dwm-composition', 'Desktop Window Manager composition', ACRYLIC_GUIDE, async (context) => {
+      const state = await snapshot(context);
       return capabilityResult(state, state.dwmCompositionEnabled, 'DWM composition is enabled', 'WINDOWS_ACRYLIC');
     }),
-    definition('windows.koffi-runtime', 'Koffi runtime', ACRYLIC_GUIDE, async () => {
-      const state = await snapshot();
+    definition('windows.koffi-runtime', 'Koffi runtime', ACRYLIC_GUIDE, async (context) => {
+      const state = await snapshot(context);
       return capabilityResult(state, state.koffiLoaded, 'Koffi runtime is available', 'WINDOWS_ACRYLIC');
     }),
-    definition('windows.native-libraries', 'Windows native libraries', ACRYLIC_GUIDE, async () => {
-      const state = await snapshot();
+    definition('windows.native-libraries', 'Windows native libraries', ACRYLIC_GUIDE, async (context) => {
+      const state = await snapshot(context);
       return capabilityResult(state, Object.values(state.libraries || {}).every(Boolean), 'Native libraries are available', 'WINDOWS_ACRYLIC', { libraries: state.libraries });
     }),
-    definition('windows.ffi-bindings', 'Windows FFI bindings', ACRYLIC_GUIDE, async () => {
-      const state = await snapshot();
+    definition('windows.ffi-bindings', 'Windows FFI bindings', ACRYLIC_GUIDE, async (context) => {
+      const state = await snapshot(context);
       return capabilityResult(state, state.ffiBound, 'Windows FFI bindings are available', 'WINDOWS_ACRYLIC');
     }),
-    definition('windows.native-handle', 'Hidden window native handle', ACRYLIC_GUIDE, async () => {
-      const state = await snapshot();
+    definition('windows.native-handle', 'Hidden window native handle', ACRYLIC_GUIDE, async (context) => {
+      const state = await snapshot(context);
       return capabilityResult(state, state.nativeHandleValid, 'Hidden window native handle is valid', 'WINDOWS_ACRYLIC');
     }),
-    definition('windows.acrylic-accent', 'Native Acrylic accent', ACRYLIC_GUIDE, async () => {
-      const state = await snapshot();
+    definition('windows.acrylic-accent', 'Native Acrylic accent', ACRYLIC_GUIDE, async (context) => {
+      const state = await snapshot(context);
       return capabilityResult(state, state.accentApplied, 'Native Acrylic accent is available', 'WINDOWS_ACRYLIC');
     }),
-    definition('windows.electron-acrylic', 'Electron Acrylic fallback', ACRYLIC_GUIDE, async () => {
-      const state = await snapshot();
+    definition('windows.electron-acrylic', 'Electron Acrylic fallback', ACRYLIC_GUIDE, async (context) => {
+      const state = await snapshot(context);
       return capabilityResult(state, state.electronFallbackAvailable, 'Electron Acrylic fallback is available', 'WINDOWS_ACRYLIC');
     }),
-    definition('windows.gpu', 'GPU capabilities', GPU_GUIDE, async () => {
-      const state = await snapshot();
+    definition('windows.gpu', 'GPU capabilities', GPU_GUIDE, async (context) => {
+      const state = await snapshot(context);
       return capabilityResult(state, state.gpuAvailable, 'GPU capability information is available', 'WINDOWS_GPU', state.gpu);
     }),
-    definition('windows.transparency-settings', 'Transparency settings', ACRYLIC_GUIDE, async () => {
-      const state = await snapshot();
+    definition('windows.transparency-settings', 'Transparency settings', ACRYLIC_GUIDE, async (context) => {
+      const state = await snapshot(context);
       if (!state.supported) return skipped();
       return { status: 'skipped', summary: '无法通过可靠的无副作用接口确认' };
     })

@@ -34,7 +34,7 @@
     var activeRunId = acceptedRunId;
     pendingGuideById[checkId] = true;
     button.disabled = true;
-    window.api.invoke('diagnostics:open-guide', guideId).then(function (result) {
+    window.diagnosticsApi.openGuide(guideId).then(function (result) {
       if (runGeneration !== activeGeneration || acceptedRunId !== activeRunId) return;
       if (result && result.ok === true) {
         delete guideFeedbackById[checkId];
@@ -58,7 +58,14 @@
     row.className = 'diagnostic-row ' + model.statusClass;
     row.dataset.checkId = model.id;
     row.appendChild(createTextElement('div', 'diagnostic-title', model.title));
-    row.appendChild(createTextElement('span', 'diagnostic-status', model.statusLabel));
+    var statusElement = createTextElement('span', 'diagnostic-status', model.statusLabel);
+    if (model.statusClass === 'status-running') {
+      var spinner = createTextElement('span', 'diagnostic-spinner', '');
+      spinner.setAttribute('role', 'status');
+      spinner.setAttribute('aria-label', 'Diagnostic check running');
+      statusElement.appendChild(spinner);
+    }
+    row.appendChild(statusElement);
 
     if (model.summary) {
       row.appendChild(createTextElement('div', 'diagnostic-detail', model.summary));
@@ -117,7 +124,7 @@
     copyButton.disabled = true;
     actionStatusElement.textContent = '正在启动诊断…';
     render();
-    return window.api.invoke('diagnostics:run').then(function (snapshot) {
+    return window.diagnosticsApi.run().then(function (snapshot) {
       if (generation !== runGeneration) return;
       if (!snapshot || typeof snapshot.runId !== 'string' || !Array.isArray(snapshot.checks)) {
         throw new Error('Invalid diagnostics snapshot');
@@ -142,7 +149,7 @@
     var activeRunId = acceptedRunId;
     copyButton.disabled = true;
     actionStatusElement.textContent = '';
-    window.api.invoke('diagnostics:copy-report', activeRunId).then(function (result) {
+    window.diagnosticsApi.copyReport(activeRunId).then(function (result) {
       if (runGeneration !== activeGeneration || acceptedRunId !== activeRunId) return;
       actionStatusElement.textContent = result && result.ok === true
         ? '已复制诊断结果'
@@ -164,7 +171,17 @@
     document.body.dataset.theme = theme;
   }
 
-  window.api.on('diagnostics:progress', function (event) {
+  function refreshTheme() {
+    return window.diagnosticsApi.getTheme().then(function (projection) {
+      themeSettings = projection;
+      applyTheme();
+    }).catch(function () {
+      themeSettings = null;
+      applyTheme();
+    });
+  }
+
+  window.diagnosticsApi.onProgress(function (event) {
     if (!acceptedRunId || !event || event.runId !== acceptedRunId) return;
     var nextState = DiagnosticsState.applyProgress(state, event);
     if (nextState === state) return;
@@ -172,32 +189,20 @@
     render();
   });
 
-  window.api.on('settings:loaded', function (settings) {
-    themeSettings = settings;
-    applyTheme();
-  });
+  window.diagnosticsApi.onThemeChanged(refreshTheme);
 
-  window.api.on('theme:changed', function () {
-    applyTheme();
-  });
-
-  window.api.on('window:focus-state', function (focused) {
+  window.diagnosticsApi.onFocusState(function (focused) {
     document.body.dataset.windowActive = String(focused !== false);
   });
 
   systemThemeMedia.addEventListener('change', applyTheme);
   closeButton.addEventListener('click', function () {
-    window.api.send('window:close-diagnostics');
+    window.diagnosticsApi.close();
   });
   rerunButton.addEventListener('click', startDiagnostics);
   copyButton.addEventListener('click', copyReport);
 
   applyTheme();
-  window.api.invoke('get:settings').then(function (settings) {
-    themeSettings = settings;
-    applyTheme();
-  }).catch(function () {
-    applyTheme();
-  });
+  refreshTheme();
   startDiagnostics();
 })();

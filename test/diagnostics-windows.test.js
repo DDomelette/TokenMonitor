@@ -100,12 +100,15 @@ function byId(checks, id) {
   return checks.find((check) => check.id === id);
 }
 
-test('collectWindowsCapabilities safely probes a hidden temporary window once and redacts GPU details', async () => {
+test('collectWindowsCapabilities refreshes per run and safely redacts GPU details', async () => {
   const { calls, dependencies } = windowsDependencies();
-  const snapshot = await collectWindowsCapabilities(dependencies);
-  const repeated = await collectWindowsCapabilities(dependencies);
+  const firstPromise = collectWindowsCapabilities(dependencies);
+  const secondPromise = collectWindowsCapabilities(dependencies);
+  const snapshot = await firstPromise;
+  const repeated = await secondPromise;
 
-  assert.equal(snapshot, repeated);
+  assert.notEqual(firstPromise, secondPromise);
+  assert.notEqual(snapshot, repeated);
   assert.equal(snapshot.koffiLoaded, true);
   assert.deepEqual(snapshot.libraries, { user32: true, dwmapi: true, gdi32: true });
   assert.equal(snapshot.ffiBound, true);
@@ -118,8 +121,8 @@ test('collectWindowsCapabilities safely probes a hidden temporary window once an
     auxAttributes: { amdSwitchable: true, optimus: false }
   });
   assert.equal(JSON.stringify(snapshot).includes('must-not-leak'), false);
-  assert.equal(calls.filter((entry) => entry === 'destroy').length, 1);
-  assert.equal(calls.filter((entry) => Array.isArray(entry) && entry[0] === 'clear').length, 1);
+  assert.equal(calls.filter((entry) => entry === 'destroy').length, 2);
+  assert.equal(calls.filter((entry) => Array.isArray(entry) && entry[0] === 'clear').length, 2);
   assert.ok(calls.some((entry) => Array.isArray(entry) && entry[0] === 'func' && entry[2].includes('DwmIsCompositionEnabled')));
   assert.ok(calls.some((entry) => Array.isArray(entry) && entry[0] === 'func' && entry[2].includes('SetWindowCompositionAttribute')));
   assert.ok(calls.indexOf('destroy') > calls.findIndex((entry) => Array.isArray(entry) && entry[0] === 'clear'));
@@ -163,7 +166,8 @@ test('non-Windows checks are skipped without loading Windows or Electron depende
   };
   const snapshot = await collectWindowsCapabilities(dependencies);
   const checks = createWindowsChecks(dependencies);
-  const results = await Promise.all(checks.map((check) => check.run()));
+  const context = { runScope: { windows: Promise.resolve(snapshot) } };
+  const results = await Promise.all(checks.map((check) => check.run(context)));
 
   assert.equal(snapshot.supported, false);
   assert.deepEqual(touches, []);
@@ -179,7 +183,8 @@ test('Windows diagnostic checks project a shared snapshot with stable contracts 
     }
   });
   const checks = createWindowsChecks(dependencies);
-  const results = new Map(await Promise.all(checks.map(async (check) => [check.id, await check.run()])));
+  const context = { runScope: { windows: collectWindowsCapabilities(dependencies) } };
+  const results = new Map(await Promise.all(checks.map(async (check) => [check.id, await check.run(context)])));
 
   assert.deepEqual(checks.map((check) => [check.id, check.phase, check.timeoutMs, check.guideId]), [
     ['windows.platform-build', 'windows', 3000, 'windows-acrylic'],
@@ -217,24 +222,72 @@ test('Windows build gating uses an injected build first and fails closed for unk
   for (const [name, overrides, expected] of cases) {
     const { dependencies } = windowsDependencies(overrides);
     const checks = createWindowsChecks(dependencies);
-    const result = await byId(checks, 'windows.platform-build').run();
+    const result = await byId(checks, 'windows.platform-build').run({
+      runScope: { windows: collectWindowsCapabilities(dependencies) }
+    });
     assert.equal(result.status, expected, name);
   }
 
   const fromOs = windowsDependencies({ release: undefined, os: { release: () => '10.0.16299' } });
-  const fromOsResult = await byId(createWindowsChecks(fromOs.dependencies), 'windows.platform-build').run();
+  const fromOsResult = await byId(createWindowsChecks(fromOs.dependencies), 'windows.platform-build').run({
+    runScope: { windows: collectWindowsCapabilities(fromOs.dependencies) }
+  });
   assert.equal(fromOsResult.status, 'pass');
 });
 
-test('default, null, and primitive capability inputs share a safe cached unsupported snapshot', async () => {
+test('unsupported and unknown builds never touch native dependencies while GPU remains independently readable', async () => {
+  const cases = [
+    ['pre-Acrylic', () => 16298, '10.0.19045'],
+    ['unknown injected', () => 'unknown', '10.0.19045'],
+    ['throwing injected', () => { throw new Error('build unavailable'); }, '10.0.19045'],
+    ['unknown release', undefined, 'unknown']
+  ];
+  for (const [name, getWindowsBuild, release] of cases) {
+    let nativeTouches = 0;
+    let gpuTouches = 0;
+    const dependencies = {
+      platform: 'win32',
+      release,
+      getWindowsBuild,
+      app: {
+        getGPUFeatureStatus() { gpuTouches += 1; return { gpu_compositing: 'enabled' }; },
+        async getGPUInfo() { gpuTouches += 1; return { auxAttributes: {} }; }
+      }
+    };
+    for (const key of ['koffi', 'BrowserWindow', 'createAccentApi', 'applyAccent', 'clearAccent']) {
+      Object.defineProperty(dependencies, key, {
+        configurable: true,
+        get() {
+          nativeTouches += 1;
+          throw new Error(`${key} must not be touched`);
+        }
+      });
+    }
+
+    const snapshot = await collectWindowsCapabilities(dependencies);
+    assert.equal(snapshot.supported, true, name);
+    assert.equal(snapshot.platformBuildSupported, false, name);
+    assert.equal(nativeTouches, 0, name);
+    assert.equal(gpuTouches, 2, name);
+    assert.equal(snapshot.gpuAvailable, true, name);
+    const context = { runScope: { windows: Promise.resolve(snapshot) } };
+    const results = await Promise.all(createWindowsChecks(dependencies).map((check) => check.run(context)));
+    assert.equal(results.find((result, index) => createWindowsChecks(dependencies)[index].id === 'windows.gpu').status, 'pass', name);
+    assert.equal(results.filter((_, index) => createWindowsChecks(dependencies)[index].id !== 'windows.gpu')
+      .every((result) => result.status === 'fail' || result.status === 'skipped'), true, name);
+  }
+});
+
+test('default, null, and primitive capability inputs return independent safe unsupported snapshots', async () => {
   const first = collectWindowsCapabilities();
   const second = collectWindowsCapabilities();
   const nullInput = collectWindowsCapabilities(null);
   const primitiveInput = collectWindowsCapabilities('not-dependencies');
 
-  assert.equal(first, second);
-  assert.equal(first, nullInput);
-  assert.equal(first, primitiveInput);
+  assert.notEqual(first, second);
+  assert.notEqual(first, nullInput);
+  assert.notEqual(first, primitiveInput);
   const snapshots = await Promise.all([first, nullInput, primitiveInput]);
   assert.equal(snapshots.every((snapshot) => snapshot.supported === false), true);
+  assert.notEqual(snapshots[0], snapshots[1]);
 });

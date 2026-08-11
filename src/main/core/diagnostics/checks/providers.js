@@ -192,6 +192,25 @@ function quotaFailure() {
   return { status: 'fail', summary: 'Provider quota endpoint request failed', errorCode: 'QUOTA_REQUEST_FAILED' };
 }
 
+function proxyInputFromContext(context) {
+  try {
+    const proxy = context && context.runScope && context.runScope.proxy;
+    if (proxy && proxy.mode === 'direct' && proxy.input === null) return null;
+    if (proxy && proxy.mode === 'custom' && typeof proxy.input === 'string') return proxy.input;
+    if (proxy && proxy.mode === 'system' && typeof proxy.input === 'function') return proxy.input;
+  } catch (_) {
+    // Missing or hostile run scopes fail closed to direct input.
+  }
+  return null;
+}
+
+function diagnosticsTimeoutOptions(context, timeoutOptions) {
+  return Object.assign({}, timeoutOptions || {}, {
+    signal: context && context.signal,
+    deadlineMs: context && context.deadlineMs
+  });
+}
+
 function createProviderChecks(dependencies = {}) {
   const deps = dependencies && typeof dependencies === 'object' ? dependencies : {};
   const fsApi = safeDependency(deps, 'fs', fs) || fs;
@@ -203,7 +222,6 @@ function createProviderChecks(dependencies = {}) {
   const configuredTokenExpiryMs = safeDependency(deps, 'tokenExpiryMs', null);
   const configuredApiKey = safeDependency(deps, 'getDeepseekApiKey', null);
   const configuredSessionToken = safeDependency(deps, 'getDeepseekSessionToken', null);
-  const configuredProxyUrl = safeDependency(deps, 'getProxyUrl', null);
   const configuredRolloutParser = safeDependency(deps, 'parseRolloutLine', null);
   const configuredWireParser = safeDependency(deps, 'parseWireLine', null);
   const now = typeof configuredNow === 'function' ? configuredNow : Date.now;
@@ -258,25 +276,43 @@ function createProviderChecks(dependencies = {}) {
   }
 
   return [
-    definition('deepseek.api-key', 'DeepSeek API key', 'deepseek-api-key', 'remote', REMOTE_TIMEOUT_MS, async () => {
+    definition('deepseek.api-key', 'DeepSeek API key', 'deepseek-api-key', 'remote', REMOTE_TIMEOUT_MS, async (context) => {
       let key;
       try { key = await deepseekApiKey(); } catch (_) { key = null; }
       if (typeof key !== 'string' || !key) return { status: 'skipped', summary: 'DeepSeek API key is not configured', metadata: { configured: false } };
       try {
-        await fetchBalance(key, { httpGet, proxyUrl: await safeProxy(configuredProxyUrl, readStore) });
+        const scopedHttpGet = (url, headers, proxyInput, timeoutOptions) => httpGet(
+          url,
+          headers,
+          proxyInput,
+          diagnosticsTimeoutOptions(context, timeoutOptions)
+        );
+        await fetchBalance(key, {
+          httpGet: scopedHttpGet,
+          proxyUrl: proxyInputFromContext(context)
+        });
         return { status: 'pass', summary: 'DeepSeek API key was accepted', metadata: { configured: true } };
       } catch (_) {
         return { status: 'fail', summary: 'DeepSeek API key check failed', errorCode: 'DEEPSEEK_API_KEY_FAILED', metadata: { configured: true } };
       }
     }),
-    definition('deepseek.session', 'DeepSeek platform session', 'deepseek-session', 'remote', REMOTE_TIMEOUT_MS, async () => {
+    definition('deepseek.session', 'DeepSeek platform session', 'deepseek-session', 'remote', REMOTE_TIMEOUT_MS, async (context) => {
       let token;
       try { token = await deepseekSession(); } catch (_) { token = null; }
       if (typeof token !== 'string' || !token) return { status: 'skipped', summary: 'DeepSeek platform session is not configured', metadata: { configured: false } };
       try {
         const date = new Date(safeNow(now));
         const fetcher = new UsageFetcher();
-        await fetcher.fetchUsageAmount(token, date.getMonth() + 1, date.getFullYear(), { httpGet, proxyUrl: await safeProxy(configuredProxyUrl, readStore) });
+        const scopedHttpGet = (url, headers, proxyInput, timeoutOptions) => httpGet(
+          url,
+          headers,
+          proxyInput,
+          diagnosticsTimeoutOptions(context, timeoutOptions)
+        );
+        await fetcher.fetchUsageAmount(token, date.getMonth() + 1, date.getFullYear(), {
+          httpGet: scopedHttpGet,
+          proxyUrl: proxyInputFromContext(context)
+        });
         return { status: 'pass', summary: 'DeepSeek platform session was accepted', metadata: { configured: true } };
       } catch (_) {
         return { status: 'fail', summary: 'DeepSeek platform session check failed', errorCode: 'DEEPSEEK_SESSION_FAILED', metadata: { configured: true } };
@@ -289,7 +325,7 @@ function createProviderChecks(dependencies = {}) {
     }),
     definition('codex.sessions', 'Codex local sessions', 'codex-local-log', 'local', LOCAL_TIMEOUT_MS, () => sessionResult(codexSessionsRoot, codexMatch, fsApi, pathApi)),
     definition('codex.local-log', 'Codex local log sample', 'codex-local-log', 'local', LOCAL_TIMEOUT_MS, () => localLogResult(codexSessionsRoot, codexMatch, configuredRolloutParser || parseRolloutLine, fsApi, pathApi)),
-    definition('codex.quota', 'Codex quota endpoint', 'codex-auth', 'remote', REMOTE_TIMEOUT_MS, async () => {
+    definition('codex.quota', 'Codex quota endpoint', 'codex-auth', 'remote', REMOTE_TIMEOUT_MS, async (context) => {
       const snapshot = codexSnapshot();
       if (!snapshot || !snapshot.hasAccessToken) return { status: 'skipped', summary: 'Codex access token is not configured', metadata: { credentialState: 'missing' } };
       if (snapshot.expiry !== 'valid') return { status: 'skipped', summary: 'Codex access token is not valid for a read-only quota request', metadata: { credentialState: snapshot.expiry } };
@@ -298,7 +334,7 @@ function createProviderChecks(dependencies = {}) {
           Authorization: 'Bearer ' + snapshot.accessToken,
           'ChatGPT-Account-Id': snapshot.accountId,
           'User-Agent': 'codex_cli_rs/0.46.0'
-        }, await safeProxy(configuredProxyUrl, readStore));
+        }, proxyInputFromContext(context), diagnosticsTimeoutOptions(context));
         return { status: 'pass', summary: 'Codex quota endpoint responded', metadata: { credentialState: 'valid' } };
       } catch (_) { return quotaFailure(); }
     }),
@@ -309,7 +345,7 @@ function createProviderChecks(dependencies = {}) {
     }),
     definition('kimi.sessions', 'Kimi local sessions', 'kimi-local-log', 'local', LOCAL_TIMEOUT_MS, () => sessionResult(kimiSessionsRoot, kimiMatch, fsApi, pathApi)),
     definition('kimi.local-log', 'Kimi local log sample', 'kimi-local-log', 'local', LOCAL_TIMEOUT_MS, () => localLogResult(kimiSessionsRoot, kimiMatch, configuredWireParser || parseWireLine, fsApi, pathApi)),
-    definition('kimi.quota', 'Kimi quota endpoint', 'kimi-auth', 'remote', REMOTE_TIMEOUT_MS, async () => {
+    definition('kimi.quota', 'Kimi quota endpoint', 'kimi-auth', 'remote', REMOTE_TIMEOUT_MS, async (context) => {
       const snapshot = kimiSnapshot();
       if (!snapshot || !snapshot.hasAccessToken) return { status: 'skipped', summary: 'Kimi access token is not configured', metadata: { credentialState: 'missing' } };
       if (snapshot.expiry !== 'valid') return { status: 'skipped', summary: 'Kimi access token is not valid for a read-only quota request', metadata: { credentialState: snapshot.expiry } };
@@ -317,7 +353,7 @@ function createProviderChecks(dependencies = {}) {
         await httpGet('https://api.kimi.com/coding/v1/usages', {
           Authorization: 'Bearer ' + snapshot.accessToken,
           'User-Agent': 'kimi_cli'
-        }, await safeProxy(configuredProxyUrl, readStore));
+        }, proxyInputFromContext(context), diagnosticsTimeoutOptions(context));
         return { status: 'pass', summary: 'Kimi quota endpoint responded', metadata: { credentialState: 'valid' } };
       } catch (_) { return quotaFailure(); }
     })

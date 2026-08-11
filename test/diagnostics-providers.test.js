@@ -207,6 +207,66 @@ test('provider check definitions keep credential and local-log probes local and 
   assert.equal(byId.get('kimi.local-log').guideId, 'kimi-local-log');
 });
 
+test('provider remote checks share the run proxy snapshot and propagate the check signal and deadline', async () => {
+  const calls = [];
+  let legacyProxyReads = 0;
+  const signal = new AbortController().signal;
+  const httpGet = async (url, headers, proxyInput, timeoutOptions) => {
+    calls.push({ url, proxyInput, timeoutOptions });
+    return {};
+  };
+  class UsageFetcher {
+    fetchUsageAmount(_token, _month, _year, options) {
+      return options.httpGet('https://platform.example/usage', {}, options.proxyUrl, { requestTimeoutMs: 7 });
+    }
+  }
+  const checks = createProviderChecks({
+    getDeepseekApiKey: () => 'deepseek-key',
+    getDeepseekSessionToken: () => 'deepseek-session',
+    getProxyUrl() { legacyProxyReads += 1; throw new Error('legacy proxy getter must not run'); },
+    fetchBalance(_key, options) {
+      return options.httpGet('https://balance.example/read', {}, options.proxyUrl, { requestTimeoutMs: 6 });
+    },
+    UsageFetcher,
+    httpGet,
+    now: () => 1_000,
+    tokenExpiryMs: () => 1_000_000_000,
+    codexAuthPath: 'codex-auth.json',
+    kimiCredPath: 'kimi-cred.json',
+    fs: {
+      readFileSync(file) {
+        if (file === 'codex-auth.json') {
+          return Buffer.from(JSON.stringify({ tokens: {
+            access_token: 'codex-access', refresh_token: 'codex-refresh', account_id: 'account'
+          } }));
+        }
+        if (file === 'kimi-cred.json') {
+          return Buffer.from(JSON.stringify({
+            access_token: 'kimi-access', refresh_token: 'kimi-refresh', expires_at: 1_000_000
+          }));
+        }
+        throw new Error('unexpected file');
+      }
+    }
+  });
+  const context = {
+    signal,
+    deadlineMs: 54321,
+    runScope: { proxy: { mode: 'custom', input: 'http://proxy.example.test:8080' } }
+  };
+
+  const results = await Promise.all([
+    'deepseek.api-key', 'deepseek.session', 'codex.quota', 'kimi.quota'
+  ].map((id) => checks.find((check) => check.id === id).run(context)));
+
+  assert.equal(results.every((result) => result.status === 'pass'), true, JSON.stringify(results));
+  assert.equal(legacyProxyReads, 0);
+  assert.equal(calls.length, 4);
+  assert.equal(calls.every((call) => call.proxyInput === 'http://proxy.example.test:8080'), true);
+  assert.equal(calls.every((call) => call.timeoutOptions.signal === signal), true);
+  assert.equal(calls.every((call) => call.timeoutOptions.deadlineMs === 54321), true);
+});
+
 test('async credential and proxy configuration is awaited without leaked rejections', async () => {
   const unhandled = [];
   const onUnhandled = (error) => unhandled.push(error);

@@ -19,7 +19,13 @@ function activeSender(event, getDiagnosticsWindow) {
   }
 }
 
-function registerDiagnosticsIpc({ ipcMain, diagnostics, getDiagnosticsWindow, createDiagnosticsWindow }) {
+function registerDiagnosticsIpc({
+  ipcMain,
+  diagnostics,
+  getDiagnosticsWindow,
+  createDiagnosticsWindow,
+  getDiagnosticsTheme
+}) {
   if (!ipcMain || typeof ipcMain.on !== 'function' || typeof ipcMain.handle !== 'function' ||
       typeof ipcMain.removeListener !== 'function' || typeof ipcMain.removeHandler !== 'function') {
     throw new TypeError('ipcMain is required');
@@ -80,12 +86,24 @@ function registerDiagnosticsIpc({ ipcMain, diagnostics, getDiagnosticsWindow, cr
     }
   };
 
+  const readDiagnosticsTheme = async (event) => {
+    const sender = activeSender(event, getDiagnosticsWindow);
+    if (!sender) return failure('DIAGNOSTICS_SENDER_INVALID');
+    try {
+      if (typeof getDiagnosticsTheme !== 'function') throw new Error('Diagnostics theme unavailable');
+      return await getDiagnosticsTheme();
+    } catch (_) {
+      return failure('DIAGNOSTICS_THEME_FAILED');
+    }
+  };
+
   const registrations = [
     { type: 'on', channel: 'open:diagnostics', callback: openDiagnostics },
     { type: 'on', channel: 'window:close-diagnostics', callback: closeDiagnostics },
     { type: 'handle', channel: 'diagnostics:run', callback: runDiagnostics },
     { type: 'handle', channel: 'diagnostics:copy-report', callback: copyDiagnostics },
-    { type: 'handle', channel: 'diagnostics:open-guide', callback: openDiagnosticsGuide }
+    { type: 'handle', channel: 'diagnostics:open-guide', callback: openDiagnosticsGuide },
+    { type: 'handle', channel: 'diagnostics:get-theme', callback: readDiagnosticsTheme }
   ];
   const completed = [];
   try {

@@ -12,6 +12,26 @@ function deferred() {
   return { promise, resolve };
 }
 
+test('resource limiter holds permits until explicit release and removes aborted waiters', async () => {
+  const { createResourceLimiter } = require('../src/main/core/diagnostics/limiter');
+  const limiter = createResourceLimiter(1);
+  const firstRelease = await limiter.acquire();
+  const controller = new AbortController();
+  const waiting = limiter.acquire(controller.signal);
+
+  assert.equal(limiter.active, 1);
+  assert.equal(limiter.pending, 1);
+  controller.abort();
+  await assert.rejects(waiting, (error) => error && error.code === 'DIAGNOSTIC_ABORTED');
+  assert.equal(limiter.active, 1);
+  assert.equal(limiter.pending, 0);
+
+  firstRelease();
+  firstRelease();
+  assert.equal(limiter.active, 0);
+  assert.equal(limiter.pending, 0);
+});
+
 test('runner emits pending snapshot then running and terminal results in definition order', async () => {
   const checks = [
     check('local.ok', 'local', async () => ({ status: 'pass', summary: 'ok' })),
@@ -79,6 +99,103 @@ test('remote checks default to a three-worker pool', async () => {
   gates.forEach((gate) => gate.resolve());
   const results = await running;
   assert.deepEqual(results.map((item) => item.status), ['pass', 'pass', 'pass', 'pass']);
+});
+
+test('shared limiter caps underlying resources across runs and timeout abort drains cancelable operations', async () => {
+  const { createResourceLimiter } = require('../src/main/core/diagnostics/limiter');
+  const limiter = createResourceLimiter(3);
+  let active = 0;
+  let peak = 0;
+  function abortableRemote(id) {
+    return check(id, 'remote', (context) => new Promise((resolve, reject) => {
+      active += 1;
+      peak = Math.max(peak, active);
+      if (!context.signal || typeof context.signal.addEventListener !== 'function') return;
+      context.signal.addEventListener('abort', () => {
+        active -= 1;
+        const error = new Error('aborted');
+        error.code = 'DIAGNOSTIC_ABORTED';
+        reject(error);
+      }, { once: true });
+    }), 5);
+  }
+  const first = runDiagnostics({
+    runId: 'shared-a',
+    checks: Array.from({ length: 4 }, (_, index) => abortableRemote(`a.${index}`)),
+    emit() {},
+    isActive: () => true,
+    remoteLimiter: limiter,
+    signal: new AbortController().signal
+  });
+  const second = runDiagnostics({
+    runId: 'shared-b',
+    checks: Array.from({ length: 4 }, (_, index) => abortableRemote(`b.${index}`)),
+    emit() {},
+    isActive: () => true,
+    remoteLimiter: limiter,
+    signal: new AbortController().signal
+  });
+
+  const [firstResults, secondResults] = await Promise.all([first, second]);
+  assert.equal(firstResults.every((item) => item.errorCode === 'DIAGNOSTIC_TIMEOUT'), true);
+  assert.equal(secondResults.every((item) => item.errorCode === 'DIAGNOSTIC_TIMEOUT'), true);
+  assert.ok(peak <= 3, `underlying resource peak was ${peak}`);
+  assert.equal(active, 0);
+  assert.equal(limiter.active, 0);
+});
+
+test('timed-out non-cancelable operation retains its shared permit until it really settles', async () => {
+  const { createResourceLimiter } = require('../src/main/core/diagnostics/limiter');
+  const limiter = createResourceLimiter(1);
+  const nonCancelable = deferred();
+  let secondStarted = false;
+  const first = runDiagnostics({
+    runId: 'non-cancelable-a',
+    checks: [check('remote.old', 'remote', () => nonCancelable.promise, 5)],
+    emit() {}, isActive: () => true, remoteLimiter: limiter
+  });
+  const firstResults = await first;
+  assert.equal(firstResults[0].errorCode, 'DIAGNOSTIC_TIMEOUT');
+  assert.equal(limiter.active, 1);
+
+  const second = runDiagnostics({
+    runId: 'non-cancelable-b',
+    checks: [check('remote.new', 'remote', async () => {
+      secondStarted = true;
+      return { status: 'pass' };
+    }, 50)],
+    emit() {}, isActive: () => true, remoteLimiter: limiter
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(secondStarted, false);
+  nonCancelable.resolve({ status: 'pass' });
+  assert.equal((await second)[0].status, 'pass');
+  assert.equal(limiter.active, 0);
+});
+
+test('runner executes local and windows as separate ordered phases', async () => {
+  const order = [];
+  const phaseCheck = (id, phase) => check(id, phase, async () => {
+    order.push(id);
+    return { status: 'pass' };
+  });
+  await runDiagnostics({
+    runId: 'phase-order',
+    checks: [
+      phaseCheck('local.first', 'local'),
+      phaseCheck('windows.first', 'windows'),
+      phaseCheck('local.second', 'local'),
+      phaseCheck('windows.second', 'windows'),
+      phaseCheck('remote.first', 'remote'),
+      phaseCheck('final.first', 'final')
+    ],
+    emit() {}, isActive: () => true
+  });
+  assert.deepEqual(order, [
+    'local.first', 'local.second',
+    'windows.first', 'windows.second',
+    'remote.first', 'final.first'
+  ]);
 });
 
 test('a stale run stops before later checks start or emit events', async () => {

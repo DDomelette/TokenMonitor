@@ -10,6 +10,7 @@ const codexProvider = require('./providers/codex');
 const kimiProvider = require('./providers/kimi');
 const { startScheduler } = require('./core/scheduler');
 const { createDiagnostics } = require('./core/diagnostics');
+const { projectDiagnosticsTheme } = require('./core/diagnostics/theme');
 const { validateEncryptionKey } = require('./core/encryption-key');
 const {
   SYSTEM_PROXY_VALUE,
@@ -101,7 +102,7 @@ function sendMainWindowBounds() {
 }
 
 function broadcastToWindows(channel, payload) {
-  [mainWindow, settingsWindow, diagnosticsWindow].forEach(function (win) {
+  [mainWindow, settingsWindow].forEach(function (win) {
     if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
     win.webContents.send(channel, payload);
   });
@@ -570,7 +571,7 @@ function createDiagnosticsWindow() {
     resizable: true,
     show: false,
     webPreferences: {
-      preload: path.join(__dirname, '..', 'preload', 'preload.js'),
+      preload: path.join(__dirname, '..', 'preload', 'diagnostics-preload.js'),
       contextIsolation: true,
       nodeIntegration: false
     }
@@ -777,7 +778,7 @@ function createDiagnosticsRuntime() {
       release: os.release(),
       buildPaths: {
         mainRenderer: path.join(__dirname, '..', '..', 'renderer', 'dist', 'index.html'),
-        preload: path.join(__dirname, '..', 'preload', 'preload.js'),
+        preload: path.join(__dirname, '..', 'preload', 'diagnostics-preload.js'),
         diagnosticsPage
       },
       getWindows: () => ({
@@ -860,6 +861,7 @@ app.whenReady().then(() => {
     getSettingsWindow: () => settingsWindow,
     getLoginWindow: () => loginWindow,
     getDiagnosticsWindow: () => diagnosticsWindow,
+    getDiagnosticsTheme: () => projectDiagnosticsTheme(store.store),
     getEdgeDock: () => edgeDock,
     createMainWindow,
     createLoginWindow,

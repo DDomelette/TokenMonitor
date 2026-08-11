@@ -277,6 +277,7 @@ function createDiagnosticsHarness(options = {}) {
   const guidePromises = (options.guidePromises || []).slice();
   const invoked = [];
   const sent = [];
+  const genericApiAccesses = [];
   const mediaListeners = [];
   const media = {
     matches: Boolean(options.systemDark),
@@ -284,12 +285,14 @@ function createDiagnosticsHarness(options = {}) {
   };
   const api = {
     on(channel, listener) {
+      genericApiAccesses.push(`on:${channel}`);
       operations.push(`on:${channel}`);
       listeners[channel] = listener;
       return () => {};
     },
     send(channel, payload) { sent.push({ channel, payload }); },
     invoke(channel, ...args) {
+      genericApiAccesses.push(`invoke:${channel}`);
       operations.push(`invoke:${channel}`);
       invoked.push({ channel, args });
       if (channel === 'diagnostics:run') {
@@ -309,8 +312,48 @@ function createDiagnosticsHarness(options = {}) {
       return Promise.reject(new Error(`Unexpected invoke: ${channel}`));
     }
   };
+  const diagnosticsApi = {
+    onProgress(listener) {
+      operations.push('on:diagnostics:progress');
+      listeners['diagnostics:progress'] = listener;
+      return () => {};
+    },
+    onThemeChanged(listener) {
+      operations.push('on:theme:changed');
+      listeners['theme:changed'] = listener;
+      return () => {};
+    },
+    onFocusState(listener) {
+      operations.push('on:window:focus-state');
+      listeners['window:focus-state'] = listener;
+      return () => {};
+    },
+    run() {
+      operations.push('invoke:diagnostics:run');
+      invoked.push({ channel: 'diagnostics:run', args: [] });
+      return runPromises.length ? runPromises.shift() : Promise.resolve(snapshots.shift());
+    },
+    copyReport(runId) {
+      operations.push('invoke:diagnostics:copy-report');
+      invoked.push({ channel: 'diagnostics:copy-report', args: [runId] });
+      return copyPromises.length ? copyPromises.shift() : Promise.resolve({ ok: true, length: 100 });
+    },
+    openGuide(guideId) {
+      operations.push('invoke:diagnostics:open-guide');
+      invoked.push({ channel: 'diagnostics:open-guide', args: [guideId] });
+      if (guidePromises.length) return guidePromises.shift();
+      if (options.guidePromise) return options.guidePromise;
+      return Promise.resolve(options.guideResult || { ok: false, errorCode: 'GUIDE_OPEN_FAILED' });
+    },
+    getTheme() {
+      operations.push('invoke:diagnostics:get-theme');
+      invoked.push({ channel: 'diagnostics:get-theme', args: [] });
+      return Promise.resolve(options.themeProjection || { window: { followSystemTheme: true, darkMode: 'system' } });
+    },
+    close() { sent.push({ channel: 'window:close-diagnostics', payload: undefined }); }
+  };
   const context = {
-    window: { api, matchMedia: () => media },
+    window: { api, diagnosticsApi, matchMedia: () => media },
     document,
     DiagnosticsState: require('../src/renderer/js/diagnostics-state.js'),
     DiagnosticsView: require('../src/renderer/js/diagnostics-view.js'),
@@ -322,7 +365,7 @@ function createDiagnosticsHarness(options = {}) {
   context.window.document = document;
   const source = fs.readFileSync(path.join(root, 'src/renderer/js/diagnostics-window.js'), 'utf8');
   vm.runInNewContext(source, context, { filename: 'diagnostics-window.js' });
-  return { document, listeners, operations, invoked, sent, media, mediaListeners };
+  return { document, listeners, operations, invoked, sent, media, mediaListeners, genericApiAccesses };
 }
 
 function createSettingsHarness() {
@@ -487,6 +530,48 @@ test('diagnostics window subscribes before running and renders sanitized result 
   assert.equal(harness.document.getElementById('copyDiagnosticsBtn').disabled, false);
 });
 
+test('only a running diagnostics row renders one accessible spinner element', async () => {
+  const statuses = ['pending', 'running', 'pass', 'fail', 'skipped'];
+  const harness = createDiagnosticsHarness({
+    snapshots: [{
+      runId: 'spinner-run',
+      checks: statuses.map((status) => diagnosticCheck(status))
+    }]
+  });
+  await flushPromises();
+
+  const groups = harness.document.getElementById('diagnosticsGroups');
+  const runningRow = groups.querySelector('.status-running');
+  const runningSpinners = runningRow.querySelectorAll('.diagnostic-spinner');
+  assert.equal(runningSpinners.length, 1);
+  assert.equal(runningSpinners[0].getAttribute('role'), 'status');
+  assert.ok(runningSpinners[0].getAttribute('aria-label'));
+  ['pending', 'pass', 'fail', 'skipped'].forEach((status) => {
+    assert.equal(groups.querySelector(`.status-${status}`).querySelectorAll('.diagnostic-spinner').length, 0);
+  });
+});
+
+test('diagnostics renderer uses only the narrow bridge and never requests or receives full settings', async () => {
+  const fullSettings = {
+    window: { followSystemTheme: false, darkMode: 'acrylic-dark' },
+    providers: { codex: { localLogRoot: 'C:\\Users\\Alice\\.codex' } },
+    localLogCursors: { 'C:\\Users\\Alice\\.codex\\sessions\\rollout.jsonl': 99 },
+    mcp: { token: 'mcp-private' }
+  };
+  const harness = createDiagnosticsHarness({
+    snapshots: [{ runId: 'narrow-run', checks: [] }],
+    settings: fullSettings,
+    themeProjection: { window: { followSystemTheme: false, darkMode: 'acrylic-dark' } }
+  });
+  await flushPromises();
+
+  assert.deepEqual(harness.genericApiAccesses, []);
+  assert.equal(harness.invoked.some((call) => call.channel === 'get:settings'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(harness.listeners, 'settings:loaded'), false);
+  assert.equal(harness.document.body.dataset.theme, 'acrylic-dark');
+  assert.doesNotMatch(JSON.stringify(harness.invoked), /Alice|rollout|mcp-private/);
+});
+
 test('diagnostics controls use only the active run, declared channels, and stable UI feedback', async () => {
   const harness = createDiagnosticsHarness({
     snapshots: [
@@ -499,7 +584,7 @@ test('diagnostics controls use only the active run, declared channels, and stabl
         checks: [diagnosticCheck('pass', { id: 'runtime.a', guideId: 'app-runtime' })]
       }
     ],
-    settings: { window: { followSystemTheme: false, darkMode: 'acrylic-dark' } }
+    themeProjection: { window: { followSystemTheme: false, darkMode: 'acrylic-dark' } }
   });
   await flushPromises();
 

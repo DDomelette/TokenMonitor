@@ -42,6 +42,63 @@ function fakeWindow(id) {
   };
 }
 
+test('theme projection reads only own data properties and returns the exact safe shape', () => {
+  const { projectDiagnosticsTheme } = require('../src/main/core/diagnostics/theme');
+  const projected = projectDiagnosticsTheme({
+    window: { darkMode: 'acrylic-dark', followSystemTheme: false, alwaysOnTop: true },
+    providers: { codex: { localLogRoot: 'C:\\Users\\Alice\\.codex' } },
+    localLogCursors: { 'C:\\Users\\Alice\\.codex\\sessions\\rollout.jsonl': 99 },
+    mcp: { token: 'mcp-private' }
+  });
+  assert.deepEqual(projected, {
+    window: { darkMode: 'acrylic-dark', followSystemTheme: false }
+  });
+  assert.doesNotMatch(JSON.stringify(projected), /Alice|rollout|mcp-private|alwaysOnTop/);
+
+  let getterTouches = 0;
+  const hostileWindow = {};
+  Object.defineProperties(hostileWindow, {
+    darkMode: { enumerable: true, get() { getterTouches += 1; return 'dark'; } },
+    followSystemTheme: { enumerable: true, get() { getterTouches += 1; return false; } }
+  });
+  const hostileSettings = {};
+  Object.defineProperty(hostileSettings, 'window', {
+    enumerable: true,
+    get() { getterTouches += 1; return hostileWindow; }
+  });
+  assert.deepEqual(projectDiagnosticsTheme(hostileSettings), {
+    window: { darkMode: 'system', followSystemTheme: true }
+  });
+  assert.equal(getterTouches, 0);
+  assert.deepEqual(projectDiagnosticsTheme({ window: { darkMode: 'invalid', followSystemTheme: 'false' } }), {
+    window: { darkMode: 'system', followSystemTheme: true }
+  });
+});
+
+test('theme IPC authorizes only the exact active diagnostics webContents', async () => {
+  const ipc = fakeIpcMain();
+  const active = fakeWindow(78);
+  const themeProjection = { window: { darkMode: 'dark', followSystemTheme: false } };
+  registerDiagnosticsIpc({
+    ipcMain: ipc.api,
+    diagnostics: { start() {}, copy() {}, openGuide() {} },
+    getDiagnosticsWindow: () => active,
+    createDiagnosticsWindow() {},
+    getDiagnosticsTheme: () => themeProjection
+  });
+
+  assert.deepEqual(await ipc.handle.get('diagnostics:get-theme')({ sender: active.webContents }), themeProjection);
+  for (const sender of [
+    { id: 78, isDestroyed: () => false },
+    { id: 1, isDestroyed: () => false }
+  ]) {
+    assert.deepEqual(await ipc.handle.get('diagnostics:get-theme')({ sender }), {
+      ok: false,
+      errorCode: 'DIAGNOSTICS_SENDER_INVALID'
+    });
+  }
+});
+
 test('IPC routes only the exact active diagnostics webContents and remains stable on repeats and failures', async () => {
   const ipc = fakeIpcMain();
   const calls = [];
@@ -63,7 +120,7 @@ test('IPC routes only the exact active diagnostics webContents and remains stabl
   assert.equal(registerDiagnosticsIpc(dependencies), false);
   assert.deepEqual([...ipc.on.keys()].sort(), ['open:diagnostics', 'window:close-diagnostics']);
   assert.deepEqual([...ipc.handle.keys()].sort(), [
-    'diagnostics:copy-report', 'diagnostics:open-guide', 'diagnostics:run'
+    'diagnostics:copy-report', 'diagnostics:get-theme', 'diagnostics:open-guide', 'diagnostics:run'
   ]);
 
   ipc.on.get('open:diagnostics')({ sender: { id: 1 } });
@@ -167,7 +224,7 @@ test('IPC registration rolls back partial listeners atomically and can retry aft
   assert.equal(registerDiagnosticsIpc(dependencies), true);
   assert.deepEqual([...on.keys()].sort(), ['open:diagnostics', 'window:close-diagnostics']);
   assert.deepEqual([...handle.keys()].sort(), [
-    'diagnostics:copy-report', 'diagnostics:open-guide', 'diagnostics:run'
+    'diagnostics:copy-report', 'diagnostics:get-theme', 'diagnostics:open-guide', 'diagnostics:run'
   ]);
   assert.equal(registerDiagnosticsIpc(dependencies), false);
 });
@@ -191,7 +248,7 @@ test('IPC registration rejects missing rollback APIs before registering any chan
   ipcMain.removeListener = () => {};
   ipcMain.removeHandler = () => {};
   assert.equal(registerDiagnosticsIpc(dependencies), true);
-  assert.equal(registrations.length, 5);
+  assert.equal(registrations.length, 6);
   assert.equal(registerDiagnosticsIpc(dependencies), false);
 });
 
@@ -283,7 +340,12 @@ test('main creates, reuses, broadcasts to, and disposes the diagnostics window b
     shell: { openPath: async () => '' }
   };
   const store = {
-    store: {},
+    store: {
+      window: { darkMode: 'acrylic-dark', followSystemTheme: false, alwaysOnTop: true },
+      providers: { codex: { localLogRoot: 'C:\\Users\\Alice\\.codex' } },
+      localLogCursors: { 'C:\\Users\\Alice\\.codex\\sessions\\rollout.jsonl': 99 },
+      mcp: { token: 'mcp-private' }
+    },
     get(key) {
       const values = {
         window: { x: 0, y: 0, width: 420, height: 680 },
@@ -379,6 +441,9 @@ test('main creates, reuses, broadcasts to, and disposes the diagnostics window b
   assert.equal(setupDependencies.getMcpRuntime(), fakeMcpRuntime);
   assert.equal(typeof setupDependencies.createDiagnosticsWindow, 'function');
   assert.equal(typeof setupDependencies.getDiagnosticsWindow, 'function');
+  assert.deepEqual(setupDependencies.getDiagnosticsTheme(), {
+    window: { darkMode: 'acrylic-dark', followSystemTheme: false }
+  });
   assert.equal(diagnosticsDependencies.scheduler, fakeScheduler);
   assert.equal(diagnosticsDependencies.providers.getProxyUrl, schedulerDependencies.getProxyInput);
   assert.equal(diagnosticsDependencies.providers.getProxyUrl(), null);
@@ -402,7 +467,11 @@ test('main creates, reuses, broadcasts to, and disposes the diagnostics window b
   assert.equal(diagnosticsWindow.options.roundedCorners, true);
   assert.equal(diagnosticsWindow.options.webPreferences.contextIsolation, true);
   assert.equal(diagnosticsWindow.options.webPreferences.nodeIntegration, false);
+  assert.match(diagnosticsWindow.options.webPreferences.preload, /src[\\/]preload[\\/]diagnostics-preload\.js$/);
   assert.match(diagnosticsWindow.loadedFile, /src[\\/]renderer[\\/]diagnostics-window\.html$/);
+
+  setupDependencies.broadcastSettings();
+  assert.equal(diagnosticsWindow.messages.some((message) => message.channel === 'settings:loaded'), false);
 
   setupDependencies.createDiagnosticsWindow();
   assert.equal(windows.length, before + 1);

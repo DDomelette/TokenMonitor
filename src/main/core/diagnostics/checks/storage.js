@@ -45,17 +45,19 @@ function createStorageChecks(dependencies = {}) {
     definition('storage.temp-write', 'Temporary file write', 'storage-user-data', () => {
       const name = '.diagnostics-' + cryptoApi.randomBytes(12).toString('hex') + '.tmp';
       const target = pathApi.join(userDataDir, name);
-      let fd = null;
+      let fd;
+      let owned = false;
       try {
         fd = fsApi.openSync(target, 'wx', 0o600);
+        owned = true;
         fsApi.writeSync(fd, Buffer.from('ok'));
         fsApi.fsyncSync(fd);
         return { status: 'pass', summary: 'User data directory can safely create and remove temporary files' };
       } finally {
         try {
-          if (fd !== null) fsApi.closeSync(fd);
+          if (fd !== undefined) fsApi.closeSync(fd);
         } finally {
-          fsApi.rmSync(target, { force: true });
+          if (owned) fsApi.rmSync(target, { force: true });
         }
       }
     }),

@@ -6,6 +6,7 @@ const {
   classifyNetworkError,
   probeEndpoint,
   probeProxyTcp,
+  captureProxySnapshot,
   createNetworkChecks
 } = require('../src/main/core/diagnostics/checks/network');
 
@@ -15,6 +16,59 @@ const TRANSPORT_TIMEOUTS = {
   tlsHandshakeTimeoutMs: 5000,
   requestTimeoutMs: 8000
 };
+
+function withWatchdog(promise, timeoutMs = 300) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(Object.assign(new Error('watchdog expired'), { code: 'TEST_WATCHDOG' })), timeoutMs);
+    })
+  ]).finally(() => clearTimeout(timer));
+}
+
+test('proxy snapshot is captured once per run and all network checks consume only that immutable scope', async () => {
+  let stored = '';
+  const reads = [];
+  const calls = [];
+  const dependencies = {
+    getStoredProxyValue() { reads.push(stored); return stored; },
+    httpGet: async (url, headers, proxyInput, timeoutOptions) => {
+      calls.push({ url, proxyInput, timeoutOptions });
+      return {};
+    }
+  };
+  const runAProxy = captureProxySnapshot(dependencies);
+  stored = 'http://proxy.example.test:8080';
+  const runBProxy = captureProxySnapshot(dependencies);
+  const checks = createNetworkChecks(dependencies);
+  const signal = new AbortController().signal;
+
+  stored = 'system';
+  await checks.find((check) => check.id === 'network.deepseek-api').run({
+    signal,
+    deadlineMs: 12345,
+    runScope: { proxy: runAProxy }
+  });
+  await checks.find((check) => check.id === 'network.codex').run({
+    signal,
+    deadlineMs: 12345,
+    runScope: { proxy: runAProxy }
+  });
+  await checks.find((check) => check.id === 'network.kimi').run({
+    signal,
+    deadlineMs: 23456,
+    runScope: { proxy: runBProxy }
+  });
+
+  assert.deepEqual(runAProxy, { mode: 'direct', input: null });
+  assert.deepEqual(runBProxy, { mode: 'custom', input: 'http://proxy.example.test:8080' });
+  assert.equal(Object.isFrozen(runAProxy), true);
+  assert.deepEqual(reads, ['', 'http://proxy.example.test:8080']);
+  assert.deepEqual(calls.map((call) => call.proxyInput), [null, null, 'http://proxy.example.test:8080']);
+  assert.equal(calls.every((call) => call.timeoutOptions.signal === signal), true);
+  assert.deepEqual(calls.map((call) => call.timeoutOptions.deadlineMs), [12345, 12345, 23456]);
+});
 
 test('classifyNetworkError returns stable stage and redacted code', () => {
   const cases = [
@@ -193,6 +247,34 @@ test('probeProxyTcp destroys and settles once on connection rejection or timeout
   assert.equal(timedOut.destroyCalls, 1);
 });
 
+test('probeProxyTcp abort destroys once, removes listeners, and returns a stable abort code', async () => {
+  const socket = new EventEmitter();
+  socket.destroyed = false;
+  socket.destroyCalls = 0;
+  socket.destroy = () => { socket.destroyed = true; socket.destroyCalls += 1; };
+  const signal = new AbortController();
+  let clearCalls = 0;
+  const pending = probeProxyTcp({
+    proxyUrl: 'http://proxy.example.test:8080',
+    netConnect: () => socket,
+    signal: signal.signal,
+    setTimeout: () => ({ timer: true }),
+    clearTimeout: () => { clearCalls += 1; }
+  });
+
+  signal.abort();
+  assert.deepEqual(await withWatchdog(pending), {
+    status: 'fail',
+    summary: 'Custom proxy TCP connection aborted',
+    errorCode: 'DIAGNOSTIC_ABORTED',
+    metadata: { stage: 'tcp' }
+  });
+  assert.equal(socket.destroyCalls, 1);
+  assert.equal(socket.listenerCount('connect'), 0);
+  assert.equal(socket.listenerCount('error'), 0);
+  assert.equal(clearCalls, 1);
+});
+
 test('createNetworkChecks normalizes direct, system, and custom proxy modes without Store writes', async () => {
   const writes = [];
   const endpointCalls = [];
@@ -218,6 +300,11 @@ test('createNetworkChecks normalizes direct, system, and custom proxy modes with
     }
   };
   const checks = createNetworkChecks(baseDependencies);
+  const systemContext = {
+    signal: new AbortController().signal,
+    deadlineMs: 98765,
+    runScope: { proxy: captureProxySnapshot(baseDependencies) }
+  };
   assert.deepEqual(checks.map((check) => check.id), [
     'network.proxy-config',
     'network.system-proxy',
@@ -229,34 +316,41 @@ test('createNetworkChecks normalizes direct, system, and custom proxy modes with
   ]);
   assert.equal(checks.find((check) => check.id === 'network.system-proxy').phase, 'remote');
   assert.equal(checks.find((check) => check.id === 'network.deepseek-api').timeoutMs, 8000);
-  assert.equal((await checks[0].run()).status, 'pass');
-  const systemRun = checks[1].run();
-  await Promise.resolve();
+  assert.equal((await checks[0].run(systemContext)).status, 'pass');
+  const systemRun = checks[1].run(systemContext);
+  await new Promise((resolve) => setImmediate(resolve));
   socket.emit('connect');
   assert.equal((await systemRun).status, 'pass');
-  assert.equal((await checks[2].run()).status, 'skipped');
-  await checks[3].run();
+  assert.equal((await checks[2].run(systemContext)).status, 'skipped');
+  await checks[3].run(systemContext);
   assert.equal(typeof endpointCalls[0].proxyInput, 'function');
   await endpointCalls[0].proxyInput('https://api.example.test/target');
   assert.deepEqual(systemTargets, ['https://api.deepseek.com/user/balance', 'https://api.example.test/target']);
   assert.deepEqual(endpointCalls[0].headers, {});
-  assert.deepEqual(endpointCalls[0].timeouts, TRANSPORT_TIMEOUTS);
+  assert.deepEqual(endpointCalls[0].timeouts, Object.assign({}, TRANSPORT_TIMEOUTS, {
+    signal: systemContext.signal,
+    deadlineMs: 98765
+  }));
   assert.deepEqual(writes, []);
 
-  const customChecks = createNetworkChecks(Object.assign({}, baseDependencies, {
+  const customDependencies = Object.assign({}, baseDependencies, {
     store: { get: () => 'http://[2001:db8::2]:8080', set: (...args) => writes.push(args) }
-  }));
-  assert.equal((await customChecks[1].run()).status, 'skipped');
-  const customRun = customChecks[2].run();
+  });
+  const customChecks = createNetworkChecks(customDependencies);
+  const customContext = { runScope: { proxy: captureProxySnapshot(customDependencies) } };
+  assert.equal((await customChecks[1].run(customContext)).status, 'skipped');
+  const customRun = customChecks[2].run(customContext);
   socket.emit('connect');
   assert.equal((await customRun).status, 'pass');
 
-  const directChecks = createNetworkChecks(Object.assign({}, baseDependencies, {
+  const directDependencies = Object.assign({}, baseDependencies, {
     store: { get: () => '', set: (...args) => writes.push(args) }
-  }));
-  assert.equal((await directChecks[1].run()).status, 'skipped');
-  assert.equal((await directChecks[2].run()).status, 'skipped');
-  await directChecks[3].run();
+  });
+  const directChecks = createNetworkChecks(directDependencies);
+  const directContext = { runScope: { proxy: captureProxySnapshot(directDependencies) } };
+  assert.equal((await directChecks[1].run(directContext)).status, 'skipped');
+  assert.equal((await directChecks[2].run(directContext)).status, 'skipped');
+  await directChecks[3].run(directContext);
   assert.equal(endpointCalls.at(-1).proxyInput, null);
 });
 
@@ -267,14 +361,16 @@ test('createNetworkChecks consumes an asynchronous proxy read rejection without 
   process.on('unhandledRejection', onUnhandled);
   try {
     let normalizeCalls = 0;
-    const checks = createNetworkChecks({
+    const dependencies = {
       getStoredProxyValue: () => rejected,
       normalizeStoredProxyValue: () => { normalizeCalls += 1; return ''; }
-    });
+    };
+    const proxy = captureProxySnapshot(dependencies);
+    const checks = createNetworkChecks(dependencies);
     await new Promise((resolve) => setImmediate(resolve));
 
     assert.equal(normalizeCalls, 0);
-    assert.deepEqual(await checks[0].run(), {
+    assert.deepEqual(await checks[0].run({ runScope: { proxy } }), {
       status: 'fail',
       summary: 'Stored proxy configuration is invalid',
       errorCode: 'NETWORK_PROXY_CONFIG_INVALID'
@@ -291,13 +387,15 @@ test('createNetworkChecks fails closed when a proxy value has a throwing then ac
     get() { throw new Error('private then accessor'); }
   });
   let normalizeCalls = 0;
-  const checks = createNetworkChecks({
+  const dependencies = {
     getStoredProxyValue: () => value,
     normalizeStoredProxyValue: () => { normalizeCalls += 1; return ''; }
-  });
+  };
+  const proxy = captureProxySnapshot(dependencies);
+  const checks = createNetworkChecks(dependencies);
 
   assert.equal(normalizeCalls, 0);
-  assert.deepEqual(await checks[0].run(), {
+  assert.deepEqual(await checks[0].run({ runScope: { proxy } }), {
     status: 'fail',
     summary: 'Stored proxy configuration is invalid',
     errorCode: 'NETWORK_PROXY_CONFIG_INVALID'

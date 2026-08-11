@@ -159,6 +159,47 @@ test('home paths are redacted before every boundary and all returned, sent, and 
   assert.deepEqual(formatterInputs[1], formatterInputs[0]);
 });
 
+test('progress events keep only the check metadata allowlist and normalize quoted secrets and Windows paths', () => {
+  const scheduled = [];
+  let runnerOptions;
+  const sender = fakeSender(609);
+  const controller = createDiagnosticsController({
+    checks: [{
+      id: 'network.deepseek-api', group: 'Network', title: 'DeepSeek API',
+      guideId: 'deepseek-api-key', phase: 'remote', timeoutMs: 8000,
+      run: () => ({ status: 'pass' })
+    }],
+    randomUUID: () => 'metadata-allowlist-run',
+    setImmediate: (callback) => scheduled.push(callback),
+    runDiagnostics(options) { runnerOptions = options; return Promise.resolve([]); },
+    safeEnvironment: () => ({ homeDir: 'C:\\Users\\Alice' })
+  });
+
+  controller.start(sender);
+  scheduled.shift()();
+  runnerOptions.emit({
+    runId: 'metadata-allowlist-run',
+    check: {
+      id: 'network.deepseek-api', group: 'Network', title: 'DeepSeek API', status: 'fail',
+      summary: '{"access_token": "progress-secret"} c:/USERS/ALICE/progress.txt',
+      errorCode: 'NETWORK_HTTP_FAILED', guideId: 'deepseek-api-key',
+      metadata: {
+        stage: 'http', host: 'api.deepseek.com',
+        accountId: 'progress-account', account_id: 'progress-account-snake',
+        path: 'c:/USERS/ALICE/private', fileName: 'private.jsonl',
+        stack: 'progress-stack', credential: 'progress-credential',
+        PaTh: 'progress-path-mixed', CrEdEnTiAl: 'progress-credential-mixed'
+      }
+    }
+  });
+
+  assert.equal(sender.sent.length, 1);
+  assert.deepEqual(sender.sent[0].payload.check.metadata, { stage: 'http', host: 'api.deepseek.com' });
+  const output = JSON.stringify(sender.sent[0]);
+  assert.doesNotMatch(output, /progress-secret|progress-account|progress-stack|progress-credential|progress-path|c:\/users\/alice/i);
+  assert.match(sender.sent[0].payload.check.summary, /~\/progress\.txt/);
+});
+
 test('copy redacts a hostile formatter result before writing it to the clipboard', async () => {
   const homeDir = 'C:\\Users\\Alice';
   const copied = [];
@@ -290,6 +331,50 @@ test('a replaced run cannot finish an old copy when the same runId is reused', a
     errorCode: 'DIAGNOSTICS_RUN_INVALID'
   });
   assert.deepEqual(copied, []);
+});
+
+test('controller captures one immutable run scope, shares one limiter, and aborts replacement and disposal', async () => {
+  const scheduled = [];
+  const runnerOptions = [];
+  const runIds = ['scoped-a', 'scoped-b'];
+  let scopeNumber = 0;
+  const controller = createDiagnosticsController({
+    checks: oneCheck(),
+    randomUUID: () => runIds.shift(),
+    setImmediate: (callback) => scheduled.push(callback),
+    createRunScope() {
+      scopeNumber += 1;
+      return Object.freeze({
+        proxy: Object.freeze({ mode: scopeNumber === 1 ? 'direct' : 'custom', input: scopeNumber === 1 ? null : 'http://proxy.example:8080' }),
+        windows: Promise.resolve({ supported: true, marker: scopeNumber })
+      });
+    },
+    runDiagnostics(options) {
+      runnerOptions.push(options);
+      return new Promise(() => {});
+    },
+    clipboard: { writeText() {} },
+    formatDiagnosticReport: () => 'report',
+    openGuide: async () => ({ ok: true })
+  });
+  const sender = fakeSender(710);
+
+  controller.start(sender);
+  scheduled.shift()();
+  controller.start(sender);
+  assert.equal(runnerOptions[0].signal.aborted, true);
+  scheduled.shift()();
+  assert.equal(scopeNumber, 2);
+  assert.equal(runnerOptions[1].signal.aborted, false);
+  assert.equal(runnerOptions[0].remoteLimiter, runnerOptions[1].remoteLimiter);
+  assert.deepEqual(runnerOptions.map((options) => options.runScope.proxy.mode), ['direct', 'custom']);
+  assert.equal(Object.isFrozen(runnerOptions[0].runScope), true);
+  assert.equal(Object.isFrozen(runnerOptions[0].runScope.proxy), true);
+  assert.equal((await runnerOptions[0].runScope.windows).marker, 1);
+  assert.equal((await runnerOptions[1].runScope.windows).marker, 2);
+
+  controller.dispose(sender.id);
+  assert.equal(runnerOptions[1].signal.aborted, true);
 });
 
 test('controller keeps sanitized runs owned by the exact live sender and ignores stale progress', async () => {
@@ -584,6 +669,40 @@ test('assembly orders all factories, keeps scheduler metadata fixed, and injects
   });
   assert.ok(resilient.checks.some((check) => check.id === 'assembly.storage'));
   assert.doesNotThrow(() => createRunSnapshot('resilient-contract', resilient.checks));
+});
+
+test('assembled controller refreshes proxy and Windows snapshots between runs while sharing each within a run', async () => {
+  const scheduled = [];
+  const runnerOptions = [];
+  let storedProxy = '';
+  const diagnostics = createDiagnostics({
+    runtime: { platform: 'linux', buildPaths: {}, getWindows: () => ({}) },
+    windows: { platform: 'linux' },
+    network: { getStoredProxyValue: () => storedProxy },
+    scheduler: { getSnapshot: () => [] },
+    controller: {
+      randomUUID: (() => { const ids = ['assembled-a', 'assembled-b']; return () => ids.shift(); })(),
+      setImmediate: (callback) => scheduled.push(callback),
+      runDiagnostics(options) { runnerOptions.push(options); return Promise.resolve([]); },
+      clipboard: { writeText() {} },
+      formatDiagnosticReport: () => 'report',
+      openGuide: async () => ({ ok: true })
+    }
+  });
+  const sender = fakeSender(711);
+
+  diagnostics.start(sender);
+  scheduled.shift()();
+  storedProxy = 'http://proxy.example.test:8080';
+  diagnostics.start(sender);
+  scheduled.shift()();
+
+  assert.deepEqual(runnerOptions.map((options) => options.runScope.proxy), [
+    { mode: 'direct', input: null },
+    { mode: 'custom', input: 'http://proxy.example.test:8080' }
+  ]);
+  assert.notEqual(runnerOptions[0].runScope.windows, runnerOptions[1].runScope.windows);
+  assert.notEqual(await runnerOptions[0].runScope.windows, await runnerOptions[1].runScope.windows);
 });
 
 test('assembly validates custom controllers, falls back safely on throws or invalid APIs, and accepts frozen valid APIs', () => {

@@ -16,6 +16,28 @@ function artifactPaths(buildPaths) {
   ];
 }
 
+function ownDataValue(source, key) {
+  if (!source || (typeof source !== 'object' && typeof source !== 'function')) return undefined;
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(source, key);
+    return descriptor && Object.prototype.hasOwnProperty.call(descriptor, 'value')
+      ? descriptor.value
+      : undefined;
+  } catch (_) {
+    return undefined;
+  }
+}
+
+function isLiveWindow(reference) {
+  if (!reference || (typeof reference !== 'object' && typeof reference !== 'function')) return false;
+  try {
+    const isDestroyed = reference.isDestroyed;
+    return typeof isDestroyed === 'function' && isDestroyed.call(reference) === false;
+  } catch (_) {
+    return false;
+  }
+}
+
 function createRuntimeChecks(dependencies = {}) {
   const versions = dependencies.versions || {};
   const platform = dependencies.platform;
@@ -69,16 +91,27 @@ function createRuntimeChecks(dependencies = {}) {
       summary: 'Diagnostics IPC handler invoked this check'
     })),
     definition('runtime.window-references', 'Window references', 'local', () => {
-      const windows = getWindows() || {};
+      let windows;
+      try {
+        windows = getWindows();
+      } catch (_) {
+        windows = undefined;
+      }
+      const metadata = {
+        main: isLiveWindow(ownDataValue(windows, 'main')),
+        settings: isLiveWindow(ownDataValue(windows, 'settings')),
+        login: isLiveWindow(ownDataValue(windows, 'login')),
+        session: isLiveWindow(ownDataValue(windows, 'session')),
+        diagnostics: isLiveWindow(ownDataValue(windows, 'diagnostics'))
+      };
+      const requiredWindowsAreLive = metadata.main && metadata.diagnostics;
       return {
-        status: 'pass',
-        summary: 'Window references inspected',
-        metadata: {
-          main: Boolean(windows.main),
-          settings: Boolean(windows.settings),
-          login: Boolean(windows.login),
-          session: Boolean(windows.session)
-        }
+        status: requiredWindowsAreLive ? 'pass' : 'fail',
+        summary: requiredWindowsAreLive
+          ? 'Window references inspected'
+          : 'Required window reference is unavailable',
+        ...(requiredWindowsAreLive ? {} : { errorCode: 'RUNTIME_WINDOW_REFERENCE_INVALID' }),
+        metadata
       };
     }),
     definition('runtime.self-check', 'Diagnostics self-check', 'final', (context) => {

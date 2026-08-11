@@ -36,7 +36,8 @@ module.exports = function setupIPC(deps) {
     ipcMain,
     diagnostics: deps.diagnostics,
     getDiagnosticsWindow: deps.getDiagnosticsWindow,
-    createDiagnosticsWindow: deps.createDiagnosticsWindow
+    createDiagnosticsWindow: deps.createDiagnosticsWindow,
+    getDiagnosticsTheme: deps.getDiagnosticsTheme
   });
 
   function getMain() {
