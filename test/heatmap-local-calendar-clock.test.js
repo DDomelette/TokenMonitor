@@ -11,29 +11,34 @@ function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
 }
 
-async function loadClockModule() {
-  assert.equal(fs.existsSync(clockPath), true, 'local calendar clock module must exist');
-  const source = fs.readFileSync(clockPath, 'utf8');
-  const url = 'data:text/javascript;base64,' + Buffer.from(source).toString('base64');
-  return import(url + '#' + Date.now() + Math.random());
+// 北京墙钟 -> 绝对时刻:任意主机时区下都指向同一个瞬间,测试因此与进程时区无关
+function bj(y, m, d, h = 0, min = 0, s = 0, ms = 0) {
+  return new Date(Date.UTC(y, m - 1, d, h, min, s, ms) - 8 * 60 * 60 * 1000);
 }
 
-test('next local midnight delay crosses day and year boundaries exactly', async () => {
+async function loadClockModule() {
+  assert.equal(fs.existsSync(clockPath), true, 'local calendar clock module must exist');
+  // 模块依赖 ./beijing-calendar.js,须以真实文件 URL 加载才能解析相对导入
+  const url = pathToFileURL(clockPath).href + '?v=' + Date.now() + Math.random();
+  return import(url);
+}
+
+test('next Beijing midnight delay crosses day and year boundaries exactly', async () => {
   const { millisecondsUntilNextLocalMidnight } = await loadClockModule();
 
   assert.equal(
-    millisecondsUntilNextLocalMidnight(new Date(2026, 7, 8, 23, 59, 50, 0)),
+    millisecondsUntilNextLocalMidnight(bj(2026, 8, 8, 23, 59, 50, 0)),
     10_000
   );
   assert.equal(
-    millisecondsUntilNextLocalMidnight(new Date(2026, 11, 31, 23, 59, 59, 250)),
+    millisecondsUntilNextLocalMidnight(bj(2026, 12, 31, 23, 59, 59, 250)),
     750
   );
 });
 
-test('clock emits once when a simulated Saturday crosses into Sunday and reschedules', async () => {
+test('clock emits once when a Beijing Saturday crosses into Sunday and reschedules', async () => {
   const { createLocalCalendarClock, localDayKey } = await loadClockModule();
-  let current = new Date(2026, 7, 8, 23, 59, 50, 0); // Saturday
+  let current = bj(2026, 8, 8, 23, 59, 50, 0); // Beijing Saturday
   let scheduled = null;
   let nextId = 0;
   const changes = [];
@@ -46,16 +51,16 @@ test('clock emits once when a simulated Saturday crosses into Sunday and resched
     },
     clearTimer() {},
     onChange(date, key) {
-      changes.push({ key, day: date.getDay() });
+      changes.push({ key });
     }
   });
 
   assert.equal(clock.dayKey, localDayKey(current));
   assert.equal(scheduled.delay, 10_000);
 
-  current = new Date(2026, 7, 9, 0, 0, 0, 0); // Sunday
+  current = bj(2026, 8, 9, 0, 0, 0, 0); // Beijing Sunday
   scheduled.callback();
-  assert.deepEqual(changes, [{ key: '2026-08-09', day: 0 }]);
+  assert.deepEqual(changes, [{ key: '2026-08-09' }]);
   assert.equal(scheduled.delay, 86_400_000);
 
   // A spurious same-day callback must not cause another render, but must keep the clock alive.
@@ -67,9 +72,9 @@ test('clock emits once when a simulated Saturday crosses into Sunday and resched
   clock.stop();
 });
 
-test('clock catches up after sleep, follows a new year, and clears its timer on stop', async () => {
+test('clock catches up after sleep, follows a new Beijing year, and clears its timer on stop', async () => {
   const { createLocalCalendarClock, resolveHeatmapYear } = await loadClockModule();
-  let current = new Date(2026, 11, 31, 23, 59, 30, 0);
+  let current = bj(2026, 12, 31, 23, 59, 30, 0); // Beijing 2026-12-31 23:59:30
   let scheduled = null;
   const cleared = [];
   const dates = [];
@@ -86,7 +91,7 @@ test('clock catches up after sleep, follows a new year, and clears its timer on 
   });
 
   // Simulate the process waking two days late instead of exactly at the scheduled midnight.
-  current = new Date(2027, 0, 2, 8, 15, 0, 0);
+  current = bj(2027, 1, 2, 8, 15, 0, 0); // Beijing 2027-01-02 08:15
   scheduled.callback();
   assert.equal(dates.length, 1);
   assert.equal(resolveHeatmapYear(undefined, dates[0]), 2027);
@@ -97,6 +102,13 @@ test('clock catches up after sleep, follows a new year, and clears its timer on 
   assert.deepEqual(cleared, [activeTimer]);
   scheduled.callback();
   assert.equal(dates.length, 1, 'a stopped clock ignores late timer callbacks');
+});
+
+test('resolveHeatmapYear derives the Beijing year from 2026-12-31T16:00:00.000Z as 2027', async () => {
+  const { resolveHeatmapYear } = await loadClockModule();
+  const instant = new Date('2026-12-31T16:00:00.000Z');
+  assert.equal(resolveHeatmapYear(undefined, instant), 2027);
+  assert.equal(resolveHeatmapYear(2026, instant), 2026, 'an explicit year is never overridden');
 });
 
 test('current-day column follows the supplied local day key and falls back to the final column', async () => {

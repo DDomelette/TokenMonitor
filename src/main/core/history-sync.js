@@ -1,6 +1,8 @@
 // 历史用量同步:DeepSeek 逐月全量回填 + Codex/Kimi 本机日志全量重扫。
 // 纯逻辑模块,依赖全部注入,便于 node --test 直测。
-const { retentionStartDay, localDayString } = require('./usage-retention');
+// 月份迭代与结算日对齐固定 UTC+8 北京日历。
+const { retentionStartDay } = require('./usage-retention');
+const { beijingDateParts, addBeijingDays } = require('./beijing-calendar');
 
 const MAX_MONTHS = 36;
 // 连续空月停止阈值:12,容忍使用量稀疏的长间隔(曾有 5/6 月空、4 月有数据的真实案例)
@@ -29,6 +31,14 @@ function monthKey(y, m) {
   return y + '-' + String(m).padStart(2, '0');
 }
 
+// 北京日历下某月最后一天(YYYY-MM-DD)。用下月首日回退一天,避免操作系统时区干扰。
+function beijingMonthLastDay(year, month) {
+  const nextYear = month === 12 ? year + 1 : year;
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextFirst = monthKey(nextYear, nextMonth) + '-01';
+  return addBeijingDays(nextFirst, -1);
+}
+
 async function fetchMonthWithRetry(fetchMonth, year, month) {
   try {
     return await fetchMonth(year, month);
@@ -50,8 +60,9 @@ async function syncDeepSeekHistory(options) {
   const onProgress = options.onProgress || null;
   const sleep = options.sleep || defaultSleep;
   const current = options.now ? new Date(options.now) : new Date();
-  let year = current.getFullYear();
-  let month = current.getMonth() + 1;
+  const currentParts = beijingDateParts(current.getTime());
+  let year = currentParts ? currentParts.year : current.getFullYear();
+  let month = currentParts ? currentParts.month : current.getMonth() + 1;
 
   const usageDaily = readStore('usageDaily') || {};
   const syncedMonths = new Set(readStore(SYNCED_MONTHS_KEY) || []);
@@ -92,9 +103,9 @@ async function syncDeepSeekHistory(options) {
 
   for (let i = 0; i < MAX_MONTHS && emptyStreak < EMPTY_STREAK_STOP; i++) {
     const key = monthKey(year, month);
-    // 月份按新到旧迭代,整月(new Date(y, m, 0) = 该月最后一天)落在窗口外时,
+    // 月份按新到旧迭代,整月(该月北京最后一天)落在保留窗口外时,
     // 更老的月份必然也在窗外,直接终止。
-    if (cutoff && localDayString(new Date(year, month, 0).getTime()) < cutoff) break;
+    if (cutoff && beijingMonthLastDay(year, month) < cutoff) break;
     const trusted = (syncedMonths.has(key) && dataMonths.has(key) && monthCoversWindow(key))
       || (emptyMonths.has(key) && monthCoversWindow(key));
     if (!trusted) {

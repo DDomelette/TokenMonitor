@@ -1,3 +1,5 @@
+const { beijingDayKey, addBeijingDays, localDayStr } = require('./beijing-calendar');
+
 const DAILY_KEY_PATTERN = /^([^:]+):(\d{4}-\d{2}-\d{2})$/;
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -7,12 +9,7 @@ function normalizeHistoryDays(value) {
 }
 
 function localDayString(timestamp) {
-  const date = new Date(timestamp);
-  if (!Number.isFinite(date.getTime())) return null;
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return year + '-' + month + '-' + day;
+  return localDayStr(timestamp);
 }
 
 function isValidLocalDay(day) {
@@ -34,13 +31,10 @@ function retentionStartDay(historyDays, nowMs) {
   const days = normalizeHistoryDays(historyDays);
   if (!days) return null;
 
-  const date = new Date(nowMs === undefined ? Date.now() : nowMs);
-  if (!Number.isFinite(date.getTime())) return null;
-  // Midday avoids DST transitions around local midnight while moving by
-  // calendar date rather than by a fixed number of milliseconds.
-  date.setHours(12, 0, 0, 0);
-  date.setDate(date.getDate() - (days - 1));
-  return localDayString(date.getTime());
+  const today = beijingDayKey(nowMs === undefined ? Date.now() : nowMs);
+  if (!today) return null;
+  // 以北京结算日为基准按日历日回退,不经过任何操作系统时区/DST 计算。
+  return addBeijingDays(today, -(days - 1));
 }
 
 function isRetainedDay(day, historyDays, nowMs) {

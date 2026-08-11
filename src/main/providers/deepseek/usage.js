@@ -1,15 +1,16 @@
 // DeepSeek 平台用量采集:解析逻辑保持本地,网络传输统一委托给主进程 HTTP 客户端。
 const { httpGet: defaultHttpGet } = require('../../core/http');
+const { beijingDayKey } = require('../../core/beijing-calendar');
 
 const PLATFORM_HOST = 'platform.deepseek.com';
 const USAGE_TIMEOUTS = Object.freeze({ requestTimeoutMs: 15000 });
 
 function localTzSec() {
-  return -new Date().getTimezoneOffset() * 60;
+  return 8 * 60 * 60;
 }
 
 function localTodayStr() {
-  return new Date(Date.now() + localTzSec() * 1000).toISOString().slice(0, 10);
+  return beijingDayKey();
 }
 
 function sumAll(usageList) {

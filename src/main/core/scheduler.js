@@ -6,6 +6,7 @@ const {
   SYSTEM_PROXY_VALUE,
   resolveElectronSystemProxy
 } = require('./proxy-settings');
+const { beijingDateParts } = require('./beijing-calendar');
 
 const DEFAULT_INTERVALS = { usage: 10 * 1000, quota: 60 * 1000, balance: 60 * 1000, localLog: 60 * 1000 };
 
@@ -219,10 +220,11 @@ function startScheduler({
       return;
     }
     const now = new Date();
+    const nowParts = beijingDateParts(now.getTime());
     try {
       const usage = await provider.fetchUsage(ctxFor(provider), {
-        month: now.getMonth() + 1,
-        year: now.getFullYear()
+        month: nowParts ? nowParts.month : now.getMonth() + 1,
+        year: nowParts ? nowParts.year : now.getFullYear()
       });
       recordSuccess(provider, 'usage', 'usage', usage);
       notifyUsageObservation(provider, 'usage');

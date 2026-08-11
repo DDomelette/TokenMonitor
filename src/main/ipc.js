@@ -7,6 +7,7 @@ const { resetSettingsStore } = require('./core/settings-reset');
 const { saveSetting } = require('./core/settings-write');
 const { replaceDeepseekApiKey } = require('./core/api-key-replacement');
 const { filterUsageDaily, retentionStartDay } = require('./core/usage-retention');
+const { beijingDateParts } = require('./core/beijing-calendar');
 const { getSessionSnapshot } = require('./core/session-state');
 const { skipDeepseekLogin } = require('./core/startup-windows');
 const { syncDeepSeekHistory, rescanLocalLogs } = require('./core/history-sync');
@@ -142,7 +143,9 @@ module.exports = function setupIPC(deps) {
         deepseekModels[date] = models.map((m) => ({ model: m.model, tokens: m.tokens }));
       }
     });
-    const result = buildHeatmap(byProvider, provider || 'all', year || new Date().getFullYear());
+    // 默认热力图年份取北京结算年,避免跨年瞬间(UTC 12-31T16:00 起)显示为旧年。
+    const nowParts = beijingDateParts();
+    const result = buildHeatmap(byProvider, provider || 'all', year || (nowParts ? nowParts.year : new Date().getFullYear()));
     result.details = { byProvider: byProvider, cachedByProvider: cachedByProvider, deepseekModels: deepseekModels };
     return result;
   });

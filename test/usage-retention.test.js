@@ -3,14 +3,15 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const NOW = new Date(2026, 7, 5, 12, 0, 0, 0).getTime();
+// 2026-08-05T04:00:00.000Z = 北京 2026-08-05 12:00:00,任意主机时区下北京结算日恒为 2026-08-05
+const NOW = Date.parse('2026-08-05T04:00:00.000Z');
 
 function loadRetention() {
   delete require.cache[require.resolve('../src/main/core/usage-retention')];
   return require('../src/main/core/usage-retention');
 }
 
-test('retention starts at the inclusive local-calendar boundary for 3, 7, and 30 days', () => {
+test('retention starts at the inclusive Beijing-calendar boundary for 3, 7, and 30 days', () => {
   const { retentionStartDay } = loadRetention();
 
   assert.equal(retentionStartDay(3, NOW), '2026-08-03');

@@ -5,6 +5,7 @@ import useECharts from '../hooks/useECharts.js';
 import { getHeatmap, onProvidersChanged } from '../api.js';
 import { getBarTheme } from '../lib/chartTheme.js';
 import { formatToken as formatWan } from '../lib/heatmap.js';
+import { addBeijingDays, beijingDateParts, beijingDayKey } from '../lib/beijing-calendar.js';
 import { barDensity, isCardMode, formatToken, windowClampedPosition } from './ChartWidget.jsx';
 
 const DAYS = 31;
@@ -16,12 +17,10 @@ const STACK = [
 ];
 
 function lastDays(count) {
-  const pad = (n) => String(n).padStart(2, '0');
+  const today = beijingDayKey();
   const days = [];
-  const now = new Date();
   for (let i = count - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-    days.push(d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()));
+    days.push(addBeijingDays(today, -i));
   }
   return days;
 }
@@ -82,7 +81,8 @@ function buildOption(dom, details, dates) {
 export default function ProviderBar() {
   const domRef = useRef(null);
   const [details, setDetails] = useState(null);
-  const year = new Date().getFullYear();
+  const nowParts = beijingDateParts();
+  const year = nowParts ? nowParts.year : new Date().getFullYear();
   const dates = lastDays(DAYS);
 
   useEffect(() => {
