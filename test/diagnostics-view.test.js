@@ -48,6 +48,58 @@ function classListFor(element) {
   };
 }
 
+function decodeHtmlText(value) {
+  return String(value)
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+class FakeTextNode {
+  constructor(text) {
+    this.tagName = '#TEXT';
+    this.children = [];
+    this.parentElement = null;
+    this.textContent = decodeHtmlText(text);
+  }
+}
+
+function parseMarkup(parent, markup) {
+  const voidElements = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
+  const stack = [parent];
+  const tokens = String(markup).match(/<!--[\s\S]*?-->|<\/?[a-z][^>]*>|[^<]+/gi) || [];
+
+  tokens.forEach((token) => {
+    if (token.startsWith('<!--')) return;
+    if (token.startsWith('</')) {
+      if (stack.length > 1) stack.pop();
+      return;
+    }
+    if (!token.startsWith('<')) {
+      if (token) stack.at(-1).appendChild(new FakeTextNode(token));
+      return;
+    }
+
+    const opening = token.match(/^<([a-z][\w-]*)([\s\S]*?)\/?\s*>$/i);
+    if (!opening) return;
+    const element = parent.ownerDocument.createElement(opening[1]);
+    const attributes = opening[2];
+    const attributePattern = /([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+    let attribute;
+    while ((attribute = attributePattern.exec(attributes)) !== null) {
+      const name = attribute[1];
+      const value = attribute[2] ?? attribute[3] ?? attribute[4] ?? '';
+      element.setAttribute(name, decodeHtmlText(value));
+    }
+    stack.at(-1).appendChild(element);
+
+    const tagName = opening[1].toLowerCase();
+    if (!token.endsWith('/>') && !voidElements.has(tagName)) stack.push(element);
+  });
+}
+
 class FakeElement {
   constructor(tagName, ownerDocument) {
     this.tagName = String(tagName).toUpperCase();
@@ -84,23 +136,8 @@ class FakeElement {
 
   set innerHTML(value) {
     this._textContent = '';
-    this.children = [];
-    const markup = String(value);
-    const matches = markup.matchAll(/<([a-z]+)[^>]*\sid="([^"]+)"[^>]*>/gi);
-    for (const match of matches) {
-      const element = this.ownerDocument.createElement(match[1]);
-      element.id = match[2];
-      const classMatch = match[0].match(/\sclass="([^"]+)"/i);
-      if (classMatch) element.className = classMatch[1];
-      if (element.id === 'openDiagnosticsBtn') {
-        const row = this.ownerDocument.createElement('div');
-        row.className = 'setting-row vertical';
-        row.appendChild(element);
-        this.appendChild(row);
-      } else {
-        this.appendChild(element);
-      }
-    }
+    this.replaceChildren();
+    parseMarkup(this, value);
   }
 
   appendChild(child) {
@@ -116,8 +153,26 @@ class FakeElement {
   }
 
   setAttribute(name, value) {
-    this.attributes[name] = String(value);
-    if (name === 'class') this.className = String(value);
+    const normalizedName = String(name).toLowerCase();
+    const normalizedValue = String(value);
+    this.attributes[normalizedName] = normalizedValue;
+    if (normalizedName === 'id') this.id = normalizedValue;
+    if (normalizedName === 'class') this.className = normalizedValue;
+    if (normalizedName === 'style') {
+      normalizedValue.split(';').forEach((declaration) => {
+        const separator = declaration.indexOf(':');
+        if (separator === -1) return;
+        const key = declaration.slice(0, separator).trim();
+        const styleValue = declaration.slice(separator + 1).trim();
+        if (key) this.style[key] = styleValue;
+      });
+    }
+    if (normalizedName.startsWith('data-')) {
+      const key = normalizedName.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+      this.dataset[key] = normalizedValue;
+    }
+    if (normalizedName === 'type' || normalizedName === 'value') this[normalizedName] = normalizedValue;
+    if (['checked', 'disabled', 'hidden'].includes(normalizedName)) this[normalizedName] = true;
   }
 
   getAttribute(name) { return this.attributes[name]; }
@@ -132,15 +187,27 @@ class FakeElement {
     (this.listeners[value.type] || []).forEach((listener) => listener(value));
   }
 
-  click() { this.dispatchEvent({ type: 'click' }); }
+  click() {
+    if (!this.disabled) this.dispatchEvent({ type: 'click' });
+  }
 
   querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
 
   querySelectorAll(selector) {
     const results = [];
     const matches = (element) => {
-      if (selector.startsWith('.')) return element.classList.contains(selector.slice(1));
+      if (element.tagName === '#TEXT') return false;
+      if (selector.startsWith('.')) {
+        return selector.slice(1).split('.').every((name) => element.classList.contains(name));
+      }
       if (selector.startsWith('#')) return element.id === selector.slice(1);
+      const attributeSelector = selector.match(/^([a-z][\w-]*)?\[([^\]=]+)(?:=['"]?([^\]'"\]]+)['"]?)?\]$/i);
+      if (attributeSelector) {
+        const tagMatches = !attributeSelector[1] || element.tagName.toLowerCase() === attributeSelector[1].toLowerCase();
+        const actual = element.getAttribute(attributeSelector[2]);
+        return tagMatches && actual !== undefined &&
+          (attributeSelector[3] === undefined || actual === attributeSelector[3]);
+      }
       return element.tagName.toLowerCase() === selector.toLowerCase();
     };
     const visit = (element) => {
@@ -205,6 +272,9 @@ function createDiagnosticsHarness(options = {}) {
   const listeners = {};
   const operations = [];
   const snapshots = (options.snapshots || []).slice();
+  const runPromises = (options.runPromises || []).slice();
+  const copyPromises = (options.copyPromises || []).slice();
+  const guidePromises = (options.guidePromises || []).slice();
   const invoked = [];
   const sent = [];
   const mediaListeners = [];
@@ -222,12 +292,17 @@ function createDiagnosticsHarness(options = {}) {
     invoke(channel, ...args) {
       operations.push(`invoke:${channel}`);
       invoked.push({ channel, args });
-      if (channel === 'diagnostics:run') return Promise.resolve(snapshots.shift());
+      if (channel === 'diagnostics:run') {
+        return runPromises.length ? runPromises.shift() : Promise.resolve(snapshots.shift());
+      }
       if (channel === 'get:settings') {
         return Promise.resolve(options.settings || { window: { followSystemTheme: true, darkMode: 'system' } });
       }
-      if (channel === 'diagnostics:copy-report') return Promise.resolve({ ok: true, length: 100 });
+      if (channel === 'diagnostics:copy-report') {
+        return copyPromises.length ? copyPromises.shift() : Promise.resolve({ ok: true, length: 100 });
+      }
       if (channel === 'diagnostics:open-guide') {
+        if (guidePromises.length) return guidePromises.shift();
         if (options.guidePromise) return options.guidePromise;
         return Promise.resolve(options.guideResult || { ok: false, errorCode: 'GUIDE_OPEN_FAILED' });
       }
@@ -482,6 +557,110 @@ test('guide failure remains on the current fail row when progress redraws the wi
   assert.equal(failRow.querySelector('.guide-feedback').textContent, '无法打开解决手册');
 });
 
+test('rerun synchronously invalidates the accepted run before its replacement snapshot arrives', async () => {
+  const rerun = deferred();
+  const harness = createDiagnosticsHarness({
+    runPromises: [
+      Promise.resolve({
+        runId: 'old-run',
+        checks: [diagnosticCheck('pending', { id: 'runtime.a', summary: '' })]
+      }),
+      rerun.promise
+    ]
+  });
+  await flushPromises();
+
+  harness.document.getElementById('rerunDiagnosticsBtn').click();
+  assert.equal(harness.document.getElementById('diagnosticsSummary').textContent, '准备诊断…');
+  assert.equal(harness.document.getElementById('diagnosticsGroups').textContent, '');
+
+  harness.listeners['diagnostics:progress']({
+    runId: 'old-run',
+    check: diagnosticCheck('fail', { id: 'runtime.a', summary: 'stale progress' })
+  });
+  assert.doesNotMatch(harness.document.getElementById('diagnosticsGroups').textContent, /stale progress/);
+
+  rerun.resolve({
+    runId: 'new-run',
+    checks: [diagnosticCheck('pass', { id: 'runtime.a', summary: 'current result' })]
+  });
+  await flushPromises();
+});
+
+test('an older diagnostics run continuation cannot replace the latest generation', async () => {
+  const older = deferred();
+  const latest = deferred();
+  const harness = createDiagnosticsHarness({
+    runPromises: [
+      Promise.resolve({
+        runId: 'initial-run',
+        checks: [diagnosticCheck('pass', { id: 'runtime.a', summary: 'initial result' })]
+      }),
+      older.promise,
+      latest.promise
+    ]
+  });
+  await flushPromises();
+
+  const rerunButton = harness.document.getElementById('rerunDiagnosticsBtn');
+  rerunButton.dispatchEvent({ type: 'click' });
+  rerunButton.dispatchEvent({ type: 'click' });
+  latest.resolve({
+    runId: 'latest-run',
+    checks: [diagnosticCheck('pass', { id: 'runtime.a', summary: 'latest result' })]
+  });
+  await flushPromises();
+  older.resolve({
+    runId: 'older-run',
+    checks: [diagnosticCheck('fail', { id: 'runtime.a', summary: 'older result' })]
+  });
+  await flushPromises();
+
+  const groups = harness.document.getElementById('diagnosticsGroups');
+  assert.match(groups.textContent, /latest result/);
+  assert.doesNotMatch(groups.textContent, /older result/);
+  assert.equal(rerunButton.disabled, false);
+  assert.equal(harness.document.getElementById('copyDiagnosticsBtn').disabled, false);
+});
+
+test('guide and copy completions from an old generation cannot update a rerun with the same runId', async () => {
+  const rerun = deferred();
+  const copy = deferred();
+  const guide = deferred();
+  const harness = createDiagnosticsHarness({
+    runPromises: [
+      Promise.resolve({
+        runId: 'reused-run',
+        checks: [diagnosticCheck('fail', { id: 'runtime.a', summary: 'old result' })]
+      }),
+      rerun.promise
+    ],
+    copyPromises: [copy.promise],
+    guidePromises: [guide.promise]
+  });
+  await flushPromises();
+
+  harness.document.getElementById('copyDiagnosticsBtn').click();
+  harness.document.getElementById('diagnosticsGroups').querySelector('.guide-link').click();
+  harness.document.getElementById('rerunDiagnosticsBtn').click();
+  rerun.resolve({
+    runId: 'reused-run',
+    checks: [diagnosticCheck('fail', { id: 'runtime.a', summary: 'new result' })]
+  });
+  await flushPromises();
+
+  copy.resolve({ ok: true, length: 100 });
+  guide.resolve({ ok: false, errorCode: 'GUIDE_OPEN_FAILED' });
+  await flushPromises();
+
+  const groups = harness.document.getElementById('diagnosticsGroups');
+  assert.match(groups.textContent, /new result/);
+  assert.equal(groups.querySelector('.guide-feedback').textContent, '');
+  assert.equal(harness.document.getElementById('diagnosticsActionStatus').textContent, '');
+  assert.equal(harness.document.getElementById('rerunDiagnosticsBtn').disabled, false);
+  assert.equal(harness.document.getElementById('copyDiagnosticsBtn').disabled, false);
+});
+
 test('settings renders a vertical diagnostics action and sends its channel without saving', async () => {
   const harness = createSettingsHarness();
   await flushPromises();
@@ -489,6 +668,7 @@ test('settings renders a vertical diagnostics action and sends its channel witho
   const button = harness.document.getElementById('openDiagnosticsBtn');
   assert.ok(button);
   assert.equal(button.parentElement.classList.contains('vertical'), true);
+  assert.equal(button.style.width, '100%');
   button.click();
 
   assert.deepEqual(harness.sent, [{ channel: 'open:diagnostics', payload: undefined }]);

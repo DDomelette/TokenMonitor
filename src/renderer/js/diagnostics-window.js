@@ -3,6 +3,8 @@
   var groupDefinitions = [];
   var guideFeedbackById = Object.create(null);
   var pendingGuideById = Object.create(null);
+  var runGeneration = 0;
+  var acceptedRunId = null;
   var themeSettings = null;
   var systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
 
@@ -28,20 +30,23 @@
   }
 
   function openGuide(checkId, guideId, button) {
-    var activeRunId = state.runId;
+    var activeGeneration = runGeneration;
+    var activeRunId = acceptedRunId;
     pendingGuideById[checkId] = true;
     button.disabled = true;
     window.api.invoke('diagnostics:open-guide', guideId).then(function (result) {
-      if (state.runId !== activeRunId) return;
+      if (runGeneration !== activeGeneration || acceptedRunId !== activeRunId) return;
       if (result && result.ok === true) {
         delete guideFeedbackById[checkId];
       } else {
         guideFeedbackById[checkId] = guideFailureMessage(result);
       }
     }).catch(function () {
-      if (state.runId === activeRunId) guideFeedbackById[checkId] = '无法打开解决手册';
+      if (runGeneration === activeGeneration && acceptedRunId === activeRunId) {
+        guideFeedbackById[checkId] = '无法打开解决手册';
+      }
     }).then(function () {
-      if (state.runId !== activeRunId) return;
+      if (runGeneration !== activeGeneration || acceptedRunId !== activeRunId) return;
       delete pendingGuideById[checkId];
       render();
     });
@@ -101,38 +106,53 @@
   }
 
   function startDiagnostics() {
+    var generation = runGeneration + 1;
+    runGeneration = generation;
+    acceptedRunId = null;
+    state = DiagnosticsState.createState();
+    groupDefinitions = [];
+    guideFeedbackById = Object.create(null);
+    pendingGuideById = Object.create(null);
     rerunButton.disabled = true;
     copyButton.disabled = true;
     actionStatusElement.textContent = '正在启动诊断…';
+    render();
     return window.api.invoke('diagnostics:run').then(function (snapshot) {
+      if (generation !== runGeneration) return;
       if (!snapshot || typeof snapshot.runId !== 'string' || !Array.isArray(snapshot.checks)) {
         throw new Error('Invalid diagnostics snapshot');
       }
       groupDefinitions = snapshot.checks.slice();
-      guideFeedbackById = Object.create(null);
-      pendingGuideById = Object.create(null);
       state = DiagnosticsState.startRun(state, snapshot);
+      acceptedRunId = state.runId;
       actionStatusElement.textContent = '';
       render();
     }).catch(function () {
+      if (generation !== runGeneration) return;
       actionStatusElement.textContent = '诊断启动失败，请重试';
     }).then(function () {
+      if (generation !== runGeneration) return;
       rerunButton.disabled = false;
     });
   }
 
   function copyReport() {
-    if (!state.runId) return;
-    var activeRunId = state.runId;
+    if (!acceptedRunId || state.runId !== acceptedRunId) return;
+    var activeGeneration = runGeneration;
+    var activeRunId = acceptedRunId;
     copyButton.disabled = true;
     actionStatusElement.textContent = '';
     window.api.invoke('diagnostics:copy-report', activeRunId).then(function (result) {
+      if (runGeneration !== activeGeneration || acceptedRunId !== activeRunId) return;
       actionStatusElement.textContent = result && result.ok === true
         ? '已复制诊断结果'
         : '复制诊断结果失败';
     }).catch(function () {
-      actionStatusElement.textContent = '复制诊断结果失败';
+      if (runGeneration === activeGeneration && acceptedRunId === activeRunId) {
+        actionStatusElement.textContent = '复制诊断结果失败';
+      }
     }).then(function () {
+      if (runGeneration !== activeGeneration || acceptedRunId !== activeRunId) return;
       copyButton.disabled = !DiagnosticsState.summary(state).complete;
     });
   }
@@ -145,6 +165,7 @@
   }
 
   window.api.on('diagnostics:progress', function (event) {
+    if (!acceptedRunId || !event || event.runId !== acceptedRunId) return;
     var nextState = DiagnosticsState.applyProgress(state, event);
     if (nextState === state) return;
     state = nextState;
