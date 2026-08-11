@@ -3,8 +3,8 @@ const { ensureMcpToken, rotateMcpToken } = require('./token');
 const { buildToolHandlers } = require('./tools');
 const { startMcpServer } = require('./server');
 
-const BASE_PORT = 3950;
-const MAX_PORT = 3959;
+const BASE_PORT = 29350;
+const MAX_PORT = 29359;
 
 function startMCP(deps) {
   const store = deps.store;
