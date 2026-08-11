@@ -7,19 +7,30 @@ const { parseRolloutLine } = require('../src/main/providers/codex/locallog');
 const { parseWireLine } = require('../src/main/providers/kimi/locallog');
 
 const cursorStore = { get: () => ({}), set: () => {} }; // 一次性全量扫描
-const codexRoot = path.join(os.homedir(), '.codex', 'sessions');
-const kimiRoot = path.join(os.homedir(), '.kimi-code', 'sessions');
 
-const codexRecords = fs.existsSync(codexRoot)
-  ? scanFiles({ root: codexRoot, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'x', providerId: 'codex', parseLine: parseRolloutLine })
-  : [];
-const kimiRecords = fs.existsSync(kimiRoot)
-  ? scanFiles({ root: kimiRoot, match: /wire\.jsonl$/, cursorStore, cursorKey: 'y', providerId: 'kimi', parseLine: parseWireLine })
-  : [];
+async function main() {
+  const codexRoot = path.join(os.homedir(), '.codex', 'sessions');
+  const kimiRoot = path.join(os.homedir(), '.kimi-code', 'sessions');
 
-const today = new Date().toISOString().slice(0, 10);
-const allCodex = rollupDaily(codexRecords);
-const allKimi = rollupDaily(kimiRecords);
-console.log('codex 今日:', allCodex['codex:' + today]);
-console.log('kimi 今日:', allKimi['kimi:' + today]);
-console.log('codex 记录总数:', codexRecords.length, ' kimi 记录总数:', kimiRecords.length);
+  const codexBatch = fs.existsSync(codexRoot)
+    ? await scanFiles({ root: codexRoot, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'x', providerId: 'codex', parseLine: parseRolloutLine })
+    : { records: [], complete: true, bytesRead: 0 };
+  const kimiBatch = fs.existsSync(kimiRoot)
+    ? await scanFiles({ root: kimiRoot, match: /wire\.jsonl$/, cursorStore, cursorKey: 'y', providerId: 'kimi', parseLine: parseWireLine })
+    : { records: [], complete: true, bytesRead: 0 };
+
+  const today = new Date().toISOString().slice(0, 10);
+  const allCodex = rollupDaily(codexBatch.records);
+  const allKimi = rollupDaily(kimiBatch.records);
+  console.log('codex 今日:', allCodex['codex:' + today]);
+  console.log('kimi 今日:', allKimi['kimi:' + today]);
+  console.log(
+    'codex 记录总数:', codexBatch.records.length, ' complete:', codexBatch.complete,
+    ' kimi 记录总数:', kimiBatch.records.length, ' complete:', kimiBatch.complete
+  );
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

@@ -8,7 +8,9 @@ const MAX_MONTHS = 36;
 // 连续空月停止阈值:12,容忍使用量稀疏的长间隔(曾有 5/6 月空、4 月有数据的真实案例)
 const EMPTY_STREAK_STOP = 12;
 const MONTH_GAP_MS = 300;
-const MAX_SCAN_PASSES = 200;
+// 生产安全上限:单次手动重扫最多轮询这么多轮;扫描器每轮有 4MB 预算,
+// 只要仍在产出、未报告 complete,就继续;达到上限仍不完整则显式报错并回滚。
+const MAX_SCAN_PASSES = 10000;
 // 全量同步自己的月份标记:不能用 backfill 的 providers.deepseek.fetchedMonths——
 // backfill 抓取时 persistDaily 会按保留窗口丢弃旧日数据,月份却照标"已抓",
 // 信任它会让被丢弃的月份永远不再抓(数据永久缺失)。
@@ -163,7 +165,9 @@ async function syncDeepSeekHistory(options) {
 
 // 全量重扫本机日志:先删该 provider 的 usageDaily 键并清游标(增量合并会重复累加,
 // 必须先行清除,先例见 src/main/providers/kimi/locallog.js 的 MIGRATION_KEY 流程),
-// 再循环调用 readLocalLog 直到无新增(scanFiles 单轮有 4MB 预算,全量需多轮)。
+// 再循环调用 readLocalLog 直到批次报告 complete:true(scanFiles 单轮有 4MB 预算,
+// 全量需多轮;只有 complete 才代表整个快照已访问)。失败时把该 provider 的
+// 行与游标恢复到快照,不影响其他 provider。
 async function rescanLocalLogs(options) {
   const providerId = options.providerId;
   const readLocalLog = options.readLocalLog;
@@ -174,6 +178,14 @@ async function rescanLocalLogs(options) {
 
   const prefix = providerId + ':';
   const usageDaily = readStore('usageDaily') || {};
+  // 事务快照:仅该 provider 的行 + 该 provider 的游标深拷贝
+  const snapshotRows = {};
+  Object.keys(usageDaily).forEach((k) => {
+    if (k.indexOf(prefix) === 0) snapshotRows[k] = usageDaily[k];
+  });
+  const snapshotCursor = JSON.parse(
+    JSON.stringify(readStore('localLogCursors.' + providerId) || {})
+  );
   Object.keys(usageDaily).forEach((k) => {
     if (k.indexOf(prefix) === 0) delete usageDaily[k];
   });
@@ -182,13 +194,44 @@ async function rescanLocalLogs(options) {
 
   let passes = 0;
   let records = 0;
-  while (passes < maxPasses) {
-    const batch = await readLocalLog();
-    passes++;
-    const n = Array.isArray(batch) ? batch.length : 0;
-    records += n;
-    if (onProgress) onProgress({ stage: providerId, detail: 'pass ' + passes + ', +' + n });
-    if (n === 0) break;
+  let bytesRead = 0;
+  let lastComplete = false;
+  try {
+    while (passes < maxPasses) {
+      const batch = await readLocalLog();
+      passes++;
+      const list = Array.isArray(batch)
+        ? batch
+        : (batch && Array.isArray(batch.records)) ? batch.records : [];
+      const n = list.length;
+      records += n;
+      bytesRead += Number(batch && batch.bytesRead) || 0;
+      if (onProgress) onProgress({ stage: providerId, detail: 'pass ' + passes + ', +' + n });
+      // 新协议:批次显式报告 complete;旧协议:空数组即视为完成(兼容聚焦 IPC 测试)
+      const complete = Array.isArray(batch) ? n === 0 : batch.complete === true;
+      if (complete) {
+        lastComplete = true;
+        break;
+      }
+    }
+    if (!lastComplete) {
+      const error = new Error('Local log rescan incomplete for ' + providerId);
+      error.code = 'LOCAL_LOG_RESCAN_INCOMPLETE';
+      error.providerId = providerId;
+      error.passes = passes;
+      error.bytesRead = bytesRead;
+      throw error;
+    }
+  } catch (error) {
+    // 回滚:删除该 provider 新写入的行,恢复快照行与游标;不触碰其他 provider
+    const after = readStore('usageDaily') || {};
+    Object.keys(after).forEach((k) => {
+      if (k.indexOf(prefix) === 0) delete after[k];
+    });
+    Object.assign(after, snapshotRows);
+    writeStore('usageDaily', after);
+    writeStore('localLogCursors.' + providerId, snapshotCursor);
+    throw error;
   }
 
   const after = readStore('usageDaily') || {};
@@ -202,7 +245,7 @@ async function rescanLocalLogs(options) {
       if (!earliestDate || m[1] < earliestDate) earliestDate = m[1];
     }
   });
-  return { daysRebuilt, earliestDate, passes, records };
+  return { daysRebuilt, earliestDate, passes, records, bytesRead };
 }
 
 module.exports = { syncDeepSeekHistory, rescanLocalLogs, MAX_MONTHS, EMPTY_STREAK_STOP, MONTH_GAP_MS, MAX_SCAN_PASSES };

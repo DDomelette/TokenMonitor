@@ -68,7 +68,7 @@ async function readLocalLog(ctx, opts) {
     store.set(CURSOR_KEY, {});
     store.set(MIGRATION_KEY, true);
   }
-  const records = await scanFiles({
+  const batch = await scanFiles({
     root: root,
     match: MATCH,
     cursorStore: store,
@@ -81,6 +81,7 @@ async function readLocalLog(ctx, opts) {
     maxBytesPerScan: opts && opts.maxBytesPerScan,
     yieldToLoop: opts && opts.yieldToLoop
   });
+  const records = batch.records;
   if (records.length && store) {
     // retainAll:全量重扫(历史同步)时绕过保留窗口过滤,否则旧日聚合在写入前即被丢弃
     const rolled = rollupDaily(records, diagnostics, nowMs);
@@ -100,7 +101,7 @@ async function readLocalLog(ctx, opts) {
     });
     store.set('usageDaily', usageDaily);
   }
-  return records;
+  return batch;
 }
 
 module.exports = { parseWireLine, readLocalLog, DEFAULT_ROOT, MATCH };

@@ -77,6 +77,8 @@ async function walkFiles(root, match) {
 // 异步增量扫描:游标存 { path: { offset, mtimeMs } }。每次只分配固定块,并限制单轮总读取量。
 // 文件截断或轮换时从头重读;游标只提交到已完整解析(或明确跳过)的换行符之后。
 // 若预算在一行中间耗尽,为避免该行永久饥饿,只继续到该行的下一个换行符后停止。
+// 返回 ScanBatch { records, complete, bytesRead }:complete=false 表示本轮预算耗尽,
+// 还有文件或文件尾部未读,需要下一轮继续;末行无换行符的未完成行不视为不完整。
 async function scanFiles({
   root,
   match,
@@ -91,18 +93,25 @@ async function scanFiles({
   yieldToLoop
 }) {
   const records = [];
-  if (!root || !(await pathExists(root))) return records;
+  if (!root || !(await pathExists(root))) {
+    return { records, complete: true, bytesRead: 0 };
+  }
 
   const evaluationNowMs = evaluationTimeMs(nowMs);
   const readChunkBytes = positiveInteger(chunkBytes, DEFAULT_SCAN_CHUNK_BYTES);
   let remainingBudget = positiveInteger(maxBytesPerScan, DEFAULT_SCAN_BUDGET_BYTES);
+  let bytesRead = 0;
+  let complete = true;
   const yieldBlock = typeof yieldToLoop === 'function' ? yieldToLoop : defaultYieldToLoop;
   const cursors = cursorStore.get(cursorKey) || {};
   const files = await walkFiles(root, match);
 
   try {
     for (const filePath of files) {
-      if (remainingBudget <= 0) break;
+      if (remainingBudget <= 0) {
+        complete = false;
+        break;
+      }
 
       const cursor = cursors[filePath] || { offset: 0, mtimeMs: 0 };
       let stat;
@@ -132,7 +141,10 @@ async function scanFiles({
         handle = await fsp.open(filePath, 'r');
 
         while (readPosition < stat.size) {
-          if (remainingBudget <= 0 && pending.length === 0) break;
+          if (remainingBudget <= 0 && pending.length === 0) {
+            complete = false;
+            break;
+          }
 
           const finishingStartedLine = remainingBudget <= 0;
           const fileRemaining = stat.size - readPosition;
@@ -148,6 +160,7 @@ async function scanFiles({
 
           const chunk = buffer.subarray(0, result.bytesRead);
           readPosition += result.bytesRead;
+          bytesRead += result.bytesRead;
           remainingBudget = Math.max(0, remainingBudget - result.bytesRead);
           pending = pending.length
             ? Buffer.concat([pending, chunk])
@@ -179,9 +192,14 @@ async function scanFiles({
           await yieldBlock();
           if (finishingStartedLine && completedLines > 0) {
             pending = Buffer.alloc(0);
+            if (readPosition < stat.size) complete = false;
             break;
           }
-          if (remainingBudget <= 0 && pending.length === 0) break;
+          if (remainingBudget <= 0 && pending.length === 0) {
+            // 预算恰好在文件末尾耗尽时整文件已读完,不视为不完整
+            if (readPosition < stat.size) complete = false;
+            break;
+          }
         }
       } catch (error) {
         failure = error;
@@ -207,7 +225,7 @@ async function scanFiles({
     if (!(await pathExists(cursorPath))) delete cursors[cursorPath];
   }
   cursorStore.set(cursorKey, cursors);
-  return records;
+  return { records, complete, bytesRead };
 }
 
 function rollupDaily(records, diagnostics, nowMs) {
