@@ -4,6 +4,7 @@ import React, { useRef } from 'react';
 import * as echarts from 'echarts';
 import useECharts from '../hooks/useECharts.js';
 import { getTheme, getBarTheme } from '../lib/chartTheme.js';
+import { beijingMonthDayLabel, isAfterBeijingToday } from '../lib/beijing-calendar.js';
 
 function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
@@ -188,10 +189,8 @@ function buildDailyOption(dom, dailyData) {
   const missData = [];
   const completionData = [];
   // 平台按月返回零填充数据:截掉今天之后的空白天,避免图表尾部大片空白
-  const now = new Date();
-  const todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
   (dailyData || []).forEach((d) => {
-    if (d.date > todayStr) return;
+    if (isAfterBeijingToday(d.date)) return;
     dates.push(d.date.slice(5));
     hitData.push(d.cacheHit || 0);
     missData.push(d.cacheMiss || 0);
@@ -240,10 +239,7 @@ function buildDailyOption(dom, dailyData) {
 function buildCurveOption(dom, points, config) {
   const isDark = document.body.classList.contains('dark');
   const theme = getTheme(isDark);
-  const dates = (points || []).map((p) => {
-    const d = new Date(p.time);
-    return (d.getMonth() + 1) + '/' + d.getDate();
-  });
+  const dates = (points || []).map((p) => beijingMonthDayLabel(p.time));
   const totalData = (points || []).map((p) => p[config.totalField] || 0);
   const deltaData = (points || []).map((p) => p[config.deltaField] || 0);
   const density = curveDensity(theme, dom, isCardMode(dom), dates.length);

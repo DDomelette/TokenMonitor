@@ -4,6 +4,7 @@
 
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
 const BEIJING_OFFSET_SECONDS = 8 * 60 * 60;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const DAY_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -48,6 +49,20 @@ function addBeijingDays(dayKey, delta) {
   return `${base.getUTCFullYear()}-${String(base.getUTCMonth() + 1).padStart(2, '0')}-${String(base.getUTCDate()).padStart(2, '0')}`;
 }
 
+function inclusiveBeijingDayCount(startDayKey, value = Date.now()) {
+  if (!isValidBeijingDayKey(startDayKey)) return 0;
+  const endDayKey = beijingDayKey(value);
+  if (!endDayKey) return 0;
+
+  const ordinal = (dayKey) => {
+    const year = Number(dayKey.slice(0, 4));
+    const month = Number(dayKey.slice(5, 7));
+    const date = Number(dayKey.slice(8, 10));
+    return Math.floor(Date.UTC(year, month - 1, date) / DAY_MS);
+  };
+  return Math.max(0, ordinal(endDayKey) - ordinal(startDayKey) + 1);
+}
+
 function millisecondsUntilNextBeijingMidnight(value = Date.now()) {
   const timestamp = Number(value);
   const parts = beijingDateParts(timestamp);
@@ -84,6 +99,7 @@ module.exports = {
   beijingDayKey,
   isValidBeijingDayKey,
   addBeijingDays,
+  inclusiveBeijingDayCount,
   millisecondsUntilNextBeijingMidnight,
   localDayStr,
   localTodayStr,

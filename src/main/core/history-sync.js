@@ -186,17 +186,20 @@ async function rescanLocalLogs(options) {
   const snapshotCursor = JSON.parse(
     JSON.stringify(readStore('localLogCursors.' + providerId) || {})
   );
-  Object.keys(usageDaily).forEach((k) => {
-    if (k.indexOf(prefix) === 0) delete usageDaily[k];
-  });
-  writeStore('usageDaily', usageDaily);
-  writeStore('localLogCursors.' + providerId, {});
 
   let passes = 0;
   let records = 0;
   let bytesRead = 0;
   let lastComplete = false;
   try {
+    // 不原地修改 store 返回的对象:即便初始持久化失败,旧汇总仍可作为回滚来源。
+    const clearedDaily = Object.assign({}, usageDaily);
+    Object.keys(clearedDaily).forEach((k) => {
+      if (k.indexOf(prefix) === 0) delete clearedDaily[k];
+    });
+    writeStore('usageDaily', clearedDaily);
+    writeStore('localLogCursors.' + providerId, {});
+
     while (passes < maxPasses) {
       const batch = await readLocalLog();
       passes++;
@@ -224,7 +227,7 @@ async function rescanLocalLogs(options) {
     }
   } catch (error) {
     // 回滚:删除该 provider 新写入的行,恢复快照行与游标;不触碰其他 provider
-    const after = readStore('usageDaily') || {};
+    const after = Object.assign({}, readStore('usageDaily') || {});
     Object.keys(after).forEach((k) => {
       if (k.indexOf(prefix) === 0) delete after[k];
     });

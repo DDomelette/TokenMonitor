@@ -7,7 +7,7 @@ const { resetSettingsStore } = require('./core/settings-reset');
 const { saveSetting } = require('./core/settings-write');
 const { replaceDeepseekApiKey } = require('./core/api-key-replacement');
 const { filterUsageDaily, retentionStartDay } = require('./core/usage-retention');
-const { beijingDateParts } = require('./core/beijing-calendar');
+const { beijingDateParts, inclusiveBeijingDayCount } = require('./core/beijing-calendar');
 const { getSessionSnapshot } = require('./core/session-state');
 const { skipDeepseekLogin } = require('./core/startup-windows');
 const { syncDeepSeekHistory, rescanLocalLogs } = require('./core/history-sync');
@@ -205,11 +205,10 @@ module.exports = function setupIPC(deps) {
       .filter(Boolean)
       .sort()[0] || null;
     if (earliest && Number.isInteger(historyDays) && historyDays > 0 && earliest < retentionStartDay(historyDays)) {
-      const startMs = new Date(earliest + 'T12:00:00').getTime();
       summary.retentionHint = {
         historyDays,
         earliestDate: earliest,
-        suggestedDays: Math.ceil((Date.now() - startMs) / 86400000) + 1
+        suggestedDays: inclusiveBeijingDayCount(earliest)
       };
     }
 

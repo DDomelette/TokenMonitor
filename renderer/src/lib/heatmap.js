@@ -2,19 +2,22 @@
 
 const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const pad = (n) => String(n).padStart(2, '0');
-const dayKey = (date) => date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
+const DAY_MS = 24 * 60 * 60 * 1000;
+const dayKey = (date) => date.getUTCFullYear() + '-' + pad(date.getUTCMonth() + 1) + '-' + pad(date.getUTCDate());
 
-function parseLocalDay(value) {
+function parseCalendarDay(value) {
   const match = typeof value === 'string' ? DATE_KEY_PATTERN.exec(value) : null;
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  const date = new Date(year, month - 1, day);
+  const date = new Date(0);
+  date.setUTCHours(12, 0, 0, 0);
+  date.setUTCFullYear(year, month - 1, day);
   if (
-    date.getFullYear() !== year
-    || date.getMonth() !== month - 1
-    || date.getDate() !== day
+    date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
   ) return null;
   return date;
 }
@@ -22,32 +25,32 @@ function parseLocalDay(value) {
 // 构造某年 53 列 × 7 行网格:每列 = 一周(周日起),每行 = 星期几。
 // 首列为该年 1 月 1 日所在周的周日(可能落在前一年);最后一列补足到 7 天。
 export function buildWeeks(year) {
-  const start = new Date(year, 0, 1);
-  start.setDate(start.getDate() - start.getDay());
-  const end = new Date(year, 11, 31);
-  const totalDays = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+  const start = new Date(Date.UTC(year, 0, 1, 12));
+  start.setUTCDate(start.getUTCDate() - start.getUTCDay());
+  const end = new Date(Date.UTC(year, 11, 31, 12));
+  const totalDays = Math.floor((end.getTime() - start.getTime()) / DAY_MS) + 1;
 
   const weeks = [];
   let d = 0;
   while (d < totalDays) {
-    const date = new Date(start.getTime() + d * 86400000);
+    const date = new Date(start.getTime() + d * DAY_MS);
     const col = Math.floor(d / 7);
     const row = d % 7;
     if (!weeks[col]) weeks[col] = new Array(7);
     weeks[col][row] = {
       date: dayKey(date),
-      inYear: date.getFullYear() === year
+      inYear: date.getUTCFullYear() === year
     };
     d += 1;
   }
   // 最后一列补足到 7 天(溢出到次年 1 月),保持 53 列满
   const lastCol = weeks.length - 1;
   while (weeks[lastCol].some((cell) => !cell)) {
-    const date = new Date(start.getTime() + d * 86400000);
+    const date = new Date(start.getTime() + d * DAY_MS);
     const row = d % 7;
     weeks[lastCol][row] = {
       date: dayKey(date),
-      inYear: date.getFullYear() === year
+      inYear: date.getUTCFullYear() === year
     };
     d += 1;
   }
@@ -55,10 +58,14 @@ export function buildWeeks(year) {
 }
 
 // 返回日期所在可视列的周日起始日。使用本地日历字段,与 buildWeeks 的周日至周六列一致。
-export function sundayWeekKey(date) {
-  if (!(date instanceof Date) || !Number.isFinite(date.getTime())) return null;
-  const sunday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  sunday.setDate(sunday.getDate() - sunday.getDay());
+export function sundayWeekKey(value) {
+  let calendarKey = value;
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    calendarKey = value.getFullYear() + '-' + pad(value.getMonth() + 1) + '-' + pad(value.getDate());
+  }
+  const sunday = parseCalendarDay(calendarKey);
+  if (!sunday) return null;
+  sunday.setUTCDate(sunday.getUTCDate() - sunday.getUTCDay());
   return dayKey(sunday);
 }
 
@@ -69,9 +76,8 @@ export function buildSundayWeekTotals(days) {
   Object.keys(days || {}).forEach((dateKey) => {
     const total = Number(days[dateKey]) || 0;
     if (total <= 0) return;
-    const date = parseLocalDay(dateKey);
-    if (!date) return;
-    const key = sundayWeekKey(date);
+    const key = sundayWeekKey(dateKey);
+    if (!key) return;
     totals[key] = (totals[key] || 0) + total;
   });
   return totals;

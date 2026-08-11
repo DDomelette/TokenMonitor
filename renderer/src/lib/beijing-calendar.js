@@ -54,6 +54,16 @@ export function millisecondsUntilNextBeijingMidnight(value = Date.now()) {
   return Math.max(1, nextMidnightMs - timestamp);
 }
 
+export function isAfterBeijingToday(dayKey, value = Date.now()) {
+  const today = beijingDayKey(value);
+  return isValidBeijingDayKey(dayKey) && !!today && dayKey > today;
+}
+
+export function beijingMonthDayLabel(value) {
+  const parts = beijingDateParts(value);
+  return parts ? `${parts.month}/${parts.day}` : '';
+}
+
 // 兼容包装:既有调用点按原名导入,语义固定为北京时间。接受 Date 或时间戳。
 export function localDateKey(value = Date.now()) {
   return beijingDayKey(value);

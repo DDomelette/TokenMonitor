@@ -416,6 +416,42 @@ test('重扫:达到 pass 上限仍未 complete 时报 LOCAL_LOG_RESCAN_INCOMPLET
   assert.equal(pass, 2);
 });
 
+test('重扫:清空游标写入失败时恢复原 provider 行与游标', async () => {
+  const store = makeStore({
+    usageDaily: {
+      'codex:2026-06-17': { input: 10, cached: 5, output: 2, total: 12 },
+      'kimi:2026-06-17': { input: 1, cached: 0, output: 1, total: 2 }
+    },
+    'localLogCursors.codex': { '/x/rollout-a.jsonl': { offset: 123, mtimeMs: 1 } }
+  });
+  let failCursorClear = true;
+  const writeStore = (key, value) => {
+    if (key === 'localLogCursors.codex' && failCursorClear) {
+      failCursorClear = false;
+      throw new Error('disk write failed');
+    }
+    store.set(key, value);
+  };
+
+  await assert.rejects(
+    rescanLocalLogs({
+      providerId: 'codex',
+      readLocalLog: async () => ({ records: [], complete: true, bytesRead: 0 }),
+      readStore: store.get,
+      writeStore
+    }),
+    /disk write failed/
+  );
+
+  assert.deepEqual(store.data.usageDaily, {
+    'codex:2026-06-17': { input: 10, cached: 5, output: 2, total: 12 },
+    'kimi:2026-06-17': { input: 1, cached: 0, output: 1, total: 2 }
+  });
+  assert.deepEqual(store.data['localLogCursors.codex'], {
+    '/x/rollout-a.jsonl': { offset: 123, mtimeMs: 1 }
+  });
+});
+
 test('日边界:rollupDaily 聚合键为北京结算日', () => {
   const { rollupDaily } = require('../src/main/core/locallog');
   const ts = Date.UTC(2026, 5, 17, 16, 30); // UTC 16:30 = 北京 2026-06-18 00:30

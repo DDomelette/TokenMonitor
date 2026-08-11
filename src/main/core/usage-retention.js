@@ -1,4 +1,9 @@
-const { beijingDayKey, addBeijingDays, localDayStr } = require('./beijing-calendar');
+const {
+  beijingDayKey,
+  addBeijingDays,
+  isValidBeijingDayKey,
+  localDayStr
+} = require('./beijing-calendar');
 
 const DAILY_KEY_PATTERN = /^([^:]+):(\d{4}-\d{2}-\d{2})$/;
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -13,18 +18,9 @@ function localDayString(timestamp) {
 }
 
 function isValidLocalDay(day) {
-  if (typeof day !== 'string' || !DAY_PATTERN.test(day)) return false;
-
-  const year = Number(day.slice(0, 4));
-  const month = Number(day.slice(5, 7));
-  const date = Number(day.slice(8, 10));
-  const probe = new Date(0);
-  probe.setHours(12, 0, 0, 0);
-  probe.setFullYear(year, month - 1, date);
-
-  return probe.getFullYear() === year
-    && probe.getMonth() === month - 1
-    && probe.getDate() === date;
+  return typeof day === 'string'
+    && DAY_PATTERN.test(day)
+    && isValidBeijingDayKey(day);
 }
 
 function retentionStartDay(historyDays, nowMs) {
