@@ -15,6 +15,8 @@ const MATCH = /rollout-.*\.jsonl$/;
 const CURSOR_KEY = 'localLogCursors.codex';
 
 // 解析单行:取 payload.info.last_token_usage,timestamp 取 data.timestamp。
+// 会话累计快照 total_token_usage.total_tokens 作为可选 usageTotal 透传给扫描器,
+// 由扫描器按文件游标去重同一累计值(同一 turn 的重复 token_count 事件)。
 function parseRolloutLine(line, diagnostics, nowMs) {
   if (!line) return null;
   try {
@@ -32,6 +34,8 @@ function parseRolloutLine(line, diagnostics, nowMs) {
       incrementDiagnostic(diagnostics, 'invalidTimestamp');
       return null;
     }
+    const cumulative = payload.info.total_token_usage;
+    const usageTotal = cumulative && Number(cumulative.total_tokens);
     return {
       ts: ts,
       usage: {
@@ -40,7 +44,8 @@ function parseRolloutLine(line, diagnostics, nowMs) {
         output: last.output_tokens || 0,
         reasoning: last.reasoning_output_tokens || 0,
         total: last.total_tokens || 0
-      }
+      },
+      ...(Number.isFinite(usageTotal) ? { usageTotal } : {})
     };
   } catch (e) {
     return null;

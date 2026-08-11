@@ -122,12 +122,20 @@ async function scanFiles({
       }
 
       let offset = Number(cursor.offset) || 0;
+      // 会话累计快照状态:用于抑制 Codex 同一累计值的重复 token_count 事件
+      let lastUsageTotal = Number(cursor.lastUsageTotal);
+      if (!Number.isFinite(lastUsageTotal)) lastUsageTotal = undefined;
       if (stat.size < offset || (cursor.mtimeMs && stat.mtimeMs < cursor.mtimeMs)) {
         offset = 0;
+        // 截断/轮换重读时从头开始,清除累计状态,允许第一条新记录
+        lastUsageTotal = undefined;
       }
 
       if (stat.size <= offset) {
-        cursors[filePath] = { offset, mtimeMs: stat.mtimeMs };
+        cursors[filePath] = Object.assign(
+          { offset, mtimeMs: stat.mtimeMs },
+          Number.isFinite(lastUsageTotal) ? { lastUsageTotal } : {}
+        );
         continue;
       }
 
@@ -175,7 +183,17 @@ async function scanFiles({
             const line = pending.subarray(lineStart, newlineIndex).toString('utf8');
             if (line) {
               const record = parseLine(line, diagnostics, evaluationNowMs);
-              if (record) records.push(Object.assign({ provider: providerId }, record));
+              if (record) {
+                // Codex 会话累计快照去重:累计值未变化时抑制重复事件;
+                // 每次遇到带累计值的记录都更新游标状态(含被抑制的重复快照)
+                const usageTotal = Number(record.usageTotal);
+                const hasUsageTotal = Number.isFinite(usageTotal);
+                const duplicate = hasUsageTotal
+                  && Number.isFinite(lastUsageTotal)
+                  && usageTotal === lastUsageTotal;
+                if (!duplicate) records.push(Object.assign({ provider: providerId }, record));
+                if (hasUsageTotal) lastUsageTotal = usageTotal;
+              }
             }
 
             committedOffset += newlineIndex + 1 - lineStart;
@@ -187,7 +205,10 @@ async function scanFiles({
           if (lineStart > 0) {
             pending = Buffer.from(pending.subarray(lineStart));
           }
-          cursors[filePath] = { offset: committedOffset, mtimeMs: stat.mtimeMs };
+          cursors[filePath] = Object.assign(
+            { offset: committedOffset, mtimeMs: stat.mtimeMs },
+            Number.isFinite(lastUsageTotal) ? { lastUsageTotal } : {}
+          );
 
           await yieldBlock();
           if (finishingStartedLine && completedLines > 0) {
@@ -213,7 +234,10 @@ async function scanFiles({
         }
       }
 
-      cursors[filePath] = { offset: committedOffset, mtimeMs: stat.mtimeMs };
+      cursors[filePath] = Object.assign(
+        { offset: committedOffset, mtimeMs: stat.mtimeMs },
+        Number.isFinite(lastUsageTotal) ? { lastUsageTotal } : {}
+      );
       if (failure) throw failure;
     }
   } catch (error) {
