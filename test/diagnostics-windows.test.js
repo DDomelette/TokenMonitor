@@ -291,3 +291,14 @@ test('default, null, and primitive capability inputs return independent safe uns
   assert.equal(snapshots.every((snapshot) => snapshot.supported === false), true);
   assert.notEqual(snapshots[0], snapshots[1]);
 });
+
+// 回归:未注入 createAccentApi 时,默认路径必须复用进程内已初始化的 accent API。
+// 真实应用启动时主窗口已注册 koffi 的 DSM_* 结构体;诊断若再次 createAccentApi,
+// koffi.struct 会因 "Duplicate type name" 抛错,导致 FFI bindings / Native Acrylic
+// accent 两项误报(issue: 诊断中心 Windows 分类假异常)。
+test('repeated capability collection without injected accent factory stays consistent', { skip: process.platform !== 'win32' }, async () => {
+  const first = await collectWindowsCapabilities({ platform: 'win32' });
+  const second = await collectWindowsCapabilities({ platform: 'win32' });
+  assert.equal(second.koffiLoaded, first.koffiLoaded);
+  assert.equal(second.ffiBound, first.ffiBound, 'second collection hit duplicate koffi struct registration');
+});

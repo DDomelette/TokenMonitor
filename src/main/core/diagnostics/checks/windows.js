@@ -1,6 +1,6 @@
 'use strict';
 
-const { createAccentApi, applyAccent, clearAccent } = require('../../../windows-backdrop');
+const { applyAccent, clearAccent, loadAccentApi } = require('../../../windows-backdrop');
 
 const TIMEOUT_MS = 3000;
 const ACRYLIC_GUIDE = 'windows-acrylic';
@@ -169,7 +169,12 @@ async function createSnapshot(dependencies) {
   let api = null;
   if (snapshot.libraries.user32 && snapshot.libraries.dwmapi && snapshot.libraries.gdi32) {
     try {
-      api = (dependencies.createAccentApi || createAccentApi)(koffi);
+      // 默认复用进程内已初始化的 accent API:koffi.struct 的命名类型是进程级
+      // 全局注册,主窗口启动时已注册过 DSM_*,重复 createAccentApi 必抛
+      // "Duplicate type name",会造成 FFI/acrylic 两项误报
+      api = dependencies.createAccentApi
+        ? dependencies.createAccentApi(koffi)
+        : loadAccentApi();
     } catch (_) {
       api = null;
     }
