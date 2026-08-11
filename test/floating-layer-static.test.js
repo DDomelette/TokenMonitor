@@ -24,3 +24,10 @@ test('ChartWidget re-exports the shared windowClampedPosition from floating-laye
   assert.match(source, /export \{ windowClampedPosition \}/);
   assert.doesNotMatch(source, /export function windowClampedPosition/);
 });
+
+test('heatmap tooltip uses shared clamp and flip primitives', () => {
+  const source = read('renderer/src/components/TokenHeatmap.jsx');
+  assert.match(source, /import \{ clampToWindow, resolveVerticalFlip \} from '\.\.\/lib\/floating-layer\.js'/);
+  assert.doesNotMatch(source, /clampTipX = \(x\) => Math\.max/);
+  assert.doesNotMatch(source, /r\.top < 140/);
+});
