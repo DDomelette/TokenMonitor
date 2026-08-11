@@ -2,7 +2,7 @@
 
 日期：2026-08-09
 
-状态：方案 1 与书面规格均已确认
+状态：方案 1 与书面规格均已确认；2026-08-11 安全审查修订已获用户确认
 
 目标分支：`main`
 
@@ -37,6 +37,12 @@ Token Monitor 已分别具备 Store recovery、Provider health、HTTP timeout、
 ## 方案选择
 
 采用模块化只读探针注册表与实时 IPC 事件。每个探针是独立、可注入依赖、可单元测试的函数；runner 统一负责状态转换、超时、异常归一化和进度发送。
+
+最终安全审查推翻了原设计中的三个假设：共享 preload 不等于最小权限、`Promise.race` 不等于取消底层资源、应用生命周期缓存不等于重新诊断。修订后采用以下方案：
+
+- **采用：独立 Diagnostics preload + 专用主题投影 + 可取消 run scope。** Diagnostics renderer 只获得诊断、关闭、主题和 focus 所需的最小 API；每个 run 捕获一次代理和 Windows 能力，底层网络资源受共享并发器与 `AbortSignal` 约束。
+- 未采用“继续共享 preload、再给所有写 IPC 增加 sender 授权”：需要改造大量现有 handler，容易遗漏新通道，仍不是 capability-level 隔离。
+- 未采用“完全移除 Diagnostics 主题同步”：权限面最小，但会造成次级窗口主题和 Acrylic 状态不一致；专用只读主题投影能保留体验而不暴露 Store payload。
 
 未采用以下方案：
 
@@ -78,6 +84,7 @@ src/main/core/diagnostics/
     ├── windows.js
     ├── network.js
     └── providers.js
+src/preload/diagnostics-preload.js # Diagnostics 窗口的最小权限 bridge
 ```
 
 窗口生命周期仍由 `src/main/index.js` 管理，IPC handler 仍由 `src/main/ipc.js` 注册。renderer 使用独立的 HTML、CSS、控制器和可纯测状态模块，不向现有 `settings-window.js` 塞入诊断业务逻辑。
@@ -134,18 +141,19 @@ pending -> running -> pass | fail | skipped
 runner 的规则：
 
 - 开始检查前发送 `diagnostics:progress` 的 `running` 结果。
-- 用 `Promise.race` 和检查自己的 `timeoutMs` 包裹探针；默认 8 秒，Provider 网络检查最多 12 秒。
+- 每个 run 拥有 `AbortController`、deadline 和 run scope；每项检查再派生自己的 timeout signal。默认 8 秒，Provider 网络检查最多 12 秒。
+- timeout 必须中止可取消的 DNS/TCP/CONNECT/TLS/HTTP 资源；不可取消的外部 Promise 迟到结果被丢弃，但在真实 settle 前仍占用共享 permit。
 - timeout 转换成 `fail` 和稳定错误码，不允许 spinner 永久旋转。
 - 捕获单项异常并继续其他检查。
-- 本地快速检查先运行；Windows 检查随后运行；网络和 Provider 检查使用最大并发 3，避免诊断窗口等待过久或同时创建过多连接。
+- local、Windows、remote、final 使用独立顺序 phase；网络和 Provider 检查通过 Diagnostics 实例级共享 semaphore，所有 run 合计的底层 active remote 资源最多 3。
 - 不向 Store 持久化诊断结果。
 
 IPC 为每个 Diagnostics `webContents.id` 保存当前 active `runId`。重新诊断时替换 active id：
 
 - 旧运行的迟到事件不再发送。
-- 旧运行完成当前 in-flight 检查后停止启动后续检查。
-- Diagnostics 窗口关闭时移除 active id；发送前同时检查 `sender.isDestroyed()`。
-- 网络 API 暂不增加跨模块强制 abort；严格 timeout 保证旧 in-flight 检查有界结束。
+- 旧运行立即 abort 当前可取消检查，并停止启动后续检查；不可取消 Promise 仍持有 permit 直到真实 settle。
+- 新 run、窗口关闭或 dispose 会 abort 旧 run；发送前同时检查 exact sender、record identity、runId 和 `sender.isDestroyed()`。
+- HTTP、代理 TCP、CONNECT、TLS 和 Provider diagnostics transport 接受 signal/deadline；wrapper timeout 后不得让底层连接继续占用未计数资源。
 
 主进程仅在内存中保留当前窗口当前 `runId` 的脱敏结果快照，供 `diagnostics:copy-report` 使用。新运行替换旧快照，窗口关闭立即删除；结果不写入 Store 或文件。复制请求必须来自拥有该 `runId` 的 Diagnostics `webContents`，不能读取其他窗口或历史运行。
 
@@ -160,15 +168,19 @@ IPC 为每个 Diagnostics `webContents.id` 保存当前 active `runId`。重新�
 - `diagnostics:open-guide`：按白名单 `guideId` 打开本地 Markdown。
 - `diagnostics:copy-report`：按 `runId` 生成并写入系统剪贴板。
 
-所有通道都加入 `src/preload/preload.js` 的对应白名单。renderer 不获得 Node、`fs`、Store、shell、clipboard 或原始运行上下文。
+设置页的 `open:diagnostics` 保留在现有 preload；Diagnostics BrowserWindow 改用 `src/preload/diagnostics-preload.js`。
+
+专用 preload 仅暴露 `diagnostics:run/progress/copy-report/open-guide/get-theme`、`window:close-diagnostics`、`theme:changed` 和 `window:focus-state` 的窄 API，不暴露通用 `send/invoke/on`，也不包含 settings、history sync、provider refresh、API-key replacement 或 MCP token 通道。
+
+`diagnostics:get-theme` 只返回主题所需的 allowlisted projection，不返回完整 `get:settings`/`settings:loaded` payload。renderer 不获得 Node、`fs`、Store、shell、clipboard、cursor、local-log root、完整文件名或原始运行上下文。
 
 Diagnostics BrowserWindow：
 
 - 默认约 720×640，可调整大小，有合理的最小尺寸。
-- 复用现有 preload、`contextIsolation: true`、`nodeIntegration: false`。
+- 使用独立最小权限 preload、`contextIsolation: true`、`nodeIntegration: false`。
 - 复用现有主题、圆角、Accent/fallback 和 focus-state 处理。
 - 重复打开时聚焦现有 Diagnostics 窗口，不使用设置窗口现有的 toggle-close 行为。
-- 主窗口、设置窗口和 Diagnostics 窗口的广播集合按需要扩展；敏感 settings 广播仍走现有 sanitize 路径。
+- Diagnostics 不加入 settings payload 广播；主题变化只触发专用投影重新读取。
 
 ## 诊断项目
 
@@ -178,6 +190,7 @@ Diagnostics BrowserWindow：
 - Windows build 单独记录；非 Windows 为 `skipped`。
 - `renderer/dist/index.html`、preload 和 Diagnostics 页面构建产物存在性。
 - `diagnostics:run` 成功进入主进程视为 IPC round-trip 已通过。
+- window reference 检查读取 live main/settings/login/session/diagnostics 引用；存在引用时必须验证 `isDestroyed()`，不能把已销毁对象当作正常。
 - 主窗口、设置窗口和 Diagnostics 窗口引用可取得且未销毁。
 - 最后一项 self-check 确认 runner 已完成所有预期终态。
 
@@ -186,13 +199,14 @@ Diagnostics BrowserWindow：
 - `app.getPath('userData')` 可访问。
 - Store 已初始化，并能读取安全字段。
 - 若 Store 文件存在，仅读取 bytes 验证文件可访问；由于现有 `electron-store` 启用了 `encryptionKey`，不把磁盘内容当作明文 JSON 解析。配置解密/解析成功由“Store 已初始化且能读取安全字段”证明。
-- 在 `userData` 下创建带随机名称的零敏感临时文件，关闭后立即删除；成功或失败都在 `finally` 清理。
+- 在 `userData` 下创建带随机名称的零敏感临时文件；只有 exclusive `openSync(..., 'wx')` 成功后才标记 owned，`finally` 只关闭并删除 owned 文件。`EEXIST` 或 open 失败不得删除碰撞目标。
 - 检查 encryption key/config 所需文件的存在性、可读性和格式状态，但不输出 key。
 - 用现有 proxy normalize 和 settings schema 规则检查 `providers.proxyUrl`、`data.historyDays` 等关键值。
 
 ### Windows / Acrylic / GPU
 
 - 平台、Windows 11/build 信息。
+- Windows build 是 native Acrylic probe 的前置 gate；unknown 或低于支持 build 时，不加载 Koffi/DLL、不绑定 Accent API、不创建临时窗口。GPU 可作为独立的 Electron 只读 probe。
 - 通过 koffi 只读绑定 `DwmIsCompositionEnabled`。
 - 分别报告 koffi runtime、`user32.dll`、`dwmapi.dll`、`gdi32.dll` 和所需 FFI 绑定状态。
 - 检查 `getNativeWindowHandle()` 是否返回有效 buffer。
@@ -201,10 +215,12 @@ Diagnostics BrowserWindow：
 - 使用 Electron `app.getGPUFeatureStatus()` 和 `app.getGPUInfo('basic')` 输出安全的 feature 状态，不输出设备路径或用户目录。
 - 系统透明效果若没有可靠、无副作用的读取路径，明确返回 `skipped`，不误报 pass。
 - Accent API 成功时文案仍说明“API probe 正常，但最终视觉效果受系统透明效果和图形环境影响”。
+- Windows capability Promise 属于单个 run；点击“重新诊断”必须重新探测，不复用应用生命周期缓存。
 
 ### 网络与代理
 
 - 使用现有 `normalizeStoredProxyValue`、`classifyStoredProxyValue` 和系统代理 resolver，不修改设置。
+- 每个 run 开始时读取一次当前 direct/custom/system 配置，并在该 run 的 network/provider checks 中共享；下一次 run 必须重新读取。
 - 直连、自定义 HTTP 代理、系统代理分别显示模式。
 - 自定义代理检查 host/port TCP 建连；系统代理检查 resolve 结果。
 - 只读 endpoint probe 区分 DNS、TCP、代理 CONNECT、TLS、HTTP、timeout 和未知网络错误。
@@ -255,6 +271,7 @@ Diagnostics BrowserWindow：
 - 复制按钮在首个运行尚无终态结果时禁用；成功后显示短暂确认，不在页面暴露报告中的敏感原文。
 - guide 缺失或系统打开失败时，在对应行显示明确错误，不静默失败。
 - 状态区域使用 `aria-live`；spinner 有可读状态文本。
+- 页面不调用通用 `get:settings`；初始和 `theme:changed` 时只调用 `diagnostics:get-theme`。
 
 纯状态模块只接受 `{ activeRunId, checksById }`：
 
@@ -304,6 +321,7 @@ Diagnostics BrowserWindow：
 - home path 统一替换为 `~`；其他绝对路径默认不进入报告。
 - error 通过 allowlist 分类；未知错误不直接透传 message。
 - report formatter 再对 JWT、Bearer、常见 secret 字段和 home path 做防御性二次脱敏。
+- metadata 采用每项 allowlist；`accountId/account_id`、path/fileName/stack/credential 等未声明字段 fail-closed 丢弃。文本脱敏对大小写、Windows 分隔符和 quoted JSON secret 字段同样生效。
 - clipboard 只接收 formatter 的最终字符串。
 
 禁止调用：
@@ -312,8 +330,9 @@ Diagnostics BrowserWindow：
 - Codex/Kimi `readLocalLog()` 或任何带 cursor Store 的扫描。
 - DeepSeek 会写 `usageDaily`/`fetchedMonths` 的 provider `fetchUsage()`。
 - `sync:history`、settings 写入、Store reset/recovery 修改路径。
+- Diagnostics preload 不得使上述通道可达；只读保证既约束探针实现，也约束 renderer capability。
 
-允许的唯一写入是随机临时文件 probe；它不覆盖现有文件，且无论成功、失败或 timeout 都清理。
+允许的唯一写入是 owned 随机临时文件 probe；它不覆盖或删除碰撞文件，且无论成功、失败或 timeout 都清理自己创建的文件。
 
 ## 错误处理
 
@@ -324,7 +343,7 @@ Diagnostics BrowserWindow：
 - 网络阶段失败：`fail`，保留稳定阶段码并映射相应手册。
 - 单项异常或 timeout：该项 `fail`，后续检查继续。
 - guide 缺失：诊断结果保持不变，点击后显示 `GUIDE_NOT_FOUND`。
-- 窗口关闭：停止新检查和进度发送，当前有界检查自然结束。
+- 窗口关闭：停止新检查和进度发送，abort 当前可取消资源；不可取消 Promise 继续占用共享 permit 直到 settle，但不能发送迟到结果。
 
 ## 测试与验证
 
@@ -336,6 +355,7 @@ Diagnostics BrowserWindow：
 - 某项抛异常不会阻止后续检查。
 - timeout 终止 spinner 并生成稳定失败。
 - 并发上限不超过 3。
+- 统计底层 active sockets/requests 而非 wrapper Promise；单 run timeout 和跨 rerun 峰值都不超过 3，abort 后资源归零。
 - 第二次运行后，旧 runId 事件不能更新 UI 或继续启动新检查。
 - sender/window 销毁后不发送 IPC 异常。
 - 每个 fail 结果都有有效 guideId。
@@ -346,7 +366,9 @@ Diagnostics BrowserWindow：
 - Store spy 未收到 cursor、migration、usageDaily 或凭证写入。
 - 日志 probe 不调用业务 `readLocalLog()`。
 - 临时文件在成功、失败和异常路径都无残留。
+- `EEXIST` fixture 的 bytes 保持不变，且 open 失败路径不调用 remove。
 - Windows 临时窗口始终 clear/destroy，且不改持久设置。
+- unsupported/unknown Windows build 不触碰 Koffi、DLL、Accent 或临时窗口依赖。
 
 ### 隐私
 
@@ -361,6 +383,8 @@ Diagnostics BrowserWindow：
 - `running` 使用黄色圆形 spinner。
 - fail 显示红色、原因和蓝色手册链接。
 - 设置入口、preload 白名单和 IPC handler 都有接线测试。
+- 真实 Diagnostics preload 无法访问 settings/history/provider/MCP 写通道；主题 projection 不含 cursor、root 或完整 session 文件名。
+- rerun 重新读取代理和 Windows capability；同一 run 内 network/provider 使用同一代理 snapshot。
 - guide 缺失/打开失败有可见反馈。
 
 ### 打包与回归
@@ -369,6 +393,7 @@ Diagnostics BrowserWindow：
 - 执行 unpacked directory build，确认每个白名单手册实际存在于 `resources/diagnostics-guides`。
 - `npm run build:renderer` 通过。
 - 完整 `npm test` 通过。
+- 从最终 HEAD 重新生成 unpacked artifact，并核对 packed main/preload/package dependencies 与 13 个 guides，而不是复用 merge 前产物。
 
 ## 验收标准映射
 
@@ -381,10 +406,13 @@ Diagnostics BrowserWindow：
 - 复制报告：主进程 report formatter + clipboard。
 - 单项失败隔离：runner catch/timeout。
 - 不实现自动修复：无任何 mutation IPC 或修复按钮。
+- capability-level 只读：Diagnostics 使用独立 preload 和最小主题 projection。
+- 真实资源有界：共享 semaphore + abort/deadline 保证跨 rerun active remote 不超过 3。
 
 ## 已确认取舍
 
 - 本 PR 实现 Issue #169 的完整 MVP，但不做可选 Acrylic A/B 测试区、自动修复或命令行诊断模式。
 - 使用模块化只读探针与实时事件，不复用带写副作用的正常业务入口。
+- 安全审查修订以只读约束优先于原共享-preload/`Promise.race`/应用级缓存假设。
 - 当前 Codex 托管 worktree 即本任务的新隔离工作树；功能分支从 `origin/main` 创建。
 - 完成后推送功能分支并创建以 `main` 为 base 的 PR；不直接在 `main` 上开发。
