@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { types: utilTypes } = require('node:util');
 
 const { createDiagnostics } = require('../src/main/core/diagnostics');
 const { validateEncryptionKey } = require('../src/main/core/encryption-key');
@@ -438,42 +439,235 @@ function createRendererWindow(progressEvents) {
   };
 }
 
-function createWindowsBoundary(calls, privateGpuValue) {
-  const nativeHandle = Buffer.alloc(8, 1);
-  const library = {
-    func(signature) {
-      if (signature.includes('DwmIsCompositionEnabled')) {
-        return (enabled) => {
-          enabled.writeInt32LE(1);
-          return 0;
-        };
-      }
-      return () => true;
-    }
+function createWindowsBoundary(privateGpuValue) {
+  const calls = [];
+  const violations = [];
+  const systemMutations = [];
+  const lifecycle = {
+    created: false,
+    nativeHandleRead: false,
+    accentApplied: false,
+    materialApplied: false,
+    accentCleared: false,
+    destroyed: false
   };
-  return {
-    platform: 'win32',
-    release: '10.0.19045',
-    koffi: { load: () => library },
-    BrowserWindow: function BrowserWindow(options) {
-      calls.push(['create', options]);
-      return {
-        getNativeWindowHandle: () => nativeHandle,
-        setBackgroundMaterial: (material) => calls.push(['material', material]),
-        destroy: () => calls.push(['destroy'])
+  const nativeHandle = Buffer.alloc(8, 1);
+
+  function reject(kind, target, systemMutation = false) {
+    const violation = { kind, target: String(target) };
+    violations.push(violation);
+    if (systemMutation) systemMutations.push(violation);
+    throw new Error(`diagnostics safety audit rejected ${kind}: ${String(target)}`);
+  }
+
+  function isSystemMutationName(property) {
+    return /registry|system|setting|write|set|delete|remove|update|mutat/i.test(String(property));
+  }
+
+  function facade(label, members) {
+    return new Proxy(Object.create(null), {
+      get(_target, property) {
+        if (Object.prototype.hasOwnProperty.call(members, property)) return members[property];
+        const mutation = isSystemMutationName(property);
+        return reject(mutation ? 'windows-system-mutation' : 'windows-unapproved-access', `${label}.${String(property)}`, mutation);
+      },
+      set(_target, property) {
+        return reject('windows-system-mutation', `${label}.${String(property)}=`, true);
+      },
+      defineProperty(_target, property) {
+        return reject('windows-system-mutation', `${label}.define:${String(property)}`, true);
+      },
+      deleteProperty(_target, property) {
+        return reject('windows-system-mutation', `${label}.delete:${String(property)}`, true);
+      }
+    });
+  }
+
+  function requireCall(condition, label, systemMutation = false) {
+    if (!condition) reject(
+      systemMutation ? 'windows-system-mutation' : 'windows-call-contract',
+      label,
+      systemMutation
+    );
+  }
+
+  let accentApi;
+  accentApi = facade('accentApi', {
+    enable: (...args) => reject('windows-system-mutation', `accentApi.enable:${args.length}`, true),
+    disable: (...args) => reject('windows-system-mutation', `accentApi.disable:${args.length}`, true)
+  });
+
+  function nativeFunction(libraryName, signature) {
+    if (signature === 'long DwmIsCompositionEnabled(int *enabled)') {
+      let called = false;
+      return (enabled) => {
+        requireCall(!called && Buffer.isBuffer(enabled) && enabled.length === 4, 'DwmIsCompositionEnabled');
+        called = true;
+        calls.push(['native-read', libraryName, 'DwmIsCompositionEnabled']);
+        enabled.writeInt32LE(1);
+        return 0;
       };
+    }
+    if (signature === 'bool SetWindowCompositionAttribute(uintptr_t hwnd, const void *data)') {
+      return (...args) => reject(
+        'windows-system-mutation',
+        `SetWindowCompositionAttribute:${args.length}`,
+        true
+      );
+    }
+    return reject('windows-unapproved-access', `${libraryName}.func:${signature}`);
+  }
+
+  const expectedLibraries = new Set(['user32.dll', 'dwmapi.dll', 'gdi32.dll']);
+  const loadedLibraries = new Set();
+  const libraries = new Map();
+  for (const name of expectedLibraries) {
+    libraries.set(name, facade(`koffi.library:${name}`, {
+      func(signature) {
+        const expected = name === 'user32.dll'
+          ? 'bool SetWindowCompositionAttribute(uintptr_t hwnd, const void *data)'
+          : name === 'dwmapi.dll'
+            ? 'long DwmIsCompositionEnabled(int *enabled)'
+            : null;
+        requireCall(signature === expected, `${name}.func:${signature}`);
+        calls.push(['func', name, signature]);
+        return nativeFunction(name, signature);
+      }
+    }));
+  }
+
+  const koffi = facade('koffi', {
+    load(name) {
+      requireCall(expectedLibraries.has(name) && !loadedLibraries.has(name), `koffi.load:${name}`);
+      loadedLibraries.add(name);
+      calls.push(['load', name]);
+      return libraries.get(name);
+    }
+  });
+
+  let temporaryWindow;
+  temporaryWindow = facade('BrowserWindow.instance', {
+    getNativeWindowHandle(...args) {
+      requireCall(lifecycle.created && !lifecycle.nativeHandleRead && !lifecycle.destroyed && args.length === 0, 'getNativeWindowHandle');
+      lifecycle.nativeHandleRead = true;
+      calls.push(['native-handle']);
+      return nativeHandle;
     },
-    createAccentApi: () => ({ enable() {}, disable() {} }),
-    applyAccent: () => true,
-    clearAccent: () => calls.push(['clear']),
-    app: {
-      getGPUFeatureStatus: () => ({ gpu_compositing: 'enabled' }),
-      getGPUInfo: async () => ({
+    setBackgroundMaterial(material) {
+      requireCall(
+        lifecycle.nativeHandleRead && !lifecycle.materialApplied && !lifecycle.destroyed && material === 'acrylic',
+        `setBackgroundMaterial:${material}`,
+        true
+      );
+      lifecycle.materialApplied = true;
+      calls.push(['material', material]);
+    },
+    destroy(...args) {
+      requireCall(
+        lifecycle.created && lifecycle.accentCleared && !lifecycle.destroyed && args.length === 0,
+        'BrowserWindow.destroy',
+        true
+      );
+      lifecycle.destroyed = true;
+      calls.push(['destroy']);
+    }
+  });
+
+  const BrowserWindow = new Proxy(function BrowserWindow() {}, {
+    construct(_target, args) {
+      const options = args[0];
+      requireCall(
+        args.length === 1
+          && options
+          && Object.keys(options).length === 4
+          && options.show === false
+          && options.width === 1
+          && options.height === 1
+          && options.frame === false
+          && !lifecycle.created,
+        'BrowserWindow.create',
+        true
+      );
+      lifecycle.created = true;
+      calls.push(['create', Object.assign({}, options)]);
+      return temporaryWindow;
+    },
+    apply() {
+      return reject('windows-call-contract', 'BrowserWindow without new');
+    },
+    get(_target, property) {
+      return reject('windows-unapproved-access', `BrowserWindow.${String(property)}`);
+    }
+  });
+
+  const app = facade('electron.app', {
+    getGPUFeatureStatus(...args) {
+      requireCall(args.length === 0, 'app.getGPUFeatureStatus');
+      calls.push(['gpu-features']);
+      return { gpu_compositing: 'enabled' };
+    },
+    async getGPUInfo(level, ...rest) {
+      requireCall(level === 'basic' && rest.length === 0, `app.getGPUInfo:${level}`);
+      calls.push(['gpu-info', level]);
+      return {
         auxAttributes: { amdSwitchable: 0, optimus: 1 },
         gpuDevice: [{ driver_version: privateGpuValue }]
-      })
+      };
     }
-  };
+  });
+
+  const dependencies = facade('windows.dependencies', {
+    platform: 'win32',
+    release: '10.0.19045',
+    getWindowsBuild: undefined,
+    os: undefined,
+    koffi,
+    BrowserWindow,
+    createAccentApi(koffiInput, ...rest) {
+      requireCall(koffiInput === koffi && rest.length === 0, 'createAccentApi');
+      calls.push(['create-accent-api']);
+      return accentApi;
+    },
+    applyAccent(windowInput, options, ...rest) {
+      requireCall(
+        windowInput === temporaryWindow
+          && options
+          && options.api === accentApi
+          && options.platform === 'win32'
+          && rest.length === 0
+          && lifecycle.nativeHandleRead
+          && !lifecycle.accentApplied
+          && !lifecycle.destroyed,
+        'applyAccent',
+        true
+      );
+      lifecycle.accentApplied = true;
+      calls.push(['apply-accent']);
+      return true;
+    },
+    verifyAccent: undefined,
+    clearAccent(windowInput, options, ...rest) {
+      requireCall(
+        windowInput === temporaryWindow
+          && options
+          && options.api === accentApi
+          && options.platform === 'win32'
+          && rest.length === 0
+          && lifecycle.created
+          && !lifecycle.accentCleared
+          && !lifecycle.destroyed,
+        'clearAccent',
+        true
+      );
+      lifecycle.accentCleared = true;
+      calls.push(['clear-accent']);
+      return true;
+    },
+    app,
+    then: undefined
+  });
+
+  return { dependencies, calls, violations, systemMutations, lifecycle };
 }
 
 function terminalResultsForRun(events, runId) {
@@ -485,9 +679,51 @@ function terminalResultsForRun(events, runId) {
   return EXPECTED_CHECK_IDS.map((id) => byId.get(id)).filter(Boolean);
 }
 
-function assertSensitiveTextAbsent(text, forbidden, label) {
+function normalizedSensitiveText(value) {
+  return value.replace(/[\\/]+/g, '/').toLowerCase();
+}
+
+function collectOwnStrings(value, label, output = [], seen = new Set(), trail = '$') {
+  if (typeof value === 'string') {
+    output.push({ trail, value });
+    return output;
+  }
+  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return output;
+  assert.equal(utilTypes.isProxy(value), false, `${label} contains a proxy at ${trail}`);
+  if (seen.has(value)) return output;
+  seen.add(value);
+
+  let descriptors;
+  try {
+    descriptors = Object.getOwnPropertyDescriptors(value);
+  } catch (error) {
+    assert.fail(`${label} reflection failed at ${trail}: ${error && error.name ? error.name : 'Error'}`);
+  }
+  for (const key of Reflect.ownKeys(descriptors)) {
+    const descriptor = descriptors[key];
+    const propertyTrail = `${trail}.${String(key)}`;
+    if (typeof key === 'string') output.push({ trail: `${propertyTrail}#key`, value: key });
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(descriptor, 'value'),
+      true,
+      `${label} contains an accessor at ${propertyTrail}`
+    );
+    collectOwnStrings(descriptor.value, label, output, seen, propertyTrail);
+  }
+  return output;
+}
+
+function assertSensitivePayloadAbsent(payload, forbidden, label) {
+  const strings = collectOwnStrings(payload, label);
   for (const entry of forbidden) {
-    assert.equal(text.includes(entry.value), false, `${label} leaked ${entry.name}`);
+    const needle = normalizedSensitiveText(entry.value);
+    for (const candidate of strings) {
+      assert.equal(
+        normalizedSensitiveText(candidate.value).includes(needle),
+        false,
+        `${label} leaked ${entry.name} at ${candidate.trail}`
+      );
+    }
   }
 }
 
@@ -498,7 +734,12 @@ test('diagnostics safety oracles reject adversarial side effects and fixture-roo
     fs.mkdirSync(userDataDir);
     const storeAudit = createStoreAudit({ 'data.historyDays': 7 });
     const fsAudit = createFsAudit({ readRoots: [root], readFiles: [], userDataDir });
+    const windowsAudit = createWindowsBoundary('private-gpu');
 
+    assert.throws(() => windowsAudit.dependencies.registry.setValue('Transparency', 0), /windows-system-mutation/);
+    assert.throws(() => windowsAudit.dependencies.shell, /windows-unapproved-access/);
+    assert.equal(windowsAudit.systemMutations.length, 1);
+    assert.equal(windowsAudit.violations.length, 2);
     assert.throws(() => storeAudit.store.set('providers.codex.cursor', 'advanced'), /store-mutation/);
     assert.throws(() => storeAudit.store.rotateCredentials('secret'), /store-mutation/);
     assert.throws(() => storeAudit.store.get('providers.codex.migration'), /store-read/);
@@ -509,11 +750,33 @@ test('diagnostics safety oracles reject adversarial side effects and fixture-roo
     assert.throws(() => fsAudit.fs.promises.writeFile(path.join(root, 'async-rewrite'), 'bytes'), /fs-unapproved-method/);
     assert.throws(() => fsAudit.fs.openSync(path.join(userDataDir, 'not-diagnostic.tmp'), 'wx'), /fs-open-mutation/);
     assert.throws(() => fsAudit.fs.readFileSync(path.join(os.homedir(), '.codex', 'auth.json')), /fs-read-outside-fixtures/);
-    assert.throws(() => assertSensitiveTextAbsent(
+    assert.throws(() => assertSensitivePayloadAbsent(
       `safe-prefix ${root} safe-suffix`,
       [{ name: 'temporary-root', value: root }],
       'adversarial output'
     ), /temporary-root/);
+    assert.throws(() => assertSensitivePayloadAbsent(
+      { runId: 'adversarial-progress', check: { metadata: { homePath: root } } },
+      [{ name: 'windows-temp-root', value: root }],
+      'adversarial progress'
+    ), /windows-temp-root/);
+    assert.throws(() => assertSensitivePayloadAbsent(
+      { nested: { header: 'aUtHoRiZaTiOn' } },
+      [{ name: 'authorization-header', value: 'Authorization' }],
+      'case-insensitive adversarial progress'
+    ), /authorization-header/);
+    assert.throws(() => assertSensitivePayloadAbsent(
+      new Proxy({}, {}),
+      [],
+      'proxy adversarial progress'
+    ), /contains a proxy/);
+    const accessorPayload = {};
+    Object.defineProperty(accessorPayload, 'secret', { get() { throw new Error('must not execute'); } });
+    assert.throws(() => assertSensitivePayloadAbsent(
+      accessorPayload,
+      [],
+      'accessor adversarial progress'
+    ), /contains an accessor/);
     assert.equal(storeAudit.violations.length, 5);
     assert.equal(fsAudit.violations.length, 5);
     assert.deepEqual(fs.readdirSync(userDataDir), []);
@@ -604,7 +867,7 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
       userDataDir
     });
     remote = createRemoteBoundary();
-    const windowsCalls = [];
+    const windowsAudit = createWindowsBoundary(sentinels.gpu);
     const progressEvents = [];
     rendererWindow = createRendererWindow(progressEvents);
     const copiedReports = [];
@@ -629,7 +892,7 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
         validateEncryptionKey,
         normalizeStoredProxyValue
       },
-      windows: createWindowsBoundary(windowsCalls, sentinels.gpu),
+      windows: windowsAudit.dependencies,
       network: { store, httpGet: remote.httpGet },
       providers: {
         fs: fsAudit.fs,
@@ -724,8 +987,8 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
       { name: 'bearer-header', value: 'Bearer ' },
       { name: 'stack-frame-text', value: 'fixture-stack-frame' }
     ];
-    assertSensitiveTextAbsent(JSON.stringify(progressEvents), forbiddenOutput, 'progress events');
-    assertSensitiveTextAbsent(copiedReports[0], forbiddenOutput, 'copied report');
+    assertSensitivePayloadAbsent(progressEvents, forbiddenOutput, 'progress events');
+    assertSensitivePayloadAbsent(copiedReports[0], forbiddenOutput, 'copied report');
 
     const fullRemoteCalls = remote.calls.slice();
     assert.equal(remote.overlapEntries(), 3);
@@ -804,7 +1067,7 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
     assert.equal(progressEvents.length, eventsAtClose);
     assert.equal(progressEvents.filter((event) => event.runId === staleRun.runId).length, staleEventsAtReplacement);
     assert.equal(rendererWindow.sendsAfterClose(), 0);
-    assertSensitiveTextAbsent(JSON.stringify(progressEvents), forbiddenOutput, 'all progress events');
+    assertSensitivePayloadAbsent(progressEvents, forbiddenOutput, 'all progress events');
     assert.equal(remote.active(), 0);
     assert.deepEqual(remote.errors, []);
 
@@ -827,7 +1090,16 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
     assert.equal(Array.from(fsAudit.tempLifecycles.values()).every((lifecycle) => (
       lifecycle.removed && lifecycle.events.join(',') === 'open,write,fsync,close,remove'
     )), true);
-    assert.equal(windowsCalls.filter((call) => call[0] === 'destroy').length, 1);
+    assert.deepEqual(windowsAudit.systemMutations, []);
+    assert.deepEqual(windowsAudit.violations, []);
+    assert.deepEqual(windowsAudit.lifecycle, {
+      created: true,
+      nativeHandleRead: true,
+      accentApplied: true,
+      materialApplied: true,
+      accentCleared: true,
+      destroyed: true
+    });
   } finally {
     try {
       if (blockedRemote) blockedRemote.release();
