@@ -188,5 +188,6 @@ module.exports = {
   isAccentSupported,
   applyAccent,
   clearAccent,
-  createAccentApi
+  createAccentApi,
+  loadAccentApi
 };

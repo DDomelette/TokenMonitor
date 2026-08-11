@@ -1,14 +1,21 @@
 const { isWritableSettingKey, resolveWritableSettingKey } = require('./settings-security');
 const { normalizeStoredProxyValue, SYSTEM_PROXY_VALUE } = require('./proxy-settings');
-const { pruneUsageDaily } = require('./usage-retention');
+const { pruneUsageDaily, normalizeHistoryDays } = require('./usage-retention');
 const {
   normalizeIntervalSeconds,
   normalizeProviderFilter
 } = require('./token-speed-settings');
 
+const DEFAULT_HISTORY_DAYS = 7;
+
 function normalizeSettingValue(targetKey, value) {
   if (targetKey === 'providers.proxyUrl') {
     return normalizeStoredProxyValue(value);
+  }
+  if (targetKey === 'data.historyDays') {
+    // 自定义下拉框的 dataset.value 是字符串,入库前归一化为正整数
+    const days = normalizeHistoryDays(value);
+    return days === null ? DEFAULT_HISTORY_DAYS : days;
   }
   if (targetKey === 'data.tokenSpeed.intervalSeconds') {
     return normalizeIntervalSeconds(value);

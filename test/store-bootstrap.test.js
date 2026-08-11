@@ -262,3 +262,30 @@ test('package entry and bootstrap source enforce recovery before index loading',
   assert.doesNotMatch(storeSource, /clearInvalidConfig\s*:\s*true/);
   assert.doesNotMatch(storeSource, /^const\s+store\s*=\s*new\s+Store/m);
 });
+
+test('migrateLegacyKeys repairs string-typed data.historyDays left by old select UI', () => {
+  const store = freshStoreModule();
+  const data = { data: { historyDays: '30' } };
+  const fake = {
+    get(key) {
+      return key.split('.').reduce((value, part) => value && value[part], data);
+    },
+    set(key, value) {
+      const parts = key.split('.');
+      let node = data;
+      while (parts.length > 1) {
+        const part = parts.shift();
+        node[part] = node[part] || {};
+        node = node[part];
+      }
+      node[parts[0]] = value;
+    },
+    delete(key) {
+      delete data[key];
+    }
+  };
+
+  store.migrateLegacyKeys(fake);
+  assert.equal(data.data.historyDays, 30);
+  assert.equal(typeof data.data.historyDays, 'number');
+});

@@ -149,7 +149,7 @@ test('retention setting changes and startup cleanup use the same physical bounda
     /afterInitialize:\s*\(\)\s*=>\s*pruneUsageDaily\(storeModule\)/
   );
   assert.match(bootstrapSource, /loadMain:\s*\(\)\s*=>\s*require\('\.\/index'\)/);
-  assert.match(writerSource, /const \{ pruneUsageDaily \} = require\('\.\/usage-retention'\);/);
+  assert.match(writerSource, /const \{ pruneUsageDaily, normalizeHistoryDays \} = require\('\.\/usage-retention'\);/);
   assert.match(
     writerSource,
     /if \(targetKey === 'data\.historyDays'\) \{\s*pruneUsageDaily\(deps\.store\);\s*\}/

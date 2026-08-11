@@ -269,3 +269,19 @@ test('settings save error remains visible while any failed key is still pending'
     /onError:\s*function \(error, key\) \{\s*failedSaveKeys\[key\] = true;\s*showSaveError\('设置保存失败，请重试。'\);\s*\}/
   );
 });
+
+test('acknowledged settings writer coerces data.historyDays strings to integers', () => {
+  const { saveSetting } = loadSettingsWrite();
+  const writes = [];
+  const deps = {
+    store: {
+      get() { return undefined; },
+      set(key, value) { writes.push([key, value]); }
+    },
+    applySetting() {},
+    broadcastSettings() {}
+  };
+  const result = saveSetting(deps, { key: 'data.historyDays', value: '30' });
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(writes, [['data.historyDays', 30]]);
+});

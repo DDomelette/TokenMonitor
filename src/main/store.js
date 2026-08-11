@@ -1,4 +1,5 @@
 const { initializeStore } = require('./core/store-recovery');
+const { normalizeHistoryDays } = require('./core/usage-retention');
 const settingsSecurity = require('./core/settings-security');
 
 const defaults = {
@@ -85,6 +86,7 @@ function requireStoreInstance() {
 }
 
 // 旧键 → provider 命名空间键的一次性迁移。storeLike 可为真实 electron-store 或纯对象。
+// 顺带修复历史版本遗留的类型错误:自定义下拉框曾把 data.historyDays 存成字符串。
 function migrateLegacyKeys(storeLike) {
   let migrated = false;
   const oldSession = storeLike.get('sessionToken');
@@ -99,6 +101,11 @@ function migrateLegacyKeys(storeLike) {
   }
   if (storeLike.get('providers.deepseek.sessionToken')) storeLike.delete('sessionToken');
   if (storeLike.get('providers.deepseek.apiKey')) storeLike.delete('apiKey');
+  const historyDays = normalizeHistoryDays(storeLike.get('data.historyDays'));
+  if (historyDays !== null && storeLike.get('data.historyDays') !== historyDays) {
+    storeLike.set('data.historyDays', historyDays);
+    migrated = true;
+  }
   return migrated;
 }
 
