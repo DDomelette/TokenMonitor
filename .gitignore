@@ -26,4 +26,6 @@ test/fixtures/*-real.json
 .superpowers/
 .uploads/
 
-# git worktrees.worktrees/
+# git worktrees
+.worktrees/
+.vscode/
