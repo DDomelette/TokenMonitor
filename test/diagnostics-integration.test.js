@@ -64,31 +64,328 @@ function deferred() {
   return { promise, resolve };
 }
 
+async function withTimeout(promise, timeoutMs, label) {
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve(promise),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function createStoreAudit(values) {
+  const reads = [];
+  const violations = [];
+  const allowedKeys = new Set(Object.keys(values));
+
+  function reject(kind, target) {
+    violations.push({ kind, target });
+    throw new Error(`diagnostics safety audit rejected ${kind}: ${target}`);
+  }
+
+  const store = new Proxy({}, {
+    get(_target, property) {
+      if (property === 'then') return undefined;
+      if (property === 'get') {
+        return (key) => {
+          reads.push(key);
+          if (!allowedKeys.has(key)) return reject('store-read', key);
+          return values[key];
+        };
+      }
+      if (typeof property === 'string') {
+        return (...args) => reject('store-mutation', `${property}:${String(args[0] ?? '')}`);
+      }
+      return undefined;
+    },
+    set(_target, property) {
+      return reject('store-property-set', String(property));
+    },
+    defineProperty(_target, property) {
+      return reject('store-property-define', String(property));
+    },
+    deleteProperty(_target, property) {
+      return reject('store-property-delete', String(property));
+    }
+  });
+
+  return { store, reads, violations };
+}
+
+function createFsAudit({ readRoots, readFiles, userDataDir }) {
+  const canonicalRoots = readRoots.map((target) => path.resolve(target));
+  const canonicalFiles = new Set(readFiles.map((target) => path.resolve(target)));
+  const canonicalUserData = path.resolve(userDataDir);
+  const reads = [];
+  const violations = [];
+  const descriptors = new Map();
+  const tempLifecycles = new Map();
+
+  function reject(kind, target) {
+    violations.push({ kind, target: String(target) });
+    throw new Error(`diagnostics safety audit rejected ${kind}: ${String(target)}`);
+  }
+
+  function canonical(target, kind) {
+    if (typeof target !== 'string' || !target) return reject(kind, '<invalid-path>');
+    return path.resolve(target);
+  }
+
+  function isWithin(root, target) {
+    const relative = path.relative(root, target);
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+  }
+
+  function allowRead(method, target) {
+    const resolved = canonical(target, 'fs-read');
+    if (!canonicalFiles.has(resolved) && !canonicalRoots.some((root) => isWithin(root, resolved))) {
+      return reject('fs-read-outside-fixtures', resolved);
+    }
+    reads.push({ method, target: resolved });
+    return resolved;
+  }
+
+  function tempForDescriptor(fd, method) {
+    const descriptor = descriptors.get(fd);
+    if (!descriptor || descriptor.kind !== 'temp') return reject(`fs-${method}-unapproved-fd`, fd);
+    return descriptor.lifecycle;
+  }
+
+  const approved = {
+    constants: fs.constants,
+    accessSync(target, mode) {
+      return fs.accessSync(allowRead('accessSync', target), mode);
+    },
+    readFileSync(target, ...args) {
+      return fs.readFileSync(allowRead('readFileSync', target), ...args);
+    },
+    readdirSync(target, ...args) {
+      return fs.readdirSync(allowRead('readdirSync', target), ...args);
+    },
+    lstatSync(target, ...args) {
+      return fs.lstatSync(allowRead('lstatSync', target), ...args);
+    },
+    statSync(target, ...args) {
+      return fs.statSync(allowRead('statSync', target), ...args);
+    },
+    openSync(target, flags, mode) {
+      const resolved = canonical(target, 'fs-open');
+      if (flags === 'r') {
+        allowRead('openSync:r', resolved);
+        const fd = fs.openSync(resolved, flags, mode);
+        descriptors.set(fd, { kind: 'read', target: resolved });
+        return fd;
+      }
+      const name = path.basename(resolved);
+      if (flags !== 'wx'
+        || path.dirname(resolved) !== canonicalUserData
+        || !/^\.diagnostics-[0-9a-f]{24}\.tmp$/.test(name)
+        || tempLifecycles.has(resolved)) {
+        return reject('fs-open-mutation', `${resolved}:${flags}`);
+      }
+      const lifecycle = { target: resolved, events: ['open'], removed: false };
+      const fd = fs.openSync(resolved, flags, mode);
+      tempLifecycles.set(resolved, lifecycle);
+      descriptors.set(fd, { kind: 'temp', lifecycle });
+      return fd;
+    },
+    readSync(fd, ...args) {
+      const descriptor = descriptors.get(fd);
+      if (!descriptor || descriptor.kind !== 'read') return reject('fs-read-unapproved-fd', fd);
+      return fs.readSync(fd, ...args);
+    },
+    writeSync(fd, value, ...args) {
+      const lifecycle = tempForDescriptor(fd, 'write');
+      if (lifecycle.events.join(',') !== 'open'
+        || args.length !== 0
+        || !Buffer.isBuffer(value)
+        || !value.equals(Buffer.from('ok'))) {
+        return reject('fs-temp-write-lifecycle', lifecycle.target);
+      }
+      const written = fs.writeSync(fd, value);
+      lifecycle.events.push('write');
+      return written;
+    },
+    fsyncSync(fd) {
+      const lifecycle = tempForDescriptor(fd, 'fsync');
+      if (lifecycle.events.join(',') !== 'open,write') {
+        return reject('fs-temp-fsync-lifecycle', lifecycle.target);
+      }
+      const result = fs.fsyncSync(fd);
+      lifecycle.events.push('fsync');
+      return result;
+    },
+    closeSync(fd) {
+      const descriptor = descriptors.get(fd);
+      if (!descriptor) return reject('fs-close-unapproved-fd', fd);
+      if (descriptor.kind === 'read') {
+        const result = fs.closeSync(fd);
+        descriptors.delete(fd);
+        return result;
+      }
+      const { lifecycle } = descriptor;
+      if (lifecycle.events.join(',') !== 'open,write,fsync') {
+        return reject('fs-temp-close-lifecycle', lifecycle.target);
+      }
+      const result = fs.closeSync(fd);
+      descriptors.delete(fd);
+      lifecycle.events.push('close');
+      return result;
+    },
+    rmSync(target, options) {
+      const resolved = canonical(target, 'fs-remove');
+      const lifecycle = tempLifecycles.get(resolved);
+      if (!lifecycle
+        || lifecycle.removed
+        || lifecycle.events.join(',') !== 'open,write,fsync,close'
+        || !options
+        || options.force !== true
+        || Object.keys(options).some((key) => key !== 'force')) {
+        return reject('fs-remove-mutation', resolved);
+      }
+      const result = fs.rmSync(resolved, options);
+      lifecycle.events.push('remove');
+      lifecycle.removed = true;
+      return result;
+    }
+  };
+
+  const auditedFs = new Proxy(approved, {
+    get(target, property, receiver) {
+      if (Reflect.has(target, property)) return Reflect.get(target, property, receiver);
+      if (property === 'then') return undefined;
+      if (property === 'promises') {
+        return new Proxy({}, {
+          get(_promises, method) {
+            if (method === 'then') return undefined;
+            return (...args) => reject('fs-unapproved-method', `promises.${String(method)}:${String(args[0] ?? '')}`);
+          }
+        });
+      }
+      if (typeof property === 'string') {
+        return (...args) => reject('fs-unapproved-method', `${property}:${String(args[0] ?? '')}`);
+      }
+      return undefined;
+    }
+  });
+
+  return { fs: auditedFs, reads, violations, tempLifecycles };
+}
+
 function findDiagnosticTempFiles(userDataDir) {
   return fs.readdirSync(userDataDir).filter((name) => /^\.diagnostics-.*\.tmp$/.test(name));
 }
 
 function createRemoteBoundary() {
+  const calls = [];
+  const errors = [];
+  const blockers = new Set();
+  const overlapReleased = deferred();
+  let overlapEntries = 0;
+  let overlapDone = false;
   let nextBlock = null;
-  return {
+  let active = 0;
+  let peak = 0;
+  const idleWaiters = new Set();
+
+  async function invoke(call, result) {
+    calls.push(call);
+    active += 1;
+    peak = Math.max(peak, active);
+    try {
+      if (!overlapDone) {
+        overlapEntries += 1;
+        if (overlapEntries >= 3) {
+          overlapDone = true;
+          overlapReleased.resolve();
+        }
+        try {
+          await withTimeout(overlapReleased.promise, 5000, 'remote overlap barrier');
+        } catch (error) {
+          errors.push(error.message);
+          throw error;
+        }
+      }
+      if (nextBlock && !nextBlock.claimed) {
+        nextBlock.claimed = true;
+        nextBlock.started.resolve();
+        try {
+          await withTimeout(nextBlock.released.promise, 5000, 'blocked remote release');
+        } catch (error) {
+          errors.push(error.message);
+          throw error;
+        }
+      }
+      return result;
+    } finally {
+      active -= 1;
+      if (active === 0) {
+        for (const resolve of idleWaiters) resolve();
+        idleWaiters.clear();
+      }
+    }
+  }
+
+  const boundary = {
+    calls,
+    errors,
+    active: () => active,
+    peak: () => peak,
+    overlapEntries: () => overlapEntries,
+    waitForIdle() {
+      if (active === 0) return Promise.resolve();
+      return new Promise((resolve) => idleWaiters.add(resolve));
+    },
     blockNext() {
       const started = deferred();
       const released = deferred();
       nextBlock = { started, released, claimed: false };
-      return {
+      const blocker = {
         started: started.promise,
-        release: () => released.resolve()
+        release() { released.resolve(); }
       };
+      blockers.add(blocker);
+      return blocker;
     },
-    async httpGet() {
-      if (nextBlock && !nextBlock.claimed) {
-        nextBlock.claimed = true;
-        nextBlock.started.resolve();
-        await nextBlock.released.promise;
-      }
-      return { ok: true };
+    releaseAll() {
+      overlapDone = true;
+      overlapReleased.resolve();
+      for (const blocker of blockers) blocker.release();
+    },
+    async httpGet(url, headers = {}, proxyInput, timeoutOptions) {
+      const authorization = Object.prototype.hasOwnProperty.call(headers, 'Authorization');
+      const type = authorization
+        ? url.includes('chatgpt.com') ? 'provider.codex-quota' : 'provider.kimi-quota'
+        : 'network.probe';
+      return invoke({ type, url, headers: Object.assign({}, headers), proxyInput, timeoutOptions }, { ok: true });
+    },
+    async fetchBalance(key, options) {
+      return invoke({
+        type: 'provider.deepseek-api-key',
+        url: 'https://api.deepseek.com/user/balance',
+        key,
+        options
+      }, { available: true });
     }
   };
+  boundary.UsageFetcher = class UsageFetcher {
+    async fetchUsageAmount(token, month, year, options) {
+      return invoke({
+        type: 'provider.deepseek-session',
+        url: 'https://platform.deepseek.com/usage',
+        token,
+        month,
+        year,
+        options
+      }, { aggregate: { totalTokens: 1 } });
+    }
+  };
+  return boundary;
 }
 
 function createRendererWindow(progressEvents) {
@@ -117,12 +414,20 @@ function createRendererWindow(progressEvents) {
   return {
     webContents,
     close() { closed = true; },
+    dispose() {
+      closed = true;
+      for (const waiter of waiters) {
+        clearTimeout(waiter.timer);
+        waiter.reject(new Error('diagnostics renderer disposed'));
+      }
+      waiters.clear();
+    },
     sendsAfterClose: () => sendsAfterClose,
     waitFor(predicate) {
       const existing = progressEvents.find(predicate);
       if (existing) return Promise.resolve(existing);
       return new Promise((resolve, reject) => {
-        const waiter = { predicate, resolve, timer: null };
+        const waiter = { predicate, resolve, reject, timer: null };
         waiter.timer = setTimeout(() => {
           waiters.delete(waiter);
           reject(new Error('timed out waiting for diagnostics progress'));
@@ -180,12 +485,49 @@ function terminalResultsForRun(events, runId) {
   return EXPECTED_CHECK_IDS.map((id) => byId.get(id)).filter(Boolean);
 }
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function assertSensitiveTextAbsent(text, forbidden, label) {
+  for (const entry of forbidden) {
+    assert.equal(text.includes(entry.value), false, `${label} leaked ${entry.name}`);
+  }
 }
+
+test('diagnostics safety oracles reject adversarial side effects and fixture-root escapes before touching disk', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'diagnostics-oracle-'));
+  try {
+    const userDataDir = path.join(root, 'user-data');
+    fs.mkdirSync(userDataDir);
+    const storeAudit = createStoreAudit({ 'data.historyDays': 7 });
+    const fsAudit = createFsAudit({ readRoots: [root], readFiles: [], userDataDir });
+
+    assert.throws(() => storeAudit.store.set('providers.codex.cursor', 'advanced'), /store-mutation/);
+    assert.throws(() => storeAudit.store.rotateCredentials('secret'), /store-mutation/);
+    assert.throws(() => storeAudit.store.get('providers.codex.migration'), /store-read/);
+    assert.throws(() => { storeAudit.store.cursor = 'advanced'; }, /store-property-set/);
+    assert.throws(() => { delete storeAudit.store.cursor; }, /store-property-delete/);
+    assert.throws(() => fsAudit.fs.writeFileSync(path.join(root, 'rewrite'), 'bytes'), /fs-unapproved-method/);
+    assert.throws(() => fsAudit.fs.renameSync(path.join(root, 'from'), path.join(root, 'to')), /fs-unapproved-method/);
+    assert.throws(() => fsAudit.fs.promises.writeFile(path.join(root, 'async-rewrite'), 'bytes'), /fs-unapproved-method/);
+    assert.throws(() => fsAudit.fs.openSync(path.join(userDataDir, 'not-diagnostic.tmp'), 'wx'), /fs-open-mutation/);
+    assert.throws(() => fsAudit.fs.readFileSync(path.join(os.homedir(), '.codex', 'auth.json')), /fs-read-outside-fixtures/);
+    assert.throws(() => assertSensitiveTextAbsent(
+      `safe-prefix ${root} safe-suffix`,
+      [{ name: 'temporary-root', value: root }],
+      'adversarial output'
+    ), /temporary-root/);
+    assert.equal(storeAudit.violations.length, 5);
+    assert.equal(fsAudit.violations.length, 5);
+    assert.deepEqual(fs.readdirSync(userDataDir), []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('assembled diagnostics preserves private state, cleans temporary files, and stops stale closed-window sends', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'diagnostics-integration-'));
+  let blockedRemote = null;
+  let diagnostics = null;
+  let remote = null;
+  let rendererWindow = null;
   try {
     const nowMs = 2_000_000_000_000;
     const userDataDir = path.join(root, 'user-data');
@@ -194,6 +536,8 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
     const kimiSessionsRoot = path.join(root, 'kimi-sessions');
     const codexAuthPath = path.join(root, 'codex-auth-fixture.json');
     const kimiCredPath = path.join(root, 'kimi-credential-fixture.json');
+    const codexSessionPath = path.join(codexSessionsRoot, 'run', 'rollout-private-session-fixture-98aa.jsonl');
+    const kimiSessionPath = path.join(kimiSessionsRoot, 'private-session-fixture-bdc1', 'wire.jsonl');
     const sentinels = {
       deepseekApiKey: 'deepseek-secret-fixture-4f91',
       deepseekSession: 'deepseek-session-secret-fixture-31c2',
@@ -205,13 +549,14 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
       codexLog: 'codex-log-secret-fixture-98aa',
       kimiLog: 'kimi-log-secret-fixture-bdc1',
       gpu: 'gpu-driver-secret-fixture-572e',
-      scheduler: 'scheduler-error-secret-fixture-28d4'
+      scheduler: 'scheduler-error-secret-fixture-28d4',
+      stack: 'DIAGNOSTICS_STACK_SENTINEL_741c'
     };
 
     fs.mkdirSync(userDataDir);
     fs.mkdirSync(buildDir);
     fs.mkdirSync(path.join(codexSessionsRoot, 'run'), { recursive: true });
-    fs.mkdirSync(path.join(kimiSessionsRoot, 'run'), { recursive: true });
+    fs.mkdirSync(path.dirname(kimiSessionPath), { recursive: true });
     const buildPaths = {
       mainRenderer: path.join(buildDir, 'renderer.html'),
       preload: path.join(buildDir, 'preload.js'),
@@ -232,12 +577,12 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
       refresh_token: sentinels.kimiRefresh,
       expires_at: nowMs / 1000 + 3600
     }));
-    fs.writeFileSync(path.join(codexSessionsRoot, 'run', 'rollout-fixture.jsonl'), JSON.stringify({
+    fs.writeFileSync(codexSessionPath, JSON.stringify({
       type: 'event_msg',
       private: sentinels.codexLog,
       payload: { type: 'token_count', info: { last_token_usage: { input_tokens: 2, total_tokens: 3 } } }
     }) + '\n');
-    fs.writeFileSync(path.join(kimiSessionsRoot, 'run', 'wire-fixture.jsonl'), JSON.stringify({
+    fs.writeFileSync(kimiSessionPath, JSON.stringify({
       type: 'usage.record',
       private: sentinels.kimiLog,
       usage: { inputOther: 1, inputCacheRead: 2, output: 3 }
@@ -245,44 +590,38 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
 
     const codexBefore = fs.readFileSync(codexAuthPath);
     const kimiBefore = fs.readFileSync(kimiCredPath);
-    const storeMutations = [];
     const storeValues = {
       'data.historyDays': 7,
       'providers.proxyUrl': '',
       'providers.deepseek.apiKey': sentinels.deepseekApiKey,
       'providers.deepseek.sessionToken': sentinels.deepseekSession
     };
-    const store = {
-      get: (key) => storeValues[key],
-      set: (...args) => storeMutations.push(['set', ...args]),
-      delete: (...args) => storeMutations.push(['delete', ...args]),
-      clear: (...args) => storeMutations.push(['clear', ...args])
-    };
-    const exclusiveUserDataWrites = [];
-    const storageFs = Object.create(fs);
-    storageFs.openSync = (target, flags, mode) => {
-      if (path.dirname(target) === userDataDir && flags === 'wx') exclusiveUserDataWrites.push(target);
-      return fs.openSync(target, flags, mode);
-    };
-    const remote = createRemoteBoundary();
+    const storeAudit = createStoreAudit(storeValues);
+    const store = storeAudit.store;
+    const fsAudit = createFsAudit({
+      readRoots: [buildDir, userDataDir, codexSessionsRoot, kimiSessionsRoot],
+      readFiles: [codexAuthPath, kimiCredPath],
+      userDataDir
+    });
+    remote = createRemoteBoundary();
     const windowsCalls = [];
     const progressEvents = [];
-    const rendererWindow = createRendererWindow(progressEvents);
+    rendererWindow = createRendererWindow(progressEvents);
     const copiedReports = [];
     const runIds = ['assembled-full-run', 'assembled-stale-run', 'assembled-replacement-run'];
     let nextRunId = 0;
 
-    const diagnostics = createDiagnostics({
+    diagnostics = createDiagnostics({
       runtime: {
         versions: { app: '1.0.0', electron: '40.0.0', node: '22.0.0', chromium: '140.0.0' },
         platform: 'win32',
         arch: 'x64',
         release: '10.0.19045',
-        buildPaths: Object.assign({ fs }, buildPaths),
+        buildPaths: Object.assign({ fs: fsAudit.fs }, buildPaths),
         getWindows: () => ({ main: rendererWindow, settings: null, login: null, session: null })
       },
       storage: {
-        fs: storageFs,
+        fs: fsAudit.fs,
         crypto,
         path,
         userDataDir,
@@ -293,7 +632,7 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
       windows: createWindowsBoundary(windowsCalls, sentinels.gpu),
       network: { store, httpGet: remote.httpGet },
       providers: {
-        fs,
+        fs: fsAudit.fs,
         store,
         now: () => nowMs,
         tokenExpiryMs: () => nowMs + 3600_000,
@@ -301,17 +640,17 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
         codexSessionsRoot,
         kimiCredPath,
         kimiSessionsRoot,
-        fetchBalance: async () => ({ available: true }),
-        UsageFetcher: class UsageFetcher {
-          async fetchUsageAmount() { return { aggregate: { totalTokens: 1 } }; }
-        },
+        fetchBalance: remote.fetchBalance,
+        UsageFetcher: remote.UsageFetcher,
         httpGet: remote.httpGet
       },
       scheduler: {
         getSnapshot: () => ['deepseek', 'codex', 'kimi'].map((id) => ({
           id,
           authStatus: 'ok',
-          lastError: id === 'deepseek' ? `HTTP 503 ${sentinels.scheduler}` : null,
+          lastError: id === 'deepseek'
+            ? `HTTP 503 ${sentinels.scheduler}\nError: ${sentinels.stack}\n    at fixture-stack-frame (${root}\\stack-source.js:17:9)`
+            : null,
           lastErrorChannel: id === 'deepseek' ? 'usage' : null,
           lastFailedAt: id === 'deepseek' ? nowMs - 1000 : null,
           lastFetchedAt: nowMs,
@@ -347,7 +686,7 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
     ));
     const fullRun = diagnostics.start(rendererWindow.webContents);
     assert.equal(fullRun.runId, runIds[0]);
-    await fullCompletion;
+    await withTimeout(fullCompletion, 5000, 'full diagnostics completion');
 
     const results = terminalResultsForRun(progressEvents, fullRun.runId);
     assert.equal(results.length, EXPECTED_CHECK_IDS.length);
@@ -355,26 +694,102 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
     assert.equal(results.some((item) => item.status === 'fail'), true);
     assert.equal(results.filter((item) => item.status === 'fail').every((item) => item.guideId), true);
     assert.equal(results.find((item) => item.id === 'runtime.self-check').status, 'pass');
-    assert.deepEqual(storeMutations, []);
+    assert.deepEqual(storeAudit.violations, []);
+    assert.deepEqual(fsAudit.violations, []);
     assert.equal(fs.readFileSync(codexAuthPath).equals(codexBefore), true);
     assert.equal(fs.readFileSync(kimiCredPath).equals(kimiBefore), true);
     assert.equal(findDiagnosticTempFiles(userDataDir).length, 0);
 
-    const copied = await diagnostics.copy(rendererWindow.webContents, fullRun.runId);
+    const copied = await withTimeout(
+      diagnostics.copy(rendererWindow.webContents, fullRun.runId),
+      2000,
+      'diagnostics report copy'
+    );
     assert.equal(copied.ok, true);
     assert.equal(copiedReports.length, 1);
-    const secretPattern = new RegExp(Object.values(sentinels).map(escapeRegExp).join('|'));
-    assert.doesNotMatch(JSON.stringify(progressEvents), secretPattern);
-    assert.doesNotMatch(copiedReports[0], secretPattern);
+    const forbiddenOutput = [
+      ...Object.entries(sentinels).map(([name, value]) => ({ name: `sentinel:${name}`, value })),
+      { name: 'temporary-root', value: root },
+      { name: 'temporary-root-forward-slashes', value: root.replace(/\\/g, '/') },
+      { name: 'codex-credential-path', value: codexAuthPath },
+      { name: 'kimi-credential-path', value: kimiCredPath },
+      { name: 'codex-session-path', value: codexSessionPath },
+      { name: 'kimi-session-path', value: kimiSessionPath },
+      { name: 'codex-session-filename', value: path.basename(codexSessionPath) },
+      { name: 'kimi-session-filename', value: path.basename(kimiSessionPath) },
+      { name: 'credential-field:access_token', value: 'access_token' },
+      { name: 'credential-field:refresh_token', value: 'refresh_token' },
+      { name: 'credential-field:account_id', value: 'account_id' },
+      { name: 'authorization-header', value: 'Authorization' },
+      { name: 'bearer-header', value: 'Bearer ' },
+      { name: 'stack-frame-text', value: 'fixture-stack-frame' }
+    ];
+    assertSensitiveTextAbsent(JSON.stringify(progressEvents), forbiddenOutput, 'progress events');
+    assertSensitiveTextAbsent(copiedReports[0], forbiddenOutput, 'copied report');
 
-    const blockedRemote = remote.blockNext();
+    const fullRemoteCalls = remote.calls.slice();
+    assert.equal(remote.overlapEntries(), 3);
+    assert.equal(remote.peak() >= 3, true, 'remote overlap oracle must observe at least three active calls');
+    assert.equal(remote.peak() <= 3, true, 'assembled runner must cap remote concurrency at three');
+    assert.equal(remote.active(), 0);
+    assert.deepEqual(remote.errors, []);
+    const networkCalls = fullRemoteCalls.filter((call) => call.type === 'network.probe');
+    assert.deepEqual(new Set(networkCalls.map((call) => call.url)), new Set([
+      'https://api.deepseek.com/user/balance',
+      'https://platform.deepseek.com/usage',
+      'https://chatgpt.com/backend-api/wham/usage',
+      'https://api.kimi.com/coding/v1/usages'
+    ]));
+    for (const call of networkCalls) {
+      assert.deepEqual(call.headers, {});
+      assert.equal(call.proxyInput, null);
+      assert.deepEqual(call.timeoutOptions, {
+        connectTimeoutMs: 5000,
+        connectResponseTimeoutMs: 5000,
+        tlsHandshakeTimeoutMs: 5000,
+        requestTimeoutMs: 8000
+      });
+    }
+    const deepseekKeyCall = fullRemoteCalls.find((call) => call.type === 'provider.deepseek-api-key');
+    assert.equal(deepseekKeyCall.url, 'https://api.deepseek.com/user/balance');
+    assert.equal(deepseekKeyCall.key, sentinels.deepseekApiKey);
+    assert.equal(deepseekKeyCall.options.httpGet, remote.httpGet);
+    assert.equal(deepseekKeyCall.options.proxyUrl, null);
+    const deepseekSessionCall = fullRemoteCalls.find((call) => call.type === 'provider.deepseek-session');
+    assert.equal(deepseekSessionCall.url, 'https://platform.deepseek.com/usage');
+    assert.equal(deepseekSessionCall.token, sentinels.deepseekSession);
+    assert.equal(deepseekSessionCall.month, 5);
+    assert.equal(deepseekSessionCall.year, 2033);
+    assert.equal(deepseekSessionCall.options.httpGet, remote.httpGet);
+    assert.equal(deepseekSessionCall.options.proxyUrl, null);
+    const codexQuotaCall = fullRemoteCalls.find((call) => call.type === 'provider.codex-quota');
+    assert.equal(codexQuotaCall.url, 'https://chatgpt.com/backend-api/wham/usage');
+    assert.deepEqual(codexQuotaCall.headers, {
+      Authorization: `Bearer ${sentinels.codexAccess}`,
+      'ChatGPT-Account-Id': sentinels.codexAccount,
+      'User-Agent': 'codex_cli_rs/0.46.0'
+    });
+    const kimiQuotaCall = fullRemoteCalls.find((call) => call.type === 'provider.kimi-quota');
+    assert.equal(kimiQuotaCall.url, 'https://api.kimi.com/coding/v1/usages');
+    assert.deepEqual(kimiQuotaCall.headers, {
+      Authorization: `Bearer ${sentinels.kimiAccess}`,
+      'User-Agent': 'kimi_cli'
+    });
+    assert.equal(fullRemoteCalls.length, 8);
+    assert.equal(JSON.stringify(fullRemoteCalls).includes('Authorization'), true);
+
+    blockedRemote = remote.blockNext();
     const staleRun = diagnostics.start(rendererWindow.webContents);
     assert.equal(staleRun.runId, runIds[1]);
-    await blockedRemote.started;
+    await withTimeout(blockedRemote.started, 5000, 'blocked remote start');
     const staleEventsAtReplacement = progressEvents.filter((event) => event.runId === staleRun.runId).length;
     const replacementRun = diagnostics.start(rendererWindow.webContents);
     assert.equal(replacementRun.runId, runIds[2]);
-    await rendererWindow.waitFor((event) => event.runId === replacementRun.runId && event.check.status === 'running');
+    await withTimeout(
+      rendererWindow.waitFor((event) => event.runId === replacementRun.runId && event.check.status === 'running'),
+      5000,
+      'replacement run progress'
+    );
     assert.equal(
       progressEvents.filter((event) => event.runId === staleRun.runId).length,
       staleEventsAtReplacement,
@@ -384,23 +799,44 @@ test('assembled diagnostics preserves private state, cleans temporary files, and
     rendererWindow.close();
     const eventsAtClose = progressEvents.length;
     blockedRemote.release();
-    for (let index = 0; index < 5; index += 1) await new Promise((resolve) => setImmediate(resolve));
+    await withTimeout(remote.waitForIdle(), 2000, 'post-close remote idle');
+    await withTimeout(new Promise((resolve) => setImmediate(resolve)), 1000, 'post-close event drain');
     assert.equal(progressEvents.length, eventsAtClose);
     assert.equal(progressEvents.filter((event) => event.runId === staleRun.runId).length, staleEventsAtReplacement);
     assert.equal(rendererWindow.sendsAfterClose(), 0);
-    assert.doesNotMatch(JSON.stringify(progressEvents), secretPattern);
-    diagnostics.dispose(rendererWindow.webContents.id);
+    assertSensitiveTextAbsent(JSON.stringify(progressEvents), forbiddenOutput, 'all progress events');
+    assert.equal(remote.active(), 0);
+    assert.deepEqual(remote.errors, []);
 
-    assert.deepEqual(storeMutations, []);
+    assert.deepEqual(storeAudit.violations, []);
+    assert.deepEqual(fsAudit.violations, []);
     assert.equal(fs.readFileSync(codexAuthPath).equals(codexBefore), true);
     assert.equal(fs.readFileSync(kimiCredPath).equals(kimiBefore), true);
     assert.equal(findDiagnosticTempFiles(userDataDir).length, 0);
-    assert.ok(exclusiveUserDataWrites.length >= 2);
-    assert.equal(exclusiveUserDataWrites.every((target) => (
-      path.dirname(target) === userDataDir && /^\.diagnostics-.*\.tmp$/.test(path.basename(target))
+    assert.deepEqual(
+      new Set(fsAudit.reads.filter((entry) => entry.method === 'readFileSync')
+        .map((entry) => entry.target)
+        .filter((target) => target === codexAuthPath || target === kimiCredPath)),
+      new Set([codexAuthPath, kimiCredPath])
+    );
+    assert.deepEqual(
+      new Set(fsAudit.reads.filter((entry) => entry.method === 'openSync:r').map((entry) => entry.target)),
+      new Set([codexSessionPath, kimiSessionPath])
+    );
+    assert.ok(fsAudit.tempLifecycles.size >= 2);
+    assert.equal(Array.from(fsAudit.tempLifecycles.values()).every((lifecycle) => (
+      lifecycle.removed && lifecycle.events.join(',') === 'open,write,fsync,close,remove'
     )), true);
     assert.equal(windowsCalls.filter((call) => call[0] === 'destroy').length, 1);
   } finally {
-    fs.rmSync(root, { recursive: true, force: true });
+    try {
+      if (blockedRemote) blockedRemote.release();
+      if (remote) remote.releaseAll();
+      if (diagnostics && rendererWindow) diagnostics.dispose(rendererWindow.webContents.id);
+      if (rendererWindow) rendererWindow.dispose();
+      if (remote) await withTimeout(remote.waitForIdle(), 2000, 'remote cleanup');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   }
 });
