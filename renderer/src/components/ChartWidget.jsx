@@ -4,6 +4,7 @@ import React, { useRef } from 'react';
 import * as echarts from 'echarts';
 import useECharts from '../hooks/useECharts.js';
 import { getTheme, getBarTheme } from '../lib/chartTheme.js';
+import { echartsWindowPosition as windowClampedPosition } from '../lib/floating-layer.js';
 
 function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
@@ -163,22 +164,8 @@ export function formatToken(n) {
   return n.toString();
 }
 
-// 悬浮层挂 body,不受模块 overflow 裁切;位置回调把浮层钳制在窗口内,被遮挡时向窗口中间靠拢。
-// pos 是图表容器坐标:换算成页面坐标钳制后再减回容器偏移(echarts 挂 body 时会再做一次容器→页面换算)。
-export function windowClampedPosition(dom) {
-  return (pos, params, tipEl, rect, size) => {
-    const chartRect = dom ? dom.getBoundingClientRect() : { left: 0, top: 0 };
-    const cw = size.contentSize[0];
-    const ch = size.contentSize[1];
-    let px = chartRect.left + pos[0] + 14;
-    let py = chartRect.top + pos[1] + 14;
-    if (px + cw > window.innerWidth - 8) px = chartRect.left + pos[0] - cw - 14;
-    if (py + ch > window.innerHeight - 8) py = chartRect.top + pos[1] - ch - 14;
-    px = Math.max(8, Math.min(window.innerWidth - cw - 8, px));
-    py = Math.max(8, Math.min(window.innerHeight - ch - 8, py));
-    return [px - chartRect.left, py - chartRect.top];
-  };
-}
+// 悬浮层定位原语已收敛到 lib/floating-layer.js;保留 re-export 兼容 ProviderBar 的 import。
+export { windowClampedPosition };
 
 function buildDailyOption(dom, dailyData) {
   const isDark = document.body.classList.contains('dark');

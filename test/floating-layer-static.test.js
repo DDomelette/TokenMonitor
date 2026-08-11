@@ -17,3 +17,10 @@ test('token speed card passes its chart dom for position clamping', () => {
   const source = read('renderer/src/components/TokenSpeedCard.jsx');
   assert.match(source, /dom: chartRef\.current/);
 });
+
+test('ChartWidget re-exports the shared windowClampedPosition from floating-layer', () => {
+  const source = read('renderer/src/components/ChartWidget.jsx');
+  assert.match(source, /import \{ echartsWindowPosition as windowClampedPosition \} from '\.\.\/lib\/floating-layer\.js'/);
+  assert.match(source, /export \{ windowClampedPosition \}/);
+  assert.doesNotMatch(source, /export function windowClampedPosition/);
+});
