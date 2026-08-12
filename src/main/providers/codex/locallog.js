@@ -2,7 +2,7 @@
 const os = require('os');
 const path = require('path');
 const {
-  scanFiles,
+  scanFileBatch,
   rollupDaily,
   normalizeTimestampMs,
   incrementDiagnostic
@@ -47,7 +47,8 @@ function parseRolloutLine(line, diagnostics, nowMs) {
   }
 }
 
-// 异步增量扫描本机 codex 日志,返回新增 UsageRecord[];并按日聚合增量合并进 store 键 'usageDaily'。
+// 异步增量扫描本机 codex 日志,返回 ScanBatch({ records, complete, bytesRead });
+// 并按日聚合增量合并进 store 键 'usageDaily'。
 async function readLocalLog(ctx, opts) {
   const store = ctx && ctx.store;
   const diagnostics = opts && opts.diagnostics;
@@ -59,7 +60,7 @@ async function readLocalLog(ctx, opts) {
     ? parsedNowMs
     : Date.now();
   const root = (store && store.get('providers.codex.localLogRoot')) || DEFAULT_ROOT();
-  const records = await scanFiles({
+  const batch = await scanFileBatch({
     root: root,
     match: MATCH,
     cursorStore: store,
@@ -72,6 +73,7 @@ async function readLocalLog(ctx, opts) {
     maxBytesPerScan: opts && opts.maxBytesPerScan,
     yieldToLoop: opts && opts.yieldToLoop
   });
+  const records = batch.records;
   if (records.length && store) {
     // retainAll:全量重扫(历史同步)时绕过保留窗口过滤,否则旧日聚合在写入前即被丢弃
     const rolled = rollupDaily(records, diagnostics, nowMs);
@@ -91,7 +93,7 @@ async function readLocalLog(ctx, opts) {
     });
     store.set('usageDaily', usageDaily);
   }
-  return records;
+  return batch;
 }
 
 module.exports = { parseRolloutLine, readLocalLog, DEFAULT_ROOT, MATCH };

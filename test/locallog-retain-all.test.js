@@ -43,7 +43,9 @@ test('codex readLocalLog 默认按保留窗口过滤旧日聚合', async () => {
   const dir = makeTempDir();
   writeCodexFile(dir);
   const store = makeStore({ 'providers.codex.localLogRoot': dir, 'data.historyDays': 1 });
-  await readCodexLog({ store }, { nowMs: NOW_MS });
+  const batch = await readCodexLog({ store }, { nowMs: NOW_MS });
+  assert.equal(batch.records.length, 1);
+  assert.equal(batch.complete, true);
   const usageDaily = store.data.usageDaily || {};
   assert.equal(usageDaily['codex:' + OLD_DAY], undefined);
 });
@@ -52,7 +54,9 @@ test('codex readLocalLog retainAll 保留窗口外旧日聚合(全量重扫用)'
   const dir = makeTempDir();
   writeCodexFile(dir);
   const store = makeStore({ 'providers.codex.localLogRoot': dir, 'data.historyDays': 1 });
-  await readCodexLog({ store }, { nowMs: NOW_MS, retainAll: true });
+  const batch = await readCodexLog({ store }, { nowMs: NOW_MS, retainAll: true });
+  assert.equal(batch.records.length, 1);
+  assert.equal(batch.complete, true);
   const usageDaily = store.data.usageDaily || {};
   assert.equal((usageDaily['codex:' + OLD_DAY] || {}).total, 12);
 });
@@ -61,7 +65,9 @@ test('kimi readLocalLog 默认按保留窗口过滤旧日聚合', async () => {
   const dir = makeTempDir();
   writeKimiFile(dir);
   const store = makeStore({ 'providers.kimi.localLogRoot': dir, 'data.historyDays': 1 });
-  await readKimiLog({ store }, { nowMs: NOW_MS });
+  const batch = await readKimiLog({ store }, { nowMs: NOW_MS });
+  assert.equal(batch.records.length, 1);
+  assert.equal(batch.complete, true);
   const usageDaily = store.data.usageDaily || {};
   assert.equal(usageDaily['kimi:' + OLD_DAY], undefined);
 });
@@ -70,7 +76,9 @@ test('kimi readLocalLog retainAll 保留窗口外旧日聚合(全量重扫用)',
   const dir = makeTempDir();
   writeKimiFile(dir);
   const store = makeStore({ 'providers.kimi.localLogRoot': dir, 'data.historyDays': 1 });
-  await readKimiLog({ store }, { nowMs: NOW_MS, retainAll: true });
+  const batch = await readKimiLog({ store }, { nowMs: NOW_MS, retainAll: true });
+  assert.equal(batch.records.length, 1);
+  assert.equal(batch.complete, true);
   const usageDaily = store.data.usageDaily || {};
   assert.equal((usageDaily['kimi:' + OLD_DAY] || {}).total, 6);
 });

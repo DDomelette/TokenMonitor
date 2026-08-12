@@ -138,6 +138,7 @@ test('scheduler awaits asynchronous local-log providers before finishing the cha
     async readLocalLog() {
       started = true;
       await blocked;
+      return { records: [], complete: true, bytesRead: 0 };
     }
   };
   const registry = {

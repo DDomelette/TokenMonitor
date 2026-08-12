@@ -253,7 +253,8 @@ function startScheduler({
   async function pollLocalLog(provider) {
     try {
       // Provider 先把增量合并进 usageDaily,随后按真实新增记录决定是否刷新界面。
-      const records = await provider.readLocalLog(ctxFor(provider));
+      const batch = await provider.readLocalLog(ctxFor(provider));
+      const records = Array.isArray(batch) ? batch : batch.records;
       const changed = Array.isArray(records) && records.length > 0;
       const recovered = recordChannelRecovery(provider, 'localLog', false);
       if (changed || recovered) touch(provider.id);

@@ -76,7 +76,8 @@ test('reset preserves Codex aggregate and its compatible scan cursor as one data
   });
 
   const firstRecords = await readLocalLog({ store });
-  assert.equal(firstRecords.length, 1);
+  assert.equal(firstRecords.records.length, 1);
+  assert.equal(firstRecords.complete, true);
   assert.equal(totalForProvider(store, 'codex'), 12);
   const firstCursor = structuredClone(store.get('localLogCursors.codex'));
   assert.ok(firstCursor && Object.keys(firstCursor).length === 1);
@@ -92,7 +93,8 @@ test('reset preserves Codex aggregate and its compatible scan cursor as one data
 
     store.set('providers.codex.localLogRoot', root);
     const repeatedRecords = await readLocalLog({ store });
-    assert.equal(repeatedRecords.length, 0);
+    assert.equal(repeatedRecords.records.length, 0);
+    assert.equal(repeatedRecords.complete, true);
     assert.equal(totalForProvider(store, 'codex'), 12);
   }
 });

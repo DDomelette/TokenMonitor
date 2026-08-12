@@ -160,8 +160,9 @@ test('Kimi scanning counts invalid timestamp lines once and advances the cursor'
       { store },
       { diagnostics, nowMs }
     );
-    assert.equal(first.length, 1);
-    assert.equal(first[0].ts, nowMs);
+    assert.equal(first.records.length, 1);
+    assert.equal(first.records[0].ts, nowMs);
+    assert.equal(first.complete, true);
     assert.equal(diagnostics.invalidTimestamp, 5);
     assert.deepEqual(store.get('usageDaily')[`kimi:${localDayStr(nowMs)}`], {
       input: 10,
@@ -174,7 +175,8 @@ test('Kimi scanning counts invalid timestamp lines once and advances the cursor'
       { store },
       { diagnostics, nowMs }
     );
-    assert.equal(second.length, 0);
+    assert.equal(second.records.length, 0);
+    assert.equal(second.complete, true);
     assert.equal(diagnostics.invalidTimestamp, 5);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

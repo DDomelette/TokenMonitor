@@ -87,7 +87,9 @@ async function walkFiles(root, match) {
 // 异步增量扫描:游标存 { path: { offset, mtimeMs } }。每次只分配固定块,并限制单轮总读取量。
 // 文件截断或轮换时从头重读;游标只提交到已完整解析(或明确跳过)的换行符之后。
 // 若预算在一行中间耗尽,为避免该行永久饥饿,只继续到该行的下一个换行符后停止。
-async function scanFiles({
+// 返回 ScanBatch:{ records, complete, bytesRead };complete=false 表示本轮未覆盖
+// 扫描开始时的文件快照(还有可读的完整字节),需要下一轮继续。
+async function scanFileBatch({
   root,
   match,
   cursorStore,
@@ -101,7 +103,9 @@ async function scanFiles({
   yieldToLoop
 }) {
   const records = [];
-  if (!root || !(await pathExists(root))) return records;
+  if (!root || !(await pathExists(root))) {
+    return { records, complete: true, bytesRead: 0 };
+  }
 
   const evaluationNowMs = evaluationTimeMs(nowMs);
   const readChunkBytes = positiveInteger(chunkBytes, DEFAULT_SCAN_CHUNK_BYTES);
@@ -109,10 +113,15 @@ async function scanFiles({
   const yieldBlock = typeof yieldToLoop === 'function' ? yieldToLoop : defaultYieldToLoop;
   const cursors = cursorStore.get(cursorKey) || {};
   const files = await walkFiles(root, match);
+  let complete = true;
+  let bytesRead = 0;
 
   try {
     for (const filePath of files) {
-      if (remainingBudget <= 0) break;
+      if (remainingBudget <= 0) {
+        complete = false;
+        break;
+      }
 
       const cursor = cursors[filePath] || { offset: 0, mtimeMs: 0 };
       let stat;
@@ -158,6 +167,7 @@ async function scanFiles({
 
           const chunk = buffer.subarray(0, result.bytesRead);
           readPosition += result.bytesRead;
+          bytesRead += result.bytesRead;
           remainingBudget = Math.max(0, remainingBudget - result.bytesRead);
           pending = pending.length
             ? Buffer.concat([pending, chunk])
@@ -193,6 +203,10 @@ async function scanFiles({
           }
           if (remainingBudget <= 0 && pending.length === 0) break;
         }
+
+        // 到达 EOF 后仍未提交的字节只能是缺少换行的尾行,不算未完成;
+        // 其余情况(预算耗尽仍剩可读字节)标记本轮未完成。
+        if (readPosition < stat.size) complete = false;
       } catch (error) {
         failure = error;
       } finally {
@@ -217,7 +231,12 @@ async function scanFiles({
     if (!(await pathExists(cursorPath))) delete cursors[cursorPath];
   }
   cursorStore.set(cursorKey, cursors);
-  return records;
+  return { records, complete, bytesRead };
+}
+
+// 兼容包装:现有单目录调用方在本任务期间仍取 records 数组。
+async function scanFiles(options) {
+  return (await scanFileBatch(options)).records;
 }
 
 function rollupDaily(records, diagnostics, nowMs) {
@@ -243,6 +262,7 @@ function rollupDaily(records, diagnostics, nowMs) {
 }
 
 module.exports = {
+  scanFileBatch,
   scanFiles,
   rollupDaily,
   localDayStr,

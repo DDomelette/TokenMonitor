@@ -187,14 +187,15 @@ test('readLocalLog merges incremental daily rollup into store usageDaily', async
     fs.writeFileSync(file, line1);
     const { readLocalLog } = require('../src/main/providers/codex/locallog');
     const first = await readLocalLog({ store });
-    assert.equal(first.length, 1);
+    assert.equal(first.records.length, 1);
+    assert.equal(first.complete, true);
     fs.appendFileSync(file, line2);
     const second = await readLocalLog({ store });
-    assert.equal(second.length, 1);
+    assert.equal(second.records.length, 1);
     const key = 'codex:' + day;
     const agg = store.get('usageDaily')[key];
     assert.deepEqual(agg, { input: 300, cached: 150, output: 30, total: 480 });
-    assert.equal((await readLocalLog({ store })).length, 0);
+    assert.equal((await readLocalLog({ store })).records.length, 0);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -225,7 +226,7 @@ test('kimi readLocalLog rebuilds stale totals with cached included exactly once'
     await readLocalLog({ store });
     assert.deepEqual(store.get('usageDaily')['kimi:' + day], { input: 100, cached: 50, output: 10, total: 160 });
     assert.deepEqual(store.get('usageDaily')['codex:' + day], { input: 1, cached: 0, output: 1, total: 2 });
-    assert.equal((await readLocalLog({ store })).length, 0);
+    assert.equal((await readLocalLog({ store })).records.length, 0);
     assert.deepEqual(store.get('usageDaily')['kimi:' + day], { input: 100, cached: 50, output: 10, total: 160 });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

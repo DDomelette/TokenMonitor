@@ -59,7 +59,8 @@ test('Codex local-log read snapshots one evaluation time for scan, rollup, and r
   try {
     fs.writeFileSync(file, line + '\n');
     const { result, reads } = await withCountedNow(() => codex.readLocalLog({ store }));
-    assert.equal(result.length, 1);
+    assert.equal(result.records.length, 1);
+    assert.equal(result.complete, true);
     assert.equal(reads, 1);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -89,7 +90,8 @@ test('Kimi local-log read snapshots one evaluation time for scan, rollup, and re
   try {
     fs.writeFileSync(file, line + '\n');
     const { result, reads } = await withCountedNow(() => kimi.readLocalLog({ store }));
-    assert.equal(result.length, 1);
+    assert.equal(result.records.length, 1);
+    assert.equal(result.complete, true);
     assert.equal(reads, 1);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

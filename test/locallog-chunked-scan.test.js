@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { scanFiles } = require('../src/main/core/locallog');
+const { scanFiles, scanFileBatch } = require('../src/main/core/locallog');
 const codex = require('../src/main/providers/codex/locallog');
 
 function makeTempDir() {
@@ -31,6 +31,17 @@ function fixtureLine(sequence, text = '汉字🙂') {
 
 async function scanFixture(dir, cursorStore, options) {
   return scanFiles(Object.assign({
+    root: dir,
+    match: /fixture-.*\.jsonl$/,
+    cursorStore,
+    cursorKey: 'cursor.fixture',
+    providerId: 'fixture',
+    parseLine: parseFixtureLine
+  }, options));
+}
+
+async function scanFixtureBatch(dir, cursorStore, options) {
+  return scanFileBatch(Object.assign({
     root: dir,
     match: /fixture-.*\.jsonl$/,
     cursorStore,
@@ -199,11 +210,81 @@ test('local-log providers expose asynchronous reads for the scheduler', async ()
 
     const pending = codex.readLocalLog({ store: cursorStore }, { nowMs: now });
     assert.equal(typeof pending.then, 'function');
-    const records = await pending;
-    assert.equal(records.length, 1);
+    const batch = await pending;
+    assert.equal(batch.records.length, 1);
+    assert.equal(batch.complete, true);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('scanFileBatch reports incomplete when the byte budget leaves readable bytes', async () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'fixture-batch.jsonl');
+  const cursorStore = makeCursorStore();
+
+  try {
+    fs.writeFileSync(file, Array.from({ length: 40 }, (_, index) => fixtureLine(index)).join(''));
+
+    const first = await scanFixtureBatch(dir, cursorStore, {
+      chunkBytes: 31,
+      maxBytesPerScan: 93
+    });
+
+    assert.ok(first.records.length > 0);
+    assert.equal(first.complete, false);
+    assert.ok(first.bytesRead >= 93);
+
+    let last = first;
+    while (!last.complete) {
+      last = await scanFixtureBatch(dir, cursorStore, {
+        chunkBytes: 31,
+        maxBytesPerScan: 93
+      });
+    }
+    assert.equal(last.complete, true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('scanFileBatch reports incomplete when the first budget contains only non-usage rows', async () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'fixture-nonusage.jsonl');
+  const cursorStore = makeCursorStore();
+
+  try {
+    const filler = JSON.stringify({ type: 'message', text: 'x'.repeat(20) }) + '\n';
+    fs.writeFileSync(file, filler.repeat(10));
+
+    const batch = await scanFileBatch({
+      root: dir,
+      match: /fixture-.*\.jsonl$/,
+      cursorStore,
+      cursorKey: 'cursor.fixture',
+      providerId: 'fixture',
+      parseLine: (line) => {
+        const data = JSON.parse(line);
+        return data && typeof data.sequence === 'number'
+          ? { sequence: data.sequence, text: data.text }
+          : null;
+      },
+      chunkBytes: 31,
+      maxBytesPerScan: 40
+    });
+
+    assert.equal(batch.records.length, 0);
+    assert.ok(batch.bytesRead > 0);
+    assert.equal(batch.complete, false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('scanFileBatch returns a complete empty batch for a missing root', async () => {
+  const dir = path.join(makeTempDir(), 'does-not-exist');
+  const batch = await scanFixtureBatch(dir, makeCursorStore(), {});
+  assert.deepEqual(batch, { records: [], complete: true, bytesRead: 0 });
 });
 
 test('core scanner source has no synchronous traversal or unread-tail allocation', () => {

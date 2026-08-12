@@ -6,7 +6,7 @@ const MAX_MONTHS = 36;
 // 连续空月停止阈值:12,容忍使用量稀疏的长间隔(曾有 5/6 月空、4 月有数据的真实案例)
 const EMPTY_STREAK_STOP = 12;
 const MONTH_GAP_MS = 300;
-const MAX_SCAN_PASSES = 200;
+const MAX_SCAN_PASSES = 10000;
 // 全量同步自己的月份标记:不能用 backfill 的 providers.deepseek.fetchedMonths——
 // backfill 抓取时 persistDaily 会按保留窗口丢弃旧日数据,月份却照标"已抓",
 // 信任它会让被丢弃的月份永远不再抓(数据永久缺失)。
@@ -152,7 +152,8 @@ async function syncDeepSeekHistory(options) {
 
 // 全量重扫本机日志:先删该 provider 的 usageDaily 键并清游标(增量合并会重复累加,
 // 必须先行清除,先例见 src/main/providers/kimi/locallog.js 的 MIGRATION_KEY 流程),
-// 再循环调用 readLocalLog 直到无新增(scanFiles 单轮有 4MB 预算,全量需多轮)。
+// 再循环调用 readLocalLog 直到 batch.complete === true(scanFileBatch 单轮有 4MB 预算,全量需多轮)。
+// 事务性:清空前深拷贝匹配的 provider 行与游标;任何失败都还原二者后重抛。
 async function rescanLocalLogs(options) {
   const providerId = options.providerId;
   const readLocalLog = options.readLocalLog;
@@ -162,22 +163,61 @@ async function rescanLocalLogs(options) {
   const maxPasses = options.maxPasses || MAX_SCAN_PASSES;
 
   const prefix = providerId + ':';
+  const cursorKey = 'localLogCursors.' + providerId;
+
+  function cloneValue(value) {
+    return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+  }
+
   const usageDaily = readStore('usageDaily') || {};
+  const backupRows = {};
+  Object.keys(usageDaily).forEach((k) => {
+    if (k.indexOf(prefix) === 0) backupRows[k] = cloneValue(usageDaily[k]);
+  });
+  const backupCursor = cloneValue(readStore(cursorKey));
+
   Object.keys(usageDaily).forEach((k) => {
     if (k.indexOf(prefix) === 0) delete usageDaily[k];
   });
   writeStore('usageDaily', usageDaily);
-  writeStore('localLogCursors.' + providerId, {});
+  writeStore(cursorKey, {});
 
   let passes = 0;
   let records = 0;
-  while (passes < maxPasses) {
-    const batch = await readLocalLog();
-    passes++;
-    const n = Array.isArray(batch) ? batch.length : 0;
-    records += n;
-    if (onProgress) onProgress({ stage: providerId, detail: 'pass ' + passes + ', +' + n });
-    if (n === 0) break;
+  let bytesRead = 0;
+  let complete = false;
+
+  try {
+    while (passes < maxPasses) {
+      const batch = await readLocalLog();
+      passes++;
+      const batchRecords = Array.isArray(batch) ? batch : (batch && batch.records) || [];
+      records += batchRecords.length;
+      bytesRead += Array.isArray(batch) ? 0 : (Number(batch && batch.bytesRead) || 0);
+      complete = !Array.isArray(batch) && !!(batch && batch.complete);
+      if (onProgress) onProgress({ stage: providerId, detail: 'pass ' + passes + ', +' + batchRecords.length });
+      if (complete) break;
+    }
+
+    if (!complete) {
+      const error = new Error(`Local log rescan incomplete for ${providerId}`);
+      error.code = 'LOCAL_LOG_RESCAN_INCOMPLETE';
+      error.providerId = providerId;
+      error.passes = passes;
+      error.bytesRead = bytesRead;
+      throw error;
+    }
+  } catch (error) {
+    const current = readStore('usageDaily') || {};
+    Object.keys(current).forEach((k) => {
+      if (k.indexOf(prefix) === 0) delete current[k];
+    });
+    Object.keys(backupRows).forEach((k) => {
+      current[k] = backupRows[k];
+    });
+    writeStore('usageDaily', current);
+    if (backupCursor !== undefined) writeStore(cursorKey, backupCursor);
+    throw error;
   }
 
   const after = readStore('usageDaily') || {};
@@ -191,7 +231,7 @@ async function rescanLocalLogs(options) {
       if (!earliestDate || m[1] < earliestDate) earliestDate = m[1];
     }
   });
-  return { daysRebuilt, earliestDate, passes, records };
+  return { daysRebuilt, earliestDate, passes, records, bytesRead };
 }
 
 module.exports = { syncDeepSeekHistory, rescanLocalLogs, MAX_MONTHS, EMPTY_STREAK_STOP, MONTH_GAP_MS, MAX_SCAN_PASSES };
