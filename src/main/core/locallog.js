@@ -222,6 +222,9 @@ async function scanCandidateBatch({
 
         await yieldBlock();
         if (finishingStartedLine && completedLines > 0) {
+          // 完成已开始的行后,丢弃的尾块若仍含完整换行,说明还有未提交的完整行,
+          // 本轮必须标记未完成,避免全量重建在 readPosition 已到 EOF 时误判完成。
+          if (pending.length > 0 && pending.indexOf(0x0a) >= 0) complete = false;
           pending = Buffer.alloc(0);
           break;
         }
