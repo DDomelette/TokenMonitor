@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { scanFiles, scanFileBatch } = require('../src/main/core/locallog');
+const { scanFiles, scanFileBatch, scanCandidateBatch } = require('../src/main/core/locallog');
 const codex = require('../src/main/providers/codex/locallog');
 
 function makeTempDir() {
@@ -297,4 +297,36 @@ test('core scanner source has no synchronous traversal or unread-tail allocation
   assert.doesNotMatch(source, /Buffer\.alloc\(stat\.size\s*-\s*offset\)/);
   assert.match(source, /DEFAULT_SCAN_CHUNK_BYTES/);
   assert.match(source, /DEFAULT_SCAN_BUDGET_BYTES/);
+});
+
+test('scanCandidateBatch reads a caller-provided candidate with cursor hooks', async () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'candidate.jsonl');
+  const cursor = { offset: 0, mtimeMs: 0 };
+  const values = [fixtureLine(1), fixtureLine(2)];
+  fs.writeFileSync(file, values.join(''));
+
+  try {
+    const seen = [];
+    const batch = await scanCandidateBatch({
+      candidates: [{ identity: 'one', filePath: file, cursor }],
+      parseLine: (raw) => JSON.parse(raw),
+      onRecord({ record }) {
+        if (record) seen.push(record.sequence);
+        return cursor;
+      },
+      resetCursor() {
+        return { offset: 0, mtimeMs: 0 };
+      },
+      setCursor() {},
+      chunkBytes: 64,
+      maxBytesPerScan: 4096
+    });
+
+    assert.deepEqual(seen, [1, 2]);
+    assert.equal(batch.complete, true);
+    assert.equal(batch.bytesRead, fs.statSync(file).size);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

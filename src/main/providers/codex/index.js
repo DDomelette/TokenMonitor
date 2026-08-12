@@ -1,7 +1,7 @@
 // Codex Provider 适配器(accountQuota 通道 + localLog 通道)。
 const { fetchQuota } = require('./quota');
 const { readAuth, tokenExpiryMs } = require('./auth');
-const { readLocalLog, DEFAULT_ROOT } = require('./locallog');
+const { readLocalLog, DEFAULT_ROOT, DEFAULT_ARCHIVE_ROOT } = require('./locallog');
 
 module.exports = {
   id: 'codex',
@@ -20,6 +20,13 @@ module.exports = {
 
   localLogRoot(ctx) {
     return (ctx && ctx.store && ctx.store.get('providers.codex.localLogRoot')) || DEFAULT_ROOT();
+  },
+
+  archivedLogRoot(ctx) {
+    const store = ctx && ctx.store;
+    const customActive = store && store.get('providers.codex.localLogRoot');
+    const customArchive = store && store.get('providers.codex.archivedLogRoot');
+    return customActive ? (customArchive || null) : (customArchive || DEFAULT_ARCHIVE_ROOT());
   },
 
   readLocalLog
