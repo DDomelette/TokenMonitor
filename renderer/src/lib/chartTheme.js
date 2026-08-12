@@ -47,10 +47,10 @@ export function getTheme(isDark) {
         }
       }
     },
+    // 仅作样式源:消费方(ChartWidget buildCurveOption)会整体覆盖 tooltip 配置,
+    // 行为键(appendToBody/position/confine)由 curveTooltip 等真实配置处定义,此处不放。
     tooltip: {
       trigger: 'axis',
-      appendToBody: true,
-      confine: false,
       backgroundColor: isDark ? 'rgba(30,32,38,0.95)' : 'rgba(255,255,255,0.95)',
       borderColor: isDark ? '#3A3C45' : '#E5E7EB',
       textStyle: {
