@@ -1,6 +1,7 @@
 // Codex rollout-*.jsonl 行解析 + 本地日志通道读取。
 const os = require('os');
 const path = require('path');
+const crypto = require('node:crypto');
 const {
   scanFileBatch,
   rollupDaily,
@@ -11,8 +12,56 @@ const { filterUsageDaily } = require('../../core/usage-retention');
 
 // ~/.codex/sessions/**/rollout-*.jsonl
 const DEFAULT_ROOT = () => path.join(os.homedir(), '.codex', 'sessions');
+const DEFAULT_ARCHIVE_ROOT = () => path.join(os.homedir(), '.codex', 'archived_sessions');
 const MATCH = /rollout-.*\.jsonl$/;
 const CURSOR_KEY = 'localLogCursors.codex';
+// 稳定文件身份:优先取文件名末尾 UUID,退化到完整 basename。
+const ROLLOUT_UUID_RE = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i;
+
+// 从 rollout 文件路径解析稳定身份:标准 UUID 结尾取 UUID,否则取完整 basename。
+function rolloutIdentity(filePath) {
+  const basename = path.posix.basename(String(filePath).replace(/\\/g, '/'));
+  const match = ROLLOUT_UUID_RE.exec(basename);
+  return match ? match[1] : basename;
+}
+
+// 事件指纹:规范化 timestamp + last_token_usage 数值字段的 SHA-256。
+// 缺失的数值字段规范化为零;不包含路径、累计快照、rate_limits、model 等易变元数据。
+function codexEventFingerprint(record) {
+  if (!record) return null;
+  let iso;
+  try {
+    iso = new Date(record.ts).toISOString();
+  } catch (e) {
+    return null;
+  }
+  const num = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const material = [
+    iso,
+    num(record.input),
+    num(record.cached),
+    num(record.output),
+    num(record.reasoning),
+    num(record.total)
+  ].join('\0');
+  const digest = crypto.createHash('sha256').update(material, 'utf8').digest('hex');
+  return 'sha256:' + digest;
+}
+
+// 解析活动/归档目录设置:自定义活动目录不猜测归档目录,只有显式设置 archivedLogRoot
+// 才启用自定义归档;未配置自定义活动目录时默认归档目录自动启用。
+function resolveCodexLogRoots(store) {
+  const customActive = store && store.get('providers.codex.localLogRoot');
+  const customArchive = store && store.get('providers.codex.archivedLogRoot');
+  const activeRoot = customActive || DEFAULT_ROOT();
+  const archiveRoot = customActive
+    ? (customArchive || null)
+    : (customArchive || DEFAULT_ARCHIVE_ROOT());
+  return { activeRoot: activeRoot, archiveRoot: archiveRoot };
+}
 
 // 解析单行:取 payload.info.last_token_usage,timestamp 取 data.timestamp。
 function parseRolloutLine(line, diagnostics, nowMs) {
@@ -32,15 +81,24 @@ function parseRolloutLine(line, diagnostics, nowMs) {
       incrementDiagnostic(diagnostics, 'invalidTimestamp');
       return null;
     }
+    const usage = {
+      input: last.input_tokens || 0,
+      cached: last.cached_input_tokens || 0,
+      output: last.output_tokens || 0,
+      reasoning: last.reasoning_output_tokens || 0,
+      total: last.total_tokens || 0
+    };
     return {
       ts: ts,
-      usage: {
-        input: last.input_tokens || 0,
-        cached: last.cached_input_tokens || 0,
-        output: last.output_tokens || 0,
-        reasoning: last.reasoning_output_tokens || 0,
-        total: last.total_tokens || 0
-      }
+      usage: usage,
+      eventFingerprint: codexEventFingerprint({
+        ts: ts,
+        input: usage.input,
+        cached: usage.cached,
+        output: usage.output,
+        reasoning: usage.reasoning,
+        total: usage.total
+      })
     };
   } catch (e) {
     return null;
@@ -96,4 +154,13 @@ async function readLocalLog(ctx, opts) {
   return batch;
 }
 
-module.exports = { parseRolloutLine, readLocalLog, DEFAULT_ROOT, MATCH };
+module.exports = {
+  parseRolloutLine,
+  readLocalLog,
+  DEFAULT_ROOT,
+  DEFAULT_ARCHIVE_ROOT,
+  MATCH,
+  rolloutIdentity,
+  codexEventFingerprint,
+  resolveCodexLogRoots
+};
