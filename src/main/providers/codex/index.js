@@ -2,6 +2,7 @@
 const { fetchQuota } = require('./quota');
 const { readAuth, tokenExpiryMs } = require('./auth');
 const { readLocalLog, DEFAULT_ROOT, DEFAULT_ARCHIVE_ROOT } = require('./locallog');
+const { createCodexUsageRuntime } = require('./runtime');
 
 module.exports = {
   id: 'codex',
@@ -29,5 +30,7 @@ module.exports = {
     return customActive ? (customArchive || null) : (customArchive || DEFAULT_ARCHIVE_ROOT());
   },
 
-  readLocalLog
+  readLocalLog,
+
+  createCodexUsageRuntime
 };
