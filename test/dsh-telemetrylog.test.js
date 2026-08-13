@@ -52,6 +52,16 @@ test('parseTelemetryLine defaults a missing model to unknown and zeroes missing 
   assert.deepEqual(rec.usage, { input: 5, cached: 0, output: 6, total: 11 });
 });
 
+test('eventFingerprint includes sessionId and model so identical ms+buckets rows differ', () => {
+  const base = { v: 1, time: 1786641087069, model: 'deepseek-v4-pro', inputTokens: 1000, outputTokens: 2000, cacheReadTokens: 3000, cacheWriteTokens: 100 };
+  const a = parseTelemetryLine(JSON.stringify({ ...base, sessionId: 'session-a' }), {}, Date.now());
+  const b = parseTelemetryLine(JSON.stringify({ ...base, sessionId: 'session-b' }), {}, Date.now());
+  const c = parseTelemetryLine(JSON.stringify({ ...base, sessionId: 'session-a', model: 'deepseek-v5' }), {}, Date.now());
+  assert.ok(a && b && c);
+  assert.notEqual(a.eventFingerprint, b.eventFingerprint);
+  assert.notEqual(a.eventFingerprint, c.eventFingerprint);
+});
+
 test('resolveTelemetryRoot precedence: setting > DSH_HOME env > ~/.dsh/telemetry', () => {
   assert.equal(resolveTelemetryRoot(null, {}), path.join(os.homedir(), '.dsh', 'telemetry'));
   assert.equal(resolveTelemetryRoot(null, { DSH_HOME: 'D:\\dsh-home' }), path.join('D:\\dsh-home', 'telemetry'));
@@ -115,6 +125,51 @@ test('readLocalLog merges usageDaily and usageDailyCost from the day file', asyn
   assert.equal(row.output, 2000);
   assert.equal(row.total, 6100 + 500);
   assert.ok(store.get('usageDailyCost')['dsh:2026-08-14'] > 0);
+});
+
+test('readLocalLog commits via the electron-store snapshot path and preserves unrelated keys', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-telemetry-'));
+  const dayFile = 'usage-2026-08-14.jsonl';
+  writeRows(root, dayFile, [
+    { v: 1, time: Date.UTC(2026, 7, 14, 2, 0, 0), sessionId: 's1', model: 'deepseek-v4-pro', inputTokens: 1000, outputTokens: 2000, cacheReadTokens: 3000, cacheWriteTokens: 100 }
+  ]);
+  const { readLocalLog } = require('../src/main/providers/dsh/telemetrylog');
+
+  // electron-store 形态:store.store 是快照,get/set 读写快照;commitTelemetryScanState 的
+  // 快照路径通过整体替换 store.store 原子提交(真实生产路径,区别于 get/set-only 退化路径)。
+  const store = {
+    store: JSON.parse(JSON.stringify({
+      usageDaily: {},
+      usageDailyCost: {},
+      providers: { dsh: { telemetryRoot: root } },
+      data: { historyDays: 30 },
+      unrelatedKey: { keep: true }
+    })),
+    get(key) {
+      return key.split('.').reduce((value, part) => (value == null ? undefined : value[part]), this.store);
+    },
+    set(key, value) {
+      const parts = key.split('.');
+      let current = this.store;
+      while (parts.length > 1) {
+        const part = parts.shift();
+        if (!current[part] || typeof current[part] !== 'object') current[part] = {};
+        current = current[part];
+      }
+      current[parts[0]] = value;
+    }
+  };
+
+  await readLocalLog({ store }, { nowMs: Date.UTC(2026, 7, 14, 4, 0, 0) });
+
+  assert.equal(store.get('usageDaily')['dsh:2026-08-14'].input, 1100);
+  assert.ok(store.get('usageDailyCost')['dsh:2026-08-14'] > 0);
+  const cursors = store.get('localLogCursors.dsh');
+  assert.ok(cursors && typeof cursors === 'object');
+  const fileKeys = Object.keys(cursors);
+  assert.ok(fileKeys.length >= 1 && fileKeys.some((k) => k.endsWith(dayFile)));
+  assert.ok(fileKeys.every((k) => cursors[k] && cursors[k].offset > 0));
+  assert.deepEqual(store.get('unrelatedKey'), { keep: true });
 });
 
 test('readLocalLog rescans incrementally: failed commit restores data and the re-read merges exactly once', async () => {

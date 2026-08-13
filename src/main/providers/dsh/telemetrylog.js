@@ -67,6 +67,7 @@ function parseTelemetryLine(line, diagnostics, nowMs) {
     return null;
   }
   const model = typeof data.model === 'string' && data.model.length > 0 ? data.model : 'unknown';
+  const sessionId = typeof data.sessionId === 'string' && data.sessionId.length > 0 ? data.sessionId : 'unknown';
   const record = {
     ts: ts,
     model: model,
@@ -83,6 +84,8 @@ function parseTelemetryLine(line, diagnostics, nowMs) {
   record.eventFingerprint = 'sha256:' + crypto.createHash('sha256')
     .update([
       new Date(ts).toISOString(),
+      sessionId,
+      model,
       input,
       output,
       cacheRead,
