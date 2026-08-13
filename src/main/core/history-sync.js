@@ -176,6 +176,11 @@ async function rescanLocalLogs(options) {
     if (k.indexOf(prefix) === 0) backupRows[k] = cloneValue(usageDaily[k]);
   });
   const backupCursor = cloneValue(readStore(cursorKey));
+  const usageDailyCost = readStore('usageDailyCost') || {};
+  const backupCostRows = {};
+  Object.keys(usageDailyCost).forEach((k) => {
+    if (k.indexOf(prefix) === 0) backupCostRows[k] = cloneValue(usageDailyCost[k]);
+  });
 
   let passes = 0;
   let records = 0;
@@ -188,6 +193,11 @@ async function rescanLocalLogs(options) {
       if (k.indexOf(prefix) === 0) delete clearedDaily[k];
     });
     writeStore('usageDaily', clearedDaily);
+    const clearedCost = cloneValue(usageDailyCost);
+    Object.keys(clearedCost).forEach((k) => {
+      if (k.indexOf(prefix) === 0) delete clearedCost[k];
+    });
+    writeStore('usageDailyCost', clearedCost);
     writeStore(cursorKey, {});
 
     while (passes < maxPasses) {
@@ -218,6 +228,14 @@ async function rescanLocalLogs(options) {
       current[k] = backupRows[k];
     });
     writeStore('usageDaily', current);
+    const currentCost = cloneValue(readStore('usageDailyCost') || {});
+    Object.keys(currentCost).forEach((k) => {
+      if (k.indexOf(prefix) === 0) delete currentCost[k];
+    });
+    Object.keys(backupCostRows).forEach((k) => {
+      currentCost[k] = backupCostRows[k];
+    });
+    writeStore('usageDailyCost', currentCost);
     if (backupCursor !== undefined) {
       writeStore(cursorKey, backupCursor);
     } else if (typeof deleteStore === 'function') {
