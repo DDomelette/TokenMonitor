@@ -113,7 +113,7 @@ test('both local-log providers filter rolled-up records before merging unless re
       source,
       /opts && opts\.retainAll\s*\?\s*rolled\s*:\s*filterUsageDaily\(rolled, store\.get\('data\.historyDays'\), nowMs\)/
     );
-    assert.match(source, /scanFiles\(\{/);
+    assert.match(source, /scanFileBatch\(\{/);
     assert.match(source, /cursorKey:\s*CURSOR_KEY/);
   });
 });

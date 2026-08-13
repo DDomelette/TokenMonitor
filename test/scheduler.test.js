@@ -256,3 +256,63 @@ test('failed poll keeps last good quota: update on success, keep on failure', as
     scheduler.stop();
   }
 });
+
+test('codex local-log polls route through the usage runtime when provided', async () => {
+  const seen = [];
+  const runtime = {
+    async runIncremental(fn) {
+      return fn({ mode: 'uuid' });
+    }
+  };
+  const codex = makeFakeAdapter({
+    id: 'codex',
+    capabilities: { balance: false, webUsage: false, quota: false, localLog: true, realtimeProxy: false },
+    async readLocalLog(ctx, opts) {
+      seen.push(opts);
+      return [];
+    }
+  });
+  const scheduler = startScheduler({
+    registry: makeRegistry([codex]),
+    store: makeFakeStore({}),
+    broadcast() {},
+    intervals: false,
+    codexUsageRuntime: runtime
+  });
+  try {
+    await scheduler.poll('codex', 'localLog');
+    assert.deepEqual(seen, [{ mode: 'uuid' }], 'codex read receives the runtime-supplied mode');
+  } finally {
+    scheduler.stop();
+  }
+});
+
+test('non-codex local-log polls bypass the usage runtime', async () => {
+  const seen = [];
+  const runtime = {
+    async runIncremental() {
+      throw new Error('must not be used');
+    }
+  };
+  const kimi = makeFakeAdapter({
+    id: 'kimi',
+    capabilities: { balance: false, webUsage: false, quota: false, localLog: true, realtimeProxy: false },
+    async readLocalLog(ctx, opts) {
+      seen.push(opts);
+      return [];
+    }
+  });
+  const scheduler = startScheduler({
+    registry: makeRegistry([kimi]),
+    store: makeFakeStore({}),
+    broadcast() {},
+    intervals: false,
+    codexUsageRuntime: runtime
+  });
+  try {
+    await scheduler.poll('kimi', 'localLog');
+    assert.deepEqual(seen, [undefined], 'kimi read is called directly without runtime options');
+  } finally {
+    scheduler.stop();
+  }
+});

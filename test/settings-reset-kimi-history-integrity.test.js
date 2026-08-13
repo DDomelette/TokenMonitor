@@ -79,7 +79,8 @@ test('settings reset preserves Kimi migration state and history no longer presen
   });
 
   const firstRecords = await readLocalLog({ store });
-  assert.equal(firstRecords.length, 1);
+  assert.equal(firstRecords.records.length, 1);
+  assert.equal(firstRecords.complete, true);
   assert.equal(kimiTotal(store), 109);
   assert.equal(store.get('usageDaily')[legacyHistoryKey].total, 99);
 
@@ -93,7 +94,8 @@ test('settings reset preserves Kimi migration state and history no longer presen
     store.set('providers.kimi.localLogRoot', root);
     const repeatedRecords = await readLocalLog({ store });
 
-    assert.equal(repeatedRecords.length, 0);
+    assert.equal(repeatedRecords.records.length, 0);
+    assert.equal(repeatedRecords.complete, true);
     assert.deepEqual(kimiHistory(store), expectedHistory);
     assert.equal(store.get('usageDaily')[legacyHistoryKey].total, 99);
     assert.equal(kimiTotal(store), 109);

@@ -22,7 +22,8 @@ function startScheduler({
   onStateChange,
   getProxyInput,
   onUsageObservation,
-  onUsageUnavailable
+  onUsageUnavailable,
+  codexUsageRuntime
 }) {
   const enabled = intervals === false ? false : Object.assign({}, DEFAULT_INTERVALS, intervals || {});
   const timers = [];
@@ -253,7 +254,14 @@ function startScheduler({
   async function pollLocalLog(provider) {
     try {
       // Provider 先把增量合并进 usageDaily,随后按真实新增记录决定是否刷新界面。
-      const records = await provider.readLocalLog(ctxFor(provider));
+      // Codex 经由运行时 FIFO 协调器串行化所有写操作;其它 provider 直接读取。
+      const ctx = ctxFor(provider);
+      const batch = (provider.id === 'codex' && codexUsageRuntime)
+        ? await codexUsageRuntime.runIncremental((scanOptions) =>
+          provider.readLocalLog(ctx, scanOptions)
+        )
+        : await provider.readLocalLog(ctx);
+      const records = Array.isArray(batch) ? batch : batch.records;
       const changed = Array.isArray(records) && records.length > 0;
       const recovered = recordChannelRecovery(provider, 'localLog', false);
       if (changed || recovered) touch(provider.id);

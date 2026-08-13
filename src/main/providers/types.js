@@ -13,6 +13,13 @@
  */
 
 /**
+ * @typedef {Object} ScanBatch
+ * @property {UsageRecord[]} records  - 本轮新增的用量记录
+ * @property {boolean} complete       - 是否已覆盖扫描开始时的文件快照
+ * @property {number} bytesRead       - 本轮成功读取的字节数
+ */
+
+/**
  * @typedef {Object} QuotaWindow
  * @property {'5h'|'weekly'} kind
  * @property {number} used
@@ -41,7 +48,7 @@
  * @property {((ctx:ProviderContext)=>Promise<object|null>)} [fetchBalance]
  * @property {((ctx:ProviderContext,args:{month:number,year:number})=>Promise<object>)} [fetchUsage]
  * @property {((ctx:ProviderContext)=>Promise<QuotaState|null>)} [fetchQuota]
- * @property {((ctx:ProviderContext,args:{sinceMs:number})=>Promise<UsageRecord[]>)} [readLocalLog]
+ * @property {((ctx:ProviderContext,args:{sinceMs:number})=>Promise<ScanBatch|UsageRecord[]>)} [readLocalLog]
  */
 
 /**

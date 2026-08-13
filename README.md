@@ -8,6 +8,7 @@
 
 ## 近期更新
 
+- **Codex 归档日志用量重建**(2026-08):升级后首次启动会自动用活动目录(`~/.codex/sessions`)与归档目录(`~/.codex/archived_sessions`)的全部 rollout 事件级去重重建 Codex 历史用量;迁移期间旧统计保持可见,迁移失败不修改旧数据并在下次启动重试;rollout 在两个目录间移动后仍按稳定 UUID 从原 offset 续扫。自定义归档目录需显式配置 `providers.codex.archivedLogRoot`。
 - **贴边自动隐藏**(2026-08):把窗口拖到屏幕左 / 右 / 上边缘自动停靠,延迟收起只留一条触发条,悬停以阻尼动画滑出;拖动即解除停靠,托盘唤醒 / 打开设置时自动完整展开,重启后恢复停靠状态。
 - **凭证只读复用**(2026-08):Codex / Kimi 凭证改为只读复用本机 CLI 凭证文件,消除与 CLI 的 refresh_token 轮换竞态;并修复了刷新空窗期误报"已过期"的问题。
 - **代理体验优化**(2026-08):自定义代理的 IP / 端口自动预填(识别当前系统代理端口或上次填写值)。
@@ -81,7 +82,10 @@ npm run build:renderer   # 仅构建渲染层(React + Vite)
 npm run dev:renderer     # 渲染层 Vite 开发服务器
 npm run build:win        # 打包 Windows 安装包(electron-builder)
 npm run build:mac        # 打包 macOS
+npm run verify:codex-archive-usage -- --date 2026-08-09   # 只读验收 Codex 归档用量重建结果
 ```
+
+`npm run verify:codex-archive-usage` 是对本机 Codex 活动/归档目录的一次只读影子重建:它只打印逐日聚合与计数,绝不写入 store、不修改任何 rollout 文件,也不输出会话内容、UUID 或完整私有路径。
 
 ## 技术栈
 

@@ -8,6 +8,33 @@ function makeStore(seed) {
 }
 const noopSleep = async () => {};
 
+test('rescan failure deletes a cursor that did not exist before the transaction', async () => {
+  const store = makeStore({
+    usageDaily: {
+      'kimi:2026-06-17': { input: 1, cached: 0, output: 1, total: 2 }
+    }
+  });
+
+  await assert.rejects(
+    rescanLocalLogs({
+      providerId: 'kimi',
+      readLocalLog: async () => {
+        store.set('localLogCursors.kimi', { generated: { offset: 99 } });
+        throw Object.assign(new Error('read failed'), { code: 'EIO' });
+      },
+      readStore: store.get,
+      writeStore: store.set,
+      deleteStore: (key) => { delete store.data[key]; }
+    }),
+    (error) => error && error.code === 'EIO'
+  );
+
+  assert.equal(Object.prototype.hasOwnProperty.call(store.data, 'localLogCursors.kimi'), false);
+  assert.deepEqual(store.data.usageDaily['kimi:2026-06-17'], {
+    input: 1, cached: 0, output: 1, total: 2
+  });
+});
+
 // 2026-08 起 12 个连续空月:6..1(2026)+ 12..7(2025)
 const TWELVE_EMPTY_CALLS = ['2026-6', '2026-5', '2026-4', '2026-3', '2026-2', '2026-1',
   '2025-12', '2025-11', '2025-10', '2025-9', '2025-8', '2025-7'];
@@ -336,9 +363,9 @@ test('重扫:清该 provider 前缀键与游标,循环扫描直到无新增,覆�
     if (pass === 1) {
       store.data.usageDaily['codex:2026-06-17'] = { input: 10, cached: 0, output: 40, total: 50 };
       store.data.usageDaily['codex:2026-06-18'] = { input: 1, cached: 0, output: 1, total: 2 };
-      return [{}, {}];
+      return { records: [{}, {}], complete: false, bytesRead: 128 };
     }
-    return [];
+    return { records: [], complete: true, bytesRead: 0 };
   };
   const r = await rescanLocalLogs({
     providerId: 'codex', readLocalLog, readStore: store.get, writeStore: store.set
@@ -350,17 +377,69 @@ test('重扫:清该 provider 前缀键与游标,循环扫描直到无新增,覆�
   assert.equal(r.earliestDate, '2026-06-17');
   assert.equal(r.passes, 2);
   assert.equal(r.records, 2);
+  assert.equal(r.bytesRead, 128);
 });
 
 test('重扫:日志为空时 daysRebuilt=0,不视为错误', async () => {
   const store = makeStore({});
-  const readLocalLog = async () => [];
+  const readLocalLog = async () => ({ records: [], complete: true, bytesRead: 0 });
   const r = await rescanLocalLogs({
     providerId: 'kimi', readLocalLog, readStore: store.get, writeStore: store.set
   });
   assert.equal(r.daysRebuilt, 0);
   assert.equal(r.earliestDate, null);
   assert.equal(r.passes, 1);
+  assert.equal(r.bytesRead, 0);
+});
+
+test('rescan continues through empty incomplete batches', async () => {
+  const store = makeStore({});
+  const batches = [
+    { records: [], complete: false, bytesRead: 100 },
+    { records: [{ provider: 'codex' }], complete: false, bytesRead: 100 },
+    { records: [], complete: true, bytesRead: 0 }
+  ];
+  const result = await rescanLocalLogs({
+    providerId: 'codex',
+    readLocalLog: async () => batches.shift(),
+    readStore: store.get,
+    writeStore: store.set
+  });
+  assert.equal(result.passes, 3);
+  assert.equal(result.records, 1);
+  assert.equal(result.bytesRead, 200);
+});
+
+test('rescan 耗尽 maxPasses 时抛 LOCAL_LOG_RESCAN_INCOMPLETE 并还原 provider 行与游标', async () => {
+  const store = makeStore({
+    usageDaily: {
+      'codex:2026-06-17': { input: 0, cached: 0, output: 0, total: 999 },
+      'kimi:2026-06-17': { input: 0, cached: 0, output: 0, total: 5 }
+    },
+    'localLogCursors.codex': { '/x/rollout-a.jsonl': { offset: 123, mtimeMs: 1 } }
+  });
+  const readLocalLog = async () => ({ records: [], complete: false, bytesRead: 10 });
+
+  await assert.rejects(
+    rescanLocalLogs({
+      providerId: 'codex',
+      readLocalLog,
+      readStore: store.get,
+      writeStore: store.set,
+      maxPasses: 2
+    }),
+    (error) => {
+      assert.equal(error.code, 'LOCAL_LOG_RESCAN_INCOMPLETE');
+      assert.equal(error.providerId, 'codex');
+      assert.equal(error.passes, 2);
+      assert.equal(error.bytesRead, 20);
+      return true;
+    }
+  );
+
+  assert.deepEqual(store.data.usageDaily['codex:2026-06-17'], { input: 0, cached: 0, output: 0, total: 999 });
+  assert.deepEqual(store.data.usageDaily['kimi:2026-06-17'], { input: 0, cached: 0, output: 0, total: 5 });
+  assert.deepEqual(store.data['localLogCursors.codex'], { '/x/rollout-a.jsonl': { offset: 123, mtimeMs: 1 } });
 });
 
 test('日边界:rollupDaily 聚合键为本地(北京)日历日', () => {
