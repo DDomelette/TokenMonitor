@@ -169,7 +169,7 @@ src/main/providers/dsh/
 | Monitor | 游标提交失败 | 沿用 Codex 原子提交模式,下次重扫(事件指纹去重防双计) |
 | Monitor | 模型单价缺失 | cost 记 0,诊断计数 +1,不阻塞聚合 |
 
-事件指纹:与 Codex 一致——规范化 time + 四桶数值做 SHA-256,重扫去重。
+事件指纹:规范化 time + sessionId + model + 四桶数值做 SHA-256,重扫去重(含会话与模型身份,避免不同会话同毫秒同桶的行被误去重)。
 
 ## 6. 测试策略(TDD,先写测试)
 
