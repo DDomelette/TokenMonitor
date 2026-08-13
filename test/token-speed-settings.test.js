@@ -6,10 +6,10 @@ const vm = require('node:vm');
 
 const registry = require('../src/renderer/js/layout/component-registry.js');
 
-test('token speed settings accept only the eight windows and four filters', () => {
+test('token speed settings accept only the eight windows and five filters', () => {
   const settings = require('../src/main/core/token-speed-settings');
   assert.deepEqual(settings.INTERVAL_SECONDS, [10, 20, 30, 60, 180, 300, 3600, 18000]);
-  assert.deepEqual(settings.PROVIDER_FILTERS, ['all', 'deepseek', 'codex', 'kimi']);
+  assert.deepEqual(settings.PROVIDER_FILTERS, ['all', 'deepseek', 'codex', 'kimi', 'dsh']);
   assert.equal(settings.normalizeIntervalSeconds('180'), 180);
   assert.equal(settings.normalizeIntervalSeconds(11), 30);
   assert.equal(settings.normalizeProviderFilter('kimi'), 'kimi');

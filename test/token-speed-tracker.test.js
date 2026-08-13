@@ -75,12 +75,12 @@ test('history is bounded, serialized and rejects stale payloads', () => {
   assert.equal(restored.hydrate(Object.assign({}, payload, { savedAt: 0 }), 30000000), false);
 });
 
-test('all filter returns three series while one-provider filters return one', () => {
+test('all filter returns four series while one-provider filters return one', () => {
   const tracker = createTokenSpeedTracker({ now: () => 30000 });
-  ['deepseek', 'codex', 'kimi'].forEach((providerId) => {
+  ['deepseek', 'codex', 'kimi', 'dsh'].forEach((providerId) => {
     observeAndSample(tracker, providerId, 0, 0);
     observeAndSample(tracker, providerId, 30000, 30);
   });
-  assert.deepEqual(Object.keys(tracker.getSnapshot({ intervalSeconds: 30, providerFilter: 'all', at: 30000 }).series), ['deepseek', 'codex', 'kimi']);
+  assert.deepEqual(Object.keys(tracker.getSnapshot({ intervalSeconds: 30, providerFilter: 'all', at: 30000 }).series), ['deepseek', 'codex', 'kimi', 'dsh']);
   assert.deepEqual(Object.keys(tracker.getSnapshot({ intervalSeconds: 30, providerFilter: 'kimi', at: 30000 }).series), ['kimi']);
 });

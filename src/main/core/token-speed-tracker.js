@@ -5,7 +5,7 @@ const HISTORY_MS = 6 * 60 * 60 * 1000;
 const MAX_POINTS_PER_PROVIDER = HISTORY_MS / SAMPLE_INTERVAL_MS;
 const DISPLAY_POINTS = 60;
 const STORAGE_VERSION = 1;
-const PROVIDER_IDS = Object.freeze(['deepseek', 'codex', 'kimi']);
+const PROVIDER_IDS = Object.freeze(['deepseek', 'codex', 'kimi', 'dsh']);
 
 function freshState() {
   return {
