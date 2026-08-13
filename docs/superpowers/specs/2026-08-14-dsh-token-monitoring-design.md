@@ -140,7 +140,7 @@ src/main/providers/dsh/
 
 ### 4.4 费用(pricing.js)
 
-- `src/main/pricing.js` 增加 `dsh` 模型单价表,字段:`input` / `output` / `cacheHit`(¥ / 1M tokens)。费用按**原始遥测四桶**计算:`cost = input×input + output×output + cacheRead×cacheHit + cacheWrite×input`(与 4.3 的 UsageRecord 映射独立,不重复计费)。
+- `src/main/pricing.js` 增加 `dsh` 模型单价表,字段:`input` / `output` / `cacheHit`(¥ / 1000 tokens,与现有 PRICING 同单位)。费用按**原始遥测四桶**计算:`cost = input×input + output×output + cacheRead×cacheHit + cacheWrite×input`(与 4.3 的 UsageRecord 映射独立,不重复计费)。
 - 表结构与现有 deepseek 段一致;单价在实现时以 DeepSeek 官方定价页([模型 & 价格 | DeepSeek API Docs](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/))最新值为准填入。
 - 已知 2026-08-17 起 DeepSeek 生效峰谷定价([DoNews 报道](https://www.donews.com/news/detail/4/6670406.html));表结构预留 `offPeakInput` / `offPeakOutput` / `offPeakCacheHit` 可选列(缺省时按标准价),实现时若官方页已更新则直接填入峰谷值。
 - 未收录模型回退到该表默认行;查无默认行时 cost 记 0 且诊断计数 +1(不阻塞聚合)。

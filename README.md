@@ -57,6 +57,7 @@
 | DeepSeek | API Key 查询余额;内置代理会话(首次需登录 DeepSeek 平台)获取用量明细 |
 | Codex | 只读复用本机 Codex CLI 凭证(由 CLI 自己保活刷新,无需重复登录) |
 | Kimi | 只读复用本机 Kimi CLI 凭证(由 CLI 自己保活刷新,无需重复登录) |
+| DeepSeek Harness | 本地遥测文件(`~/.dsh/telemetry/usage-YYYY-MM-DD.jsonl`,由 DSH 的 usage-telemetry 组件按请求追加) |
 
 所有数据仅在本地处理,不会上传到任何第三方服务器。
 
