@@ -853,13 +853,13 @@ app.whenReady().then(() => {
   // 使调度器对 Codex 的首次 localLog 轮询排队在迁移 Promise 之后。旧用量保持可见。
   codexUsageRuntime = codexProvider.createCodexUsageRuntime({
     store,
-    rebuildCodexUsage,
-    incrementalScan: (opts) => codexProvider.readLocalLog({ store }, opts),
-    logger: ({ code, phase }) => console.log(`[codex] ${phase}: ${code}`),
-    buildOptions: {
+    // 重建时动态解析当前活动/归档根目录,避免使用启动时捕获的过期路径。
+    rebuildCodexUsage: (options) => rebuildCodexUsage(Object.assign({}, options, {
       activeRoot: codexProvider.localLogRoot({ store }),
       archiveRoot: codexProvider.archivedLogRoot({ store })
-    }
+    })),
+    incrementalScan: (opts) => codexProvider.readLocalLog({ store }, opts),
+    logger: ({ code, phase }) => console.log(`[codex] ${phase}: ${code}`)
   });
 
   const codexBootstrap = startCodexUsageBootstrap({
