@@ -131,9 +131,12 @@ function parseRolloutLine(line, diagnostics, nowMs) {
       reasoning: last.reasoning_output_tokens || 0,
       total: last.total_tokens || 0
     };
+    const cumulative = payload.info.total_token_usage;
+    const usageTotal = cumulative && Number(cumulative.total_tokens);
     return {
       ts: ts,
       usage: usage,
+      ...(Number.isFinite(usageTotal) ? { usageTotal } : {}),
       eventFingerprint: codexEventFingerprint({
         ts: ts,
         input: usage.input,
@@ -393,10 +396,18 @@ async function scanCodexLogBatch({
           incrementDiagnostic(diagnostics, 'duplicateEvent');
           emit = false;
         }
+        const usageTotal = Number(record.usageTotal);
+        if (Number.isFinite(usageTotal)
+          && Number.isFinite(Number(cursor.lastUsageTotal))
+          && usageTotal === Number(cursor.lastUsageTotal)) {
+          emit = false;
+          incrementDiagnostic(diagnostics, 'duplicateCumulativeSnapshot');
+        }
         if (emit) {
           records.push(Object.assign({ provider: 'codex' }, record));
         }
         cursor.lastEventFingerprint = fingerprint;
+        if (Number.isFinite(usageTotal)) cursor.lastUsageTotal = usageTotal;
       }
       return cursor;
     },
@@ -422,7 +433,8 @@ async function scanCodexLogBatch({
         size: stat.size,
         headBytes: headInfo ? headInfo.headBytes : 0,
         headFingerprint: headInfo ? headInfo.headFingerprint : null,
-        lastEventFingerprint: null
+        lastEventFingerprint: null,
+        lastUsageTotal: undefined
       };
     },
     setCursor(candidate, cursor) {

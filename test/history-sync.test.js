@@ -442,14 +442,100 @@ test('rescan 耗尽 maxPasses 时抛 LOCAL_LOG_RESCAN_INCOMPLETE 并还原 provi
   assert.deepEqual(store.data['localLogCursors.codex'], { '/x/rollout-a.jsonl': { offset: 123, mtimeMs: 1 } });
 });
 
-test('日边界:rollupDaily 聚合键为本地(北京)日历日', () => {
+test('重扫:只有遇到 complete 批次才停止,累计 passes 与 bytesRead', async () => {
+  const store = makeStore({ usageDaily: {} });
+  let calls = 0;
+  const readLocalLog = async () => {
+    calls += 1;
+    if (calls < 202) return { records: [], complete: false, bytesRead: 100 };
+    return { records: [], complete: true, bytesRead: 10 };
+  };
+  const r = await rescanLocalLogs({
+    providerId: 'codex', readLocalLog, readStore: store.get, writeStore: store.set
+  });
+  assert.equal(calls, 202);
+  assert.equal(r.passes, 202);
+  assert.equal(r.bytesRead, 201 * 100 + 10);
+  assert.equal(r.daysRebuilt, 0);
+});
+
+test('重扫:达到 pass 上限仍未 complete 时报 LOCAL_LOG_RESCAN_INCOMPLETE 并回滚该 provider 行与游标', async () => {
+  const store = makeStore({
+    usageDaily: {
+      'codex:2026-06-17': { input: 0, cached: 0, output: 0, total: 50 },
+      'kimi:2026-06-17': { input: 0, cached: 0, output: 0, total: 5 }
+    },
+    'localLogCursors.codex': { '/x/rollout-a.jsonl': { offset: 123, mtimeMs: 1 } }
+  });
+  let pass = 0;
+  const readLocalLog = async () => {
+    pass += 1;
+    // 模拟部分扫描已经写入了 codex 行与游标
+    store.data.usageDaily['codex:2026-06-18'] = { input: 1, cached: 0, output: 1, total: 2 };
+    store.data['localLogCursors.codex'] = { '/x/rollout-a.jsonl': { offset: 999, mtimeMs: 9 } };
+    return { records: [{}], complete: false, bytesRead: 64 };
+  };
+  await assert.rejects(
+    rescanLocalLogs({
+      providerId: 'codex', readLocalLog, readStore: store.get, writeStore: store.set, maxPasses: 2
+    }),
+    (error) => {
+      assert.equal(error.code, 'LOCAL_LOG_RESCAN_INCOMPLETE');
+      assert.equal(error.providerId, 'codex');
+      assert.equal(error.passes, 2);
+      assert.equal(error.bytesRead, 128);
+      return true;
+    }
+  );
+  // 回滚:codex 行恢复原值、新增行被删;kimi 行不受影响;游标恢复
+  assert.equal(store.data.usageDaily['codex:2026-06-17'].total, 50);
+  assert.equal(store.data.usageDaily['codex:2026-06-18'], undefined);
+  assert.equal(store.data.usageDaily['kimi:2026-06-17'].total, 5);
+  assert.deepEqual(store.data['localLogCursors.codex'], { '/x/rollout-a.jsonl': { offset: 123, mtimeMs: 1 } });
+  assert.equal(pass, 2);
+});
+
+test('重扫:清空游标写入失败时恢复原 provider 行与游标', async () => {
+  const store = makeStore({
+    usageDaily: {
+      'codex:2026-06-17': { input: 10, cached: 5, output: 2, total: 12 },
+      'kimi:2026-06-17': { input: 1, cached: 0, output: 1, total: 2 }
+    },
+    'localLogCursors.codex': { '/x/rollout-a.jsonl': { offset: 123, mtimeMs: 1 } }
+  });
+  let failCursorClear = true;
+  const writeStore = (key, value) => {
+    if (key === 'localLogCursors.codex' && failCursorClear) {
+      failCursorClear = false;
+      throw new Error('disk write failed');
+    }
+    store.set(key, value);
+  };
+
+  await assert.rejects(
+    rescanLocalLogs({
+      providerId: 'codex',
+      readLocalLog: async () => ({ records: [], complete: true, bytesRead: 0 }),
+      readStore: store.get,
+      writeStore
+    }),
+    /disk write failed/
+  );
+
+  assert.deepEqual(store.data.usageDaily, {
+    'codex:2026-06-17': { input: 10, cached: 5, output: 2, total: 12 },
+    'kimi:2026-06-17': { input: 1, cached: 0, output: 1, total: 2 }
+  });
+  assert.deepEqual(store.data['localLogCursors.codex'], {
+    '/x/rollout-a.jsonl': { offset: 123, mtimeMs: 1 }
+  });
+});
+
+test('日边界:rollupDaily 聚合键为北京结算日', () => {
   const { rollupDaily } = require('../src/main/core/locallog');
-  const ts = Date.UTC(2026, 5, 17, 16, 30); // UTC 16:30,北京时间为次日 00:30
+  const ts = Date.UTC(2026, 5, 17, 16, 30); // UTC 16:30 = 北京 2026-06-18 00:30
   ['codex', 'kimi'].forEach((pid) => {
     const daily = rollupDaily([{ provider: pid, ts, usage: { input: 1, cached: 0, output: 1, total: 2 } }]);
-    const d = new Date(ts);
-    const key = pid + ':' + d.getFullYear() + '-' +
-      String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    assert.ok(daily[key], pid + ' 应按本地日历日聚合,实际键:' + Object.keys(daily).join(','));
+    assert.ok(daily[pid + ':2026-06-18'], pid + ' 应按北京日历日聚合,实际键:' + Object.keys(daily).join(','));
   });
 });

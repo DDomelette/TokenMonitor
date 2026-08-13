@@ -1,4 +1,4 @@
-const { localDayStr } = require('./locallog');
+const { localDayStr } = require('./beijing-calendar');
 const { normalizeTokenSpeedSettings } = require('./token-speed-settings');
 const {
   createTokenSpeedTracker,

@@ -257,61 +257,82 @@ test('failed poll keeps last good quota: update on success, keep on failure', as
   }
 });
 
-test('codex local-log polls route through the usage runtime when provided', async () => {
-  const seen = [];
-  const runtime = {
-    async runIncremental(fn) {
-      return fn({ mode: 'uuid' });
-    }
-  };
-  const codex = makeFakeAdapter({
-    id: 'codex',
-    capabilities: { balance: false, webUsage: false, quota: false, localLog: true, realtimeProxy: false },
-    async readLocalLog(ctx, opts) {
-      seen.push(opts);
-      return [];
-    }
-  });
+test('runExclusive serializes same-key functions and lets other keys run concurrently', async () => {
   const scheduler = startScheduler({
-    registry: makeRegistry([codex]),
-    store: makeFakeStore({}),
-    broadcast() {},
-    intervals: false,
-    codexUsageRuntime: runtime
+    registry: makeRegistry([]), store: makeFakeStore({}), broadcast() {}, intervals: false
   });
   try {
-    await scheduler.poll('codex', 'localLog');
-    assert.deepEqual(seen, [{ mode: 'uuid' }], 'codex read receives the runtime-supplied mode');
+    const order = [];
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+
+    const first = scheduler.runExclusive('codex', 'localLog', async () => {
+      order.push('first:start');
+      await gate;
+      order.push('first:end');
+    });
+    const second = scheduler.runExclusive('codex', 'localLog', async () => {
+      order.push('second');
+    });
+    const kimi = scheduler.runExclusive('kimi', 'localLog', async () => {
+      order.push('kimi');
+    });
+
+    // kimi 使用不同 key,可立即执行;同 key 的 second 必须排队等待 first 完成
+    assert.deepEqual(order, ['first:start', 'kimi']);
+    release();
+    await Promise.all([first, second, kimi]);
+    assert.deepEqual(order, ['first:start', 'kimi', 'first:end', 'second']);
   } finally {
     scheduler.stop();
   }
 });
 
-test('non-codex local-log polls bypass the usage runtime', async () => {
-  const seen = [];
-  const runtime = {
-    async runIncremental() {
-      throw new Error('must not be used');
-    }
-  };
-  const kimi = makeFakeAdapter({
-    id: 'kimi',
+test('runOnce coalesces a queued key so a second poll does not re-read', async () => {
+  let calls = 0;
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const provider = makeFakeAdapter({
+    id: 'codex',
     capabilities: { balance: false, webUsage: false, quota: false, localLog: true, realtimeProxy: false },
-    async readLocalLog(ctx, opts) {
-      seen.push(opts);
+    async readLocalLog() {
+      calls += 1;
+      await gate;
       return [];
     }
   });
   const scheduler = startScheduler({
-    registry: makeRegistry([kimi]),
-    store: makeFakeStore({}),
-    broadcast() {},
-    intervals: false,
-    codexUsageRuntime: runtime
+    registry: makeRegistry([provider]), store: makeFakeStore({}), broadcast() {}, intervals: false
   });
   try {
-    await scheduler.poll('kimi', 'localLog');
-    assert.deepEqual(seen, [undefined], 'kimi read is called directly without runtime options');
+    const first = scheduler.poll('codex', 'localLog');
+    const second = scheduler.poll('codex', 'localLog');
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(calls, 1, 'the second poll must coalesce onto the running task');
+    release();
+    await Promise.all([first, second]);
+    assert.equal(calls, 1, 'runOnce must never invoke a second function for a queued key');
+  } finally {
+    scheduler.stop();
+  }
+});
+
+test('a rejected exclusive task frees the key so the next queued task still runs', async () => {
+  const scheduler = startScheduler({
+    registry: makeRegistry([]), store: makeFakeStore({}), broadcast() {}, intervals: false
+  });
+  try {
+    const order = [];
+    const first = scheduler.runExclusive('codex', 'localLog', async () => {
+      order.push('first');
+      throw new Error('boom');
+    });
+    const second = scheduler.runExclusive('codex', 'localLog', async () => {
+      order.push('second');
+    });
+    await assert.rejects(first, /boom/);
+    await second;
+    assert.deepEqual(order, ['first', 'second'], 'a prior rejection must not stall the queue');
   } finally {
     scheduler.stop();
   }

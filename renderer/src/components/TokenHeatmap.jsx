@@ -24,8 +24,9 @@ const PROVIDER_OPTS = [
 ];
 
 function dateLabel(date) {
-  const d = new Date(date + 'T00:00:00');
-  return (d.getMonth() + 1) + '月' + d.getDate() + '日';
+  const month = Number(date.slice(5, 7));
+  const day = Number(date.slice(8, 10));
+  return month + '月' + day + '日';
 }
 
 export default function TokenHeatmap({ provider = 'all', year: requestedYear }) {
@@ -91,13 +92,11 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
 
   // 月份标签:每月 1 日所在列显示 'M月'
   const monthLabels = useMemo(() => {
-    const startMs = new Date(weeks[0][0].date + 'T00:00:00').getTime();
     const labels = {};
-    for (let m = 0; m < 12; m++) {
-      const first = new Date(year, m, 1);
-      if (first.getFullYear() !== year) continue;
-      const col = Math.floor((first.getTime() - startMs) / 86400000 / 7);
-      if (col >= 0 && col < weeks.length) labels[col] = (m + 1) + '月';
+    for (let m = 1; m <= 12; m++) {
+      const firstDay = year + '-' + String(m).padStart(2, '0') + '-01';
+      const col = weeks.findIndex((week) => week.some((cell) => cell.date === firstDay));
+      if (col >= 0 && col < weeks.length) labels[col] = m + '月';
     }
     return labels;
   }, [weeks, year]);
@@ -300,11 +299,11 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
   function renderWeekly() {
     return renderStacked(
       (c, col) => {
-        const weekKey = col[0] ? sundayWeekKey(new Date(col[0].date + 'T00:00:00')) : null;
+        const weekKey = col[0] ? sundayWeekKey(col[0].date) : null;
         return weekKey ? weekTotals[weekKey] || 0 : 0;
       },
       (c, col) => {
-        const weekKey = col[0] ? sundayWeekKey(new Date(col[0].date + 'T00:00:00')) : null;
+        const weekKey = col[0] ? sundayWeekKey(col[0].date) : null;
         return weekKey ? dateLabel(weekKey) + ' 当周使用了' : null;
       },
       maxWeek > 0 ? maxWeek / 7 : 0
@@ -342,7 +341,7 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
   // 浮层头部右侧的总量:每日=当日合计;每周=所在可视列合计;累计=年初至该日累计
   function tipTotal(date) {
     if (mode === 'weekly') {
-      const key = sundayWeekKey(new Date(date + 'T00:00:00'));
+      const key = sundayWeekKey(date);
       return key ? weekTotals[key] || 0 : 0;
     }
     if (mode === 'cumulative') return cumByDate[date] || 0;

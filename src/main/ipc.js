@@ -158,6 +158,10 @@ module.exports = function setupIPC(deps) {
     const readStore = (k) => deps.store.get(k);
     const writeStore = (k, v) => deps.store.set(k, v);
     const deleteStore = (k) => deps.store.delete(k);
+    const runLocalLogExclusive = (providerId, operation) =>
+      deps.scheduler && typeof deps.scheduler.runExclusive === 'function'
+        ? deps.scheduler.runExclusive(providerId, 'localLog', operation)
+        : operation();
     const summary = {};
 
     const token = deps.store.get('providers.deepseek.sessionToken');
@@ -182,28 +186,28 @@ module.exports = function setupIPC(deps) {
     if (codexProvider && typeof codexProvider.readLocalLog === 'function') {
       summary.codex = deps.codexUsageRuntime
         ? await deps.codexUsageRuntime.rebuild({ onProgress: sendProgress })
-        : await rescanLocalLogs({
+        : await runLocalLogExclusive('codex', () => rescanLocalLogs({
           providerId: 'codex',
           readLocalLog: () => codexProvider.readLocalLog({ store: deps.store }, { retainAll: true }),
           readStore,
           writeStore,
           deleteStore,
           onProgress: sendProgress
-        });
+        }));
     } else {
       summary.codex = { daysRebuilt: 0, earliestDate: null, skipped: true };
     }
 
     const kimiProvider = deps.registry.get('kimi');
     if (kimiProvider && typeof kimiProvider.readLocalLog === 'function') {
-      summary.kimi = await rescanLocalLogs({
+      summary.kimi = await runLocalLogExclusive('kimi', () => rescanLocalLogs({
         providerId: 'kimi',
         readLocalLog: () => kimiProvider.readLocalLog({ store: deps.store }, { retainAll: true }),
         readStore,
         writeStore,
         deleteStore,
         onProgress: sendProgress
-      });
+      }));
     } else {
       summary.kimi = { daysRebuilt: 0, earliestDate: null, skipped: true };
     }
@@ -215,11 +219,10 @@ module.exports = function setupIPC(deps) {
       .filter(Boolean)
       .sort()[0] || null;
     if (earliest && Number.isInteger(historyDays) && historyDays > 0 && earliest < retentionStartDay(historyDays)) {
-      const startMs = new Date(earliest + 'T12:00:00').getTime();
       summary.retentionHint = {
         historyDays,
         earliestDate: earliest,
-        suggestedDays: Math.ceil((Date.now() - startMs) / 86400000) + 1
+        suggestedDays: inclusiveBeijingDayCount(earliest)
       };
     }
 

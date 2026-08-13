@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { scanFiles } = require('../src/main/core/locallog');
+const { scanFileBatch } = require('../src/main/core/locallog');
 
 function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-chunk-recovery-'));
@@ -24,7 +24,7 @@ function line(sequence, text = 'payload') {
 }
 
 function scan(root, store, parseLine, options = {}) {
-  return scanFiles(Object.assign({
+  return scanFileBatch(Object.assign({
     root,
     match: /fixture\.jsonl$/,
     cursorStore: store,
@@ -61,14 +61,15 @@ test('budget exhaustion finishes only the already-started line and never request
 
   fs.writeFileSync(file, lines.join(''));
 
-  const records = await scan(
+  const batch = await scan(
     root,
     store,
     (raw) => JSON.parse(raw),
     { chunkBytes: 128, maxBytesPerScan: 50 }
   );
 
-  assert.deepEqual(records.map((record) => record.sequence), [1, 2]);
+  assert.deepEqual(batch.records.map((record) => record.sequence), [1, 2]);
+  assert.equal(batch.complete, false);
   assert.equal(
     store.values['cursor.fixture'][file].offset,
     Buffer.byteLength(lines[0] + lines[1]),
@@ -108,7 +109,7 @@ test('a parser failure commits prior lines and replays the failing line on recov
 
     failSecond = false;
     const recovered = await scan(root, store, (raw) => JSON.parse(raw));
-    assert.deepEqual(recovered.map((record) => record.sequence), [2, 3]);
+    assert.deepEqual(recovered.records.map((record) => record.sequence), [2, 3]);
     assert.equal(store.values['cursor.fixture'][file].offset, fs.statSync(file).size);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

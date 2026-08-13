@@ -28,7 +28,7 @@ function startScheduler({
   const enabled = intervals === false ? false : Object.assign({}, DEFAULT_INTERVALS, intervals || {});
   const timers = [];
   const states = Object.create(null);
-  const inflight = new Set();
+  const inflight = new Map();
 
   function getProxyUrl() {
     if (typeof getProxyInput === 'function') return getProxyInput();
@@ -193,15 +193,30 @@ function startScheduler({
     return true;
   }
 
-  async function runOnce(providerId, channel, fn) {
+  function runExclusive(providerId, channel, fn) {
     const key = providerId + ':' + channel;
-    if (inflight.has(key)) return;
-    inflight.add(key);
-    try {
-      await fn();
-    } finally {
-      inflight.delete(key);
+    const prior = inflight.get(key);
+    let task;
+    if (prior) {
+      task = Promise.resolve(prior).catch(() => {}).then(fn);
+    } else {
+      try {
+        task = Promise.resolve(fn());
+      } catch (error) {
+        task = Promise.reject(error);
+      }
     }
+    inflight.set(key, task);
+    const cleanup = () => {
+      if (inflight.get(key) === task) inflight.delete(key);
+    };
+    task.then(cleanup, cleanup);
+    return task;
+  }
+
+  function runOnce(providerId, channel, fn) {
+    const key = providerId + ':' + channel;
+    return inflight.get(key) || runExclusive(providerId, channel, fn);
   }
 
   async function pollBalance(provider) {
@@ -361,7 +376,7 @@ function startScheduler({
 
   start();
 
-  return { stop, getState, getSnapshot, poll, pollAll };
+  return { stop, getState, getSnapshot, poll, pollAll, runExclusive };
 }
 
 module.exports = { startScheduler, DEFAULT_INTERVALS, isAuthError };

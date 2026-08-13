@@ -4,6 +4,7 @@ import React, { useRef } from 'react';
 import * as echarts from 'echarts';
 import useECharts from '../hooks/useECharts.js';
 import { getTheme, getBarTheme } from '../lib/chartTheme.js';
+import { beijingMonthDayLabel, isAfterBeijingToday } from '../lib/beijing-calendar.js';
 import { echartsWindowPosition as windowClampedPosition } from '../lib/floating-layer.js';
 
 function clamp(value, minimum, maximum) {

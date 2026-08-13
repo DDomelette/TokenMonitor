@@ -1,19 +1,21 @@
-const MIN_TIMER_DELAY_MS = 1;
+import {
+  beijingDateParts,
+  beijingDayKey,
+  millisecondsUntilNextBeijingMidnight
+} from './beijing-calendar.js';
 
 export function localDayKey(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return beijingDayKey(date);
 }
 
 export function millisecondsUntilNextLocalMidnight(date) {
-  const next = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
-  return Math.max(MIN_TIMER_DELAY_MS, next.getTime() - date.getTime());
+  return millisecondsUntilNextBeijingMidnight(date);
 }
 
 export function resolveHeatmapYear(requestedYear, date) {
-  return Number.isFinite(requestedYear) ? requestedYear : date.getFullYear();
+  if (Number.isFinite(requestedYear)) return requestedYear;
+  const parts = beijingDateParts(date);
+  return parts ? parts.year : date.getFullYear();
 }
 
 export function findDayColumn(weeks, dayKey) {

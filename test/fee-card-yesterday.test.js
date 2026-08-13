@@ -29,7 +29,7 @@ function evaluateInTimezone(timeZone, nowIso, dailyData) {
   return JSON.parse(result.stdout.trim());
 }
 
-test('UTC+8 local midnight uses the local previous calendar date', () => {
+test('UTC+8 local midnight uses the Beijing previous calendar date', () => {
   const result = evaluateInTimezone(
     'Asia/Shanghai',
     '2026-08-04T16:30:00.000Z',
@@ -46,7 +46,7 @@ test('UTC+8 local midnight uses the local previous calendar date', () => {
   });
 });
 
-test('UTC- timezone derives yesterday from local fields rather than the UTC date', () => {
+test('a UTC- timezone still resolves yesterday from the Beijing date, not the host calendar', () => {
   const result = evaluateInTimezone(
     'America/Los_Angeles',
     '2026-01-01T07:30:00.000Z',
@@ -58,27 +58,29 @@ test('UTC- timezone derives yesterday from local fields rather than the UTC date
   );
 
   assert.deepEqual(result, {
-    today: '2025-12-31',
-    yesterday: '2025-12-30',
-    cost: 30
-  });
-});
-
-test('cross-year local midnight returns December 31 as yesterday', () => {
-  const result = evaluateInTimezone(
-    'Pacific/Kiritimati',
-    '2025-12-31T10:30:00.000Z',
-    [
-      { date: '2025-12-30', total: 30 },
-      { date: '2025-12-31', total: 31 }
-    ]
-  );
-
-  assert.deepEqual(result, {
     today: '2026-01-01',
     yesterday: '2025-12-31',
     cost: 31
   });
+});
+
+test('the same instant derives the same Beijing yesterday in every host timezone', () => {
+  for (const zone of ['UTC', 'America/Los_Angeles', 'Asia/Shanghai']) {
+    const result = evaluateInTimezone(
+      zone,
+      '2025-12-31T10:30:00.000Z',
+      [
+        { date: '2025-12-30', total: 30 },
+        { date: '2025-12-31', total: 31 }
+      ]
+    );
+
+    assert.deepEqual(result, {
+      today: '2025-12-31',
+      yesterday: '2025-12-30',
+      cost: 30
+    });
+  }
 });
 
 test('today may be absent, but only the exact yesterday row is eligible', () => {

@@ -30,7 +30,7 @@ function fixtureLine(sequence, text = '汉字🙂') {
 }
 
 async function scanFixture(dir, cursorStore, options) {
-  return scanFiles(Object.assign({
+  return scanFileBatch(Object.assign({
     root: dir,
     match: /fixture-.*\.jsonl$/,
     cursorStore,
@@ -51,7 +51,7 @@ async function scanFixtureBatch(dir, cursorStore, options) {
   }, options));
 }
 
-test('scanFiles returns a Promise, enforces a byte budget, and resumes without duplicates', async () => {
+test('scanFileBatch returns a Promise, enforces a byte budget, and resumes without duplicates', async () => {
   const dir = makeTempDir();
   const file = path.join(dir, 'fixture-budget.jsonl');
   const cursorStore = makeCursorStore();
@@ -66,16 +66,16 @@ test('scanFiles returns a Promise, enforces a byte budget, and resumes without d
     });
     assert.equal(typeof firstPending.then, 'function');
     const first = await firstPending;
-    assert.ok(first.length > 0, 'the first budget should consume at least one complete line');
-    assert.ok(first.length < expected.length, 'one scan must not consume the entire large unread tail');
+    assert.ok(first.records.length > 0, 'the first budget should consume at least one complete line');
+    assert.ok(first.records.length < expected.length, 'one scan must not consume the entire large unread tail');
 
-    const observed = first.map((record) => record.sequence);
+    const observed = first.records.map((record) => record.sequence);
     for (let attempt = 0; attempt < 100 && observed.length < expected.length; attempt += 1) {
       const batch = await scanFixture(dir, cursorStore, {
         chunkBytes: 31,
         maxBytesPerScan: 93
       });
-      observed.push(...batch.map((record) => record.sequence));
+      observed.push(...batch.records.map((record) => record.sequence));
     }
 
     assert.deepEqual(observed, expected);
@@ -107,7 +107,7 @@ test('small chunks preserve UTF-8 records split across byte boundaries', async (
     });
 
     assert.deepEqual(
-      records.map(({ sequence, text }) => ({ sequence, text })),
+      records.records.map(({ sequence, text }) => ({ sequence, text })),
       values
     );
     assert.equal(cursorStore.data['cursor.fixture'][file].offset, fs.statSync(file).size);
@@ -131,7 +131,7 @@ test('a budget ending inside a line commits only the previous newline', async ()
       chunkBytes: 11,
       maxBytesPerScan: Buffer.byteLength(firstLine) + 13
     });
-    assert.deepEqual(first.map((record) => record.sequence), [1]);
+    assert.deepEqual(first.records.map((record) => record.sequence), [1]);
     assert.equal(
       cursorStore.data['cursor.fixture'][file].offset,
       Buffer.byteLength(firstLine),
@@ -143,7 +143,7 @@ test('a budget ending inside a line commits only the previous newline', async ()
       chunkBytes: 11,
       maxBytesPerScan: 4096
     });
-    assert.deepEqual(second.map((record) => record.sequence), [2]);
+    assert.deepEqual(second.records.map((record) => record.sequence), [2]);
     assert.equal(cursorStore.data['cursor.fixture'][file].offset, fs.statSync(file).size);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -173,7 +173,7 @@ test('multi-block scans yield to the event loop before resolving', async () => {
       }
     });
 
-    assert.ok(records.length > 0);
+    assert.ok(records.records.length > 0);
     assert.ok(yielded > 1, 'a multi-block scan must yield after multiple reads');
     assert.equal(externalImmediateRan, true, 'the main event loop must run before scan completion');
   } finally {

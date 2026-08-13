@@ -1,6 +1,7 @@
 // localLog 通道核心:异步增量文件扫描 + 按日聚合(纯函数可测)。
 const fs = require('fs');
 const path = require('path');
+const { localDayStr, localTzSec } = require('./beijing-calendar');
 
 const fsp = fs.promises;
 const MIN_TIMESTAMP_MS = Date.UTC(2000, 0, 1);
@@ -42,19 +43,6 @@ async function pathExists(targetPath) {
   } catch (_) {
     return false;
   }
-}
-
-function pad2(value) {
-  return String(value).padStart(2, '0');
-}
-
-function localTzSec(tsMs = Date.now()) {
-  return -new Date(tsMs).getTimezoneOffset() * 60;
-}
-
-function localDayStr(tsMs) {
-  const date = new Date(tsMs);
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
 async function walkFiles(root, match) {
@@ -285,7 +273,14 @@ async function scanFileBatch({
       candidates,
       parseLine,
       onRecord({ record, cursor, records }) {
-        if (record) records.push(Object.assign({ provider: providerId }, record));
+        if (record) {
+          const usageTotal = Number(record.usageTotal);
+          const duplicate = Number.isFinite(usageTotal)
+            && Number.isFinite(Number(cursor.lastUsageTotal))
+            && usageTotal === Number(cursor.lastUsageTotal);
+          if (!duplicate) records.push(Object.assign({ provider: providerId }, record));
+          if (Number.isFinite(usageTotal)) cursor.lastUsageTotal = usageTotal;
+        }
         return cursor;
       },
       resetCursor(cursor, stat) {

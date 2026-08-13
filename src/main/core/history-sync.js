@@ -177,18 +177,19 @@ async function rescanLocalLogs(options) {
   });
   const backupCursor = cloneValue(readStore(cursorKey));
 
-  Object.keys(usageDaily).forEach((k) => {
-    if (k.indexOf(prefix) === 0) delete usageDaily[k];
-  });
-  writeStore('usageDaily', usageDaily);
-  writeStore(cursorKey, {});
-
   let passes = 0;
   let records = 0;
   let bytesRead = 0;
   let complete = false;
 
   try {
+    const clearedDaily = cloneValue(usageDaily);
+    Object.keys(clearedDaily).forEach((k) => {
+      if (k.indexOf(prefix) === 0) delete clearedDaily[k];
+    });
+    writeStore('usageDaily', clearedDaily);
+    writeStore(cursorKey, {});
+
     while (passes < maxPasses) {
       const batch = await readLocalLog();
       passes++;
@@ -209,7 +210,7 @@ async function rescanLocalLogs(options) {
       throw error;
     }
   } catch (error) {
-    const current = readStore('usageDaily') || {};
+    const current = cloneValue(readStore('usageDaily') || {});
     Object.keys(current).forEach((k) => {
       if (k.indexOf(prefix) === 0) delete current[k];
     });

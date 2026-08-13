@@ -1,26 +1,13 @@
-function pad2(value) {
-  return String(value).padStart(2, '0');
-}
+import { beijingDayKey, addBeijingDays } from './lib/beijing-calendar.js';
 
 export function localDateKey(value = Date.now()) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return null;
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  return beijingDayKey(value);
 }
 
 export function previousLocalDateKey(value = Date.now()) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return null;
-  const previous = new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate() - 1,
-    12,
-    0,
-    0,
-    0
-  );
-  return localDateKey(previous);
+  const today = beijingDayKey(value);
+  if (!today) return null;
+  return addBeijingDays(today, -1);
 }
 
 export function getYesterdayCost(costDaily, value = Date.now()) {

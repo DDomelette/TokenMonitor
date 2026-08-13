@@ -59,7 +59,7 @@ test('a local-log scan with new records broadcasts exactly once after persistenc
       ctx.store.set('usageDaily', {
         'codex:2026-08-06': { input: 2, cached: 0, output: 3, total: 5 }
       });
-      return [{ provider: 'codex', ts: Date.now(), usage: { total: 5 } }];
+      return { records: [{ provider: 'codex', ts: Date.now(), usage: { total: 5 } }], complete: true, bytesRead: 0 };
     }
   });
   const broadcasts = [];
@@ -87,7 +87,7 @@ test('a local-log scan with new records broadcasts exactly once after persistenc
 test('an empty local-log scan does not broadcast a meaningless redraw', async () => {
   const provider = makeProvider('codex', {
     async readLocalLog() {
-      return [];
+      return { records: [], complete: true, bytesRead: 0 };
     }
   });
   const broadcasts = [];
@@ -136,7 +136,7 @@ test('pollAll broadcasts the last provider only after its local-log data is pers
       ctx.store.set('usageDaily', {
         'kimi:2026-08-06': { input: 4, cached: 1, output: 4, total: 9 }
       });
-      return [{ provider: 'kimi', ts: Date.now(), usage: { total: 9 } }];
+      return { records: [{ provider: 'kimi', ts: Date.now(), usage: { total: 9 } }], complete: true, bytesRead: 0 };
     }
   });
   const broadcasts = [];
@@ -177,7 +177,7 @@ test('local-log error recovery plus new data produces one combined notification'
       ctx.store.set('usageDaily', {
         'kimi:2026-08-06': { input: 1, cached: 0, output: 1, total: 2 }
       });
-      return [{ provider: 'kimi', ts: Date.now(), usage: { total: 2 } }];
+      return { records: [{ provider: 'kimi', ts: Date.now(), usage: { total: 2 } }], complete: true, bytesRead: 0 };
     }
   });
   const broadcasts = [];

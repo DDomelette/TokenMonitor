@@ -2,6 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+const { spawnSync } = require('node:child_process');
 const {
   buildSundayWeekTotals,
   buildWeeks,
@@ -47,6 +49,22 @@ test('Sunday-only and Monday-only usage aggregate into their visual columns', ()
     '2026-08-02': 12,
     '2026-08-09': 11
   });
+});
+
+test('Beijing day keys remain visible when the host timezone skipped that local date', () => {
+  const moduleUrl = pathToFileURL(
+    path.join(root, 'renderer/src/lib/heatmap.js')
+  ).href;
+  const source = `
+    const heatmap = await import(${JSON.stringify(moduleUrl)});
+    console.log(JSON.stringify(heatmap.buildSundayWeekTotals({ '2011-12-30': 5 })));
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '--eval', source], {
+    env: Object.assign({}, process.env, { TZ: 'Pacific/Apia' }),
+    encoding: 'utf8'
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.deepEqual(JSON.parse(result.stdout.trim()), { '2011-12-25': 5 });
 });
 
 test('a cross-year column is keyed by its actual Sunday while summing selected-year days', () => {
