@@ -8,6 +8,9 @@ const RESET_KEEP_KEYS = Object.freeze([
   // retaining the aggregate without them replays or deletes historical usage.
   'localLogCursors.codex',
   'localLogCursors.kimi',
+  // DSH 遥测:汇总、费用与游标是同一份持久单元,必须与 usageDaily 一起保留。
+  'usageDailyCost',
+  'localLogCursors.dsh',
   // Codex 归档迁移:汇总、UUID 游标与迁移完成版本是同一份持久单元,必须一起保留;
   // 只保留汇总而丢失标记会导致下次启动重复重建,丢失游标则会重读或漏读历史。
   'localLogMigrations.codexArchiveUuidCursorV1',

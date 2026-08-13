@@ -8,6 +8,7 @@ const registry = require('./providers/registry');
 const deepseekProvider = require('./providers/deepseek');
 const codexProvider = require('./providers/codex');
 const kimiProvider = require('./providers/kimi');
+const dshProvider = require('./providers/dsh');
 const { startScheduler } = require('./core/scheduler');
 const { rebuildCodexUsage } = require('./providers/codex/rebuild');
 const { startCodexUsageBootstrap, CODEX_USAGE_BOOTSTRAP_FAILED } = require('./core/codex-usage-bootstrap');
@@ -847,6 +848,7 @@ app.whenReady().then(() => {
   registry.register(deepseekProvider);
   registry.register(codexProvider);
   registry.register(kimiProvider);
+  registry.register(dshProvider);
   getProxyInput = createRuntimeProxyInputGetter();
 
   // Codex 归档迁移:先创建运行时并立即启动影子迁移(不等待),再构造调度器,
