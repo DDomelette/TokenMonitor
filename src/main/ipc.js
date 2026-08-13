@@ -212,9 +212,23 @@ module.exports = function setupIPC(deps) {
       summary.kimi = { daysRebuilt: 0, earliestDate: null, skipped: true };
     }
 
+    const dshProvider = deps.registry.get('dsh');
+    if (dshProvider && typeof dshProvider.readLocalLog === 'function') {
+      summary.dsh = await runLocalLogExclusive('dsh', () => rescanLocalLogs({
+        providerId: 'dsh',
+        readLocalLog: () => dshProvider.readLocalLog({ store: deps.store }, { retainAll: true }),
+        readStore,
+        writeStore,
+        deleteStore,
+        onProgress: sendProgress
+      }));
+    } else {
+      summary.dsh = { daysRebuilt: 0, earliestDate: null, skipped: true };
+    }
+
     // 历史保留提示:最早日期落在保留窗口外时给出建议天数(只提示不擅改)
     const historyDays = deps.store.get('data.historyDays');
-    const earliest = [summary.deepseek, summary.codex, summary.kimi]
+    const earliest = [summary.deepseek, summary.codex, summary.kimi, summary.dsh]
       .map((r) => r && r.earliestDate)
       .filter(Boolean)
       .sort()[0] || null;
