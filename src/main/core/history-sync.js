@@ -159,6 +159,7 @@ async function rescanLocalLogs(options) {
   const readLocalLog = options.readLocalLog;
   const readStore = options.readStore;
   const writeStore = options.writeStore;
+  const deleteStore = options.deleteStore;
   const onProgress = options.onProgress || null;
   const maxPasses = options.maxPasses || MAX_SCAN_PASSES;
 
@@ -216,7 +217,13 @@ async function rescanLocalLogs(options) {
       current[k] = backupRows[k];
     });
     writeStore('usageDaily', current);
-    if (backupCursor !== undefined) writeStore(cursorKey, backupCursor);
+    if (backupCursor !== undefined) {
+      writeStore(cursorKey, backupCursor);
+    } else if (typeof deleteStore === 'function') {
+      deleteStore(cursorKey);
+    } else {
+      writeStore(cursorKey, undefined);
+    }
     throw error;
   }
 

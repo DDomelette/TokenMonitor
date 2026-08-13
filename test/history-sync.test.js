@@ -8,6 +8,33 @@ function makeStore(seed) {
 }
 const noopSleep = async () => {};
 
+test('rescan failure deletes a cursor that did not exist before the transaction', async () => {
+  const store = makeStore({
+    usageDaily: {
+      'kimi:2026-06-17': { input: 1, cached: 0, output: 1, total: 2 }
+    }
+  });
+
+  await assert.rejects(
+    rescanLocalLogs({
+      providerId: 'kimi',
+      readLocalLog: async () => {
+        store.set('localLogCursors.kimi', { generated: { offset: 99 } });
+        throw Object.assign(new Error('read failed'), { code: 'EIO' });
+      },
+      readStore: store.get,
+      writeStore: store.set,
+      deleteStore: (key) => { delete store.data[key]; }
+    }),
+    (error) => error && error.code === 'EIO'
+  );
+
+  assert.equal(Object.prototype.hasOwnProperty.call(store.data, 'localLogCursors.kimi'), false);
+  assert.deepEqual(store.data.usageDaily['kimi:2026-06-17'], {
+    input: 1, cached: 0, output: 1, total: 2
+  });
+});
+
 // 2026-08 起 12 个连续空月:6..1(2026)+ 12..7(2025)
 const TWELVE_EMPTY_CALLS = ['2026-6', '2026-5', '2026-4', '2026-3', '2026-2', '2026-1',
   '2025-12', '2025-11', '2025-10', '2025-9', '2025-8', '2025-7'];

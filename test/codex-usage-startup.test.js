@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
   startCodexUsageBootstrap,
@@ -94,4 +96,10 @@ test('unexpected migration rejection reports only the safe bootstrap constant', 
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.deepEqual(reported, [{ code: CODEX_USAGE_BOOTSTRAP_FAILED }]);
+});
+
+test('main wires post-catch-up dashboard refresh into the Codex runtime', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/main/index.js'), 'utf8');
+  assert.match(source, /onCatchUpComplete/);
+  assert.match(source, /broadcastToWindows\('providers:changed'/);
 });

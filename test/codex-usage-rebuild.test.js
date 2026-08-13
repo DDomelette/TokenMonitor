@@ -11,7 +11,11 @@ const {
   replaceCodexSnapshot,
   rebuildCodexUsage
 } = require('../src/main/providers/codex/rebuild');
-const { verifyCodexArchiveUsage } = require('../scripts/verify-codex-archive-usage');
+const {
+  liveStoreConfigPath,
+  readStoreProjection,
+  verifyCodexArchiveUsage
+} = require('../scripts/verify-codex-archive-usage');
 
 const NOW_MS = Date.UTC(2026, 7, 13, 12, 0, 0);
 const UUID_ACTIVE = '019fe62f-0000-7000-8000-000000000001';
@@ -380,4 +384,39 @@ test('verifyCodexArchiveUsage flags mismatch without mutating the projection', a
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
   }
+});
+
+test('verifyCodexArchiveUsage reports physical rollout files when one identity exists in both roots', async () => {
+  const { base, sessions, archived } = makeTempRoots();
+  try {
+    const name = `rollout-${UUID_ACTIVE}.jsonl`;
+    const line = usageLine(EVENTS.A);
+    fs.writeFileSync(path.join(sessions, name), line);
+    fs.writeFileSync(path.join(archived, name), line);
+
+    const result = await verifyCodexArchiveUsage({
+      activeRoot: sessions,
+      archiveRoot: archived,
+      nowMs: NOW_MS
+    });
+
+    assert.equal(result.files, 2);
+    assert.equal(result.uniqueEvents, 1);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('readStoreProjection rejects the live encrypted config before reading it', () => {
+  assert.throws(
+    () => readStoreProjection(liveStoreConfigPath()),
+    (error) => error && error.code === 'LIVE_STORE_PROJECTION_FORBIDDEN'
+  );
+});
+
+test('readStoreProjection never reads an encryption key', () => {
+  assert.throws(
+    () => readStoreProjection(path.join(os.tmpdir(), '.key')),
+    (error) => error && error.code === 'STORE_PROJECTION_KEY_FORBIDDEN'
+  );
 });

@@ -9,6 +9,7 @@ const {
   codexEventFingerprint,
   parseRolloutLine,
   resolveCodexLogRoots,
+  readLocalLog,
   scanCodexLogBatch,
   DEFAULT_ROOT,
   DEFAULT_ARCHIVE_ROOT
@@ -137,6 +138,7 @@ test('resolveCodexLogRoots keeps default active with explicit custom archive', (
 // ---------------------------------------------------------------------------
 
 const TEST_UUID = '019fe62f-9a3c-7cb2-9e34-f21173cf257d';
+const TEST_UUID_SECOND = '019fe62f-9a3c-7cb2-9e34-f21173cf257e';
 
 function makeTempRoots() {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-archive-locallog-'));
@@ -557,6 +559,118 @@ test('moving a file before open recollects once without resetting the UUID curso
     const cursor = store.get('localLogCursors.codex')[TEST_UUID];
     assert.ok(cursor);
     assert.equal(cursor.offset, Buffer.byteLength(line1 + line2));
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('a failed UUID batch publishes neither partial usage nor advanced cursors', async () => {
+  const { base, sessions, archived } = makeTempRoots();
+  const firstLine = usageLine({ ts: '2026-08-09T10:00:00.000Z', input: 10, total: 10 });
+  const secondLine = usageLine({ ts: '2026-08-09T11:00:00.000Z', input: 20, total: 20 });
+  fs.writeFileSync(path.join(sessions, `rollout-${TEST_UUID}.jsonl`), firstLine);
+  fs.writeFileSync(path.join(sessions, `rollout-${TEST_UUID_SECOND}.jsonl`), secondLine);
+
+  const store = uuidCodexStore(sessions, archived, {
+    'localLogMigrations.codexArchiveUuidCursorV1': true,
+    usageDaily: {}
+  });
+
+  try {
+    await assert.rejects(
+      readLocalLog({ store }, {
+        mode: 'uuid',
+        nowMs: Date.now(),
+        openCandidate: async (candidate) => {
+          if (candidate.identity === TEST_UUID_SECOND) {
+            throw Object.assign(new Error('second rollout failed'), { code: 'EIO' });
+          }
+          return fs.promises.open(candidate.filePath, 'r');
+        }
+      }),
+      (error) => error && error.code === 'EIO'
+    );
+
+    assert.deepEqual(store.get('usageDaily'), {});
+    assert.equal(store.get('localLogCursors.codex'), undefined);
+
+    const retry = await readLocalLog({ store }, { mode: 'uuid', nowMs: Date.now() });
+    assert.deepEqual(retry.records.map((record) => record.usage.total), [10, 20]);
+    assert.equal(store.get('usageDaily')['codex:2026-08-09'].total, 30);
+    assert.deepEqual(Object.keys(store.get('localLogCursors.codex')), [TEST_UUID, TEST_UUID_SECOND]);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('a successful UUID read commits usage and cursors in one store snapshot', async () => {
+  const { base, sessions, archived } = makeTempRoots();
+  fs.writeFileSync(
+    path.join(sessions, `rollout-${TEST_UUID}.jsonl`),
+    usageLine({ ts: '2026-08-09T10:00:00.000Z', input: 10, total: 10 })
+  );
+
+  let snapshot = {
+    providers: { codex: { localLogRoot: sessions, archivedLogRoot: archived } },
+    localLogMigrations: { codexArchiveUuidCursorV1: true },
+    usageDaily: {}
+  };
+  let snapshotAssignments = 0;
+  let snapshotReads = 0;
+  let pointWrites = 0;
+  const store = {
+    get(key) {
+      return key.split('.').reduce((value, part) => (value == null ? undefined : value[part]), snapshot);
+    },
+    set() { pointWrites += 1; },
+    get store() {
+      snapshotReads += 1;
+      return structuredClone(snapshot);
+    },
+    set store(value) {
+      snapshotAssignments += 1;
+      snapshot = structuredClone(value);
+    }
+  };
+
+  try {
+    const batch = await readLocalLog({ store }, { mode: 'uuid', nowMs: Date.now() });
+    assert.deepEqual(batch.records.map((record) => record.usage.total), [10]);
+    assert.equal(snapshotAssignments, 1);
+    assert.equal(snapshotReads, 1);
+    assert.equal(pointWrites, 0);
+    assert.equal(snapshot.usageDaily['codex:2026-08-09'].total, 10);
+    assert.ok(snapshot.localLogCursors.codex[TEST_UUID]);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('UUID read restores usage when a compatibility store rejects the cursor write', async () => {
+  const { base, sessions, archived } = makeTempRoots();
+  fs.writeFileSync(
+    path.join(sessions, `rollout-${TEST_UUID}.jsonl`),
+    usageLine({ ts: '2026-08-09T10:00:00.000Z', input: 10, total: 10 })
+  );
+  const store = uuidCodexStore(sessions, archived, {
+    usageDaily: { 'kimi:2026-08-09': { input: 1, cached: 0, output: 1, total: 2 } }
+  });
+  const originalSet = store.set.bind(store);
+  store.set = (key, value) => {
+    if (key === 'localLogCursors.codex') {
+      throw Object.assign(new Error('cursor write failed'), { code: 'STORE_WRITE_FAILED' });
+    }
+    originalSet(key, value);
+  };
+
+  try {
+    await assert.rejects(
+      readLocalLog({ store }, { mode: 'uuid', nowMs: Date.now() }),
+      (error) => error && error.code === 'STORE_WRITE_FAILED'
+    );
+    assert.deepEqual(store.get('usageDaily'), {
+      'kimi:2026-08-09': { input: 1, cached: 0, output: 1, total: 2 }
+    });
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
   }

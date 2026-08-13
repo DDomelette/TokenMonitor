@@ -15,9 +15,31 @@ const {
 
 const CODEX_PREFIX = 'codex:';
 
+function liveStoreConfigPath() {
+  const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+  return path.join(appData, 'deepseek-monitor', 'config.json');
+}
+
+function comparablePath(filePath) {
+  const resolved = path.resolve(String(filePath));
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function projectionError(code) {
+  const error = new Error('Store projection is not permitted');
+  error.code = code;
+  return error;
+}
+
 // 可选:读取调用方提供的一份已经解密的纯 JSON store 投影。只做 JSON.parse,
 // 不读取 .key、不接受加密 config.json,也不含任何解密逻辑。
 function readStoreProjection(filePath) {
+  if (path.basename(String(filePath)).toLowerCase() === '.key') {
+    throw projectionError('STORE_PROJECTION_KEY_FORBIDDEN');
+  }
+  if (comparablePath(filePath) === comparablePath(liveStoreConfigPath())) {
+    throw projectionError('LIVE_STORE_PROJECTION_FORBIDDEN');
+  }
   const raw = fs.readFileSync(filePath, 'utf8');
   return JSON.parse(raw);
 }
@@ -33,7 +55,7 @@ async function verifyCodexArchiveUsage(options = {}) {
 
   // 枚举两个根目录的稳定身份联合,统计本轮看到的 rollout 文件数。
   const groups = await collectRolloutCandidates([activeRoot, archiveRoot]);
-  const files = groups.length;
+  const files = groups.reduce((count, group) => count + group.candidates.length, 0);
 
   const shadow = await buildCodexShadow({ activeRoot, archiveRoot, nowMs });
   const daily = shadow.usageDaily || {};
@@ -125,4 +147,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { verifyCodexArchiveUsage };
+module.exports = { liveStoreConfigPath, readStoreProjection, verifyCodexArchiveUsage };

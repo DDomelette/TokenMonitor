@@ -367,6 +367,25 @@ test('manual retry failure keeps compatibility and propagates a safe error', asy
   assert.equal(incrementalCalls, 0, 'pre-commit failure never runs catch-up');
 });
 
+test('manual rebuild failure after a committed migration remains ready in UUID mode', async () => {
+  const store = makeStore({ localLogMigrations: { codexArchiveUuidCursorV1: true } });
+  const runtime = createCodexUsageRuntime({
+    store,
+    rebuildCodexUsage: async () => {
+      throw Object.assign(new Error('temporary read failure'), { code: 'EIO' });
+    },
+    incrementalScan: async () => ({ records: [], complete: true })
+  });
+
+  await assert.rejects(runtime.rebuild(), (error) => error && error.code === 'EIO');
+  assert.equal(runtime.getStatus().phase, 'ready');
+  assert.equal(runtime.getStatus().compatibilityMode, false);
+
+  const modes = [];
+  await runtime.runIncremental(async (options) => { modes.push(options.mode); });
+  assert.deepEqual(modes, ['uuid']);
+});
+
 // ---------------------------------------------------------------------------
 // Step 4: successful post-commit catch-up.
 // ---------------------------------------------------------------------------
@@ -391,7 +410,12 @@ test('successful migration runs exactly one UUID catch-up after commit', async (
     return { records: [], complete: true, bytesRead: 0 };
   };
 
-  const runtime = createCodexUsageRuntime({ store, rebuildCodexUsage: rebuild, incrementalScan });
+  const runtime = createCodexUsageRuntime({
+    store,
+    rebuildCodexUsage: rebuild,
+    incrementalScan,
+    onCatchUpComplete: async () => { events.push('refresh'); }
+  });
 
   const result = await runtime.startMigration();
   assert.equal(rebuildCalls, 1);
@@ -399,13 +423,18 @@ test('successful migration runs exactly one UUID catch-up after commit', async (
   assert.equal(result.migrated, true);
   assert.equal(result.skipped, false);
   assert.deepEqual(result.summary, summary);
-  assert.deepEqual(events, ['rebuild', 'catch-up:committed'], 'catch-up runs after the marker exists');
+  assert.deepEqual(
+    events,
+    ['rebuild', 'catch-up:committed', 'refresh'],
+    'dashboard refresh runs only after the committed catch-up'
+  );
   assert.equal(runtime.getStatus().phase, 'ready');
 });
 
 test('post-commit catch-up failure keeps ready and never falls back to legacy', async () => {
   const store = makeStore({ usageDaily: {} });
   const summary = makeSummary();
+  let refreshCalls = 0;
   const rebuild = async () => {
     store.set(CODEX_ARCHIVE_MIGRATION_KEY, true);
     return summary;
@@ -414,7 +443,12 @@ test('post-commit catch-up failure keeps ready and never falls back to legacy', 
     throw Object.assign(new Error('tail read failed'), { code: 'TAIL_READ_FAILED' });
   };
 
-  const runtime = createCodexUsageRuntime({ store, rebuildCodexUsage: rebuild, incrementalScan });
+  const runtime = createCodexUsageRuntime({
+    store,
+    rebuildCodexUsage: rebuild,
+    incrementalScan,
+    onCatchUpComplete: async () => { refreshCalls += 1; }
+  });
 
   const result = await runtime.startMigration();
   assert.equal(result.migrated, true);
@@ -422,6 +456,7 @@ test('post-commit catch-up failure keeps ready and never falls back to legacy', 
   assert.deepEqual(result.summary, summary);
   assert.equal(runtime.getStatus().phase, 'ready', 'never enters compatibility/legacy mode');
   assert.equal(runtime.getStatus().compatibilityMode, false);
+  assert.equal(refreshCalls, 1, 'committed snapshot is broadcast even when catch-up fails');
 
   const modes = [];
   await runtime.runIncremental(async (opts) => {

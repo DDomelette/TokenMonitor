@@ -225,6 +225,7 @@ test('sync:history 处理器编排三路同步并刷新仪表盘(源代码守卫
   assert.match(ipcSource, /retentionHint/);
   assert.match(ipcSource, /pollAll\(\)/);
   assert.match(ipcSource, /retainAll: true/);
+  assert.match(ipcSource, /deleteStore/);
 });
 
 test('preload 白名单放行 sync:history 与 sync:progress', () => {

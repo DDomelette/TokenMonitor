@@ -69,6 +69,43 @@ function resolveCodexLogRoots(store) {
   return { activeRoot: activeRoot, archiveRoot: archiveRoot };
 }
 
+function cloneStoreValue(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function storeSnapshot(store) {
+  if (!store) return null;
+  const snapshot = store.store;
+  return snapshot && typeof snapshot === 'object'
+    ? cloneStoreValue(snapshot)
+    : null;
+}
+
+function commitUuidScanState(store, usageDaily, cursors) {
+  const snapshot = storeSnapshot(store);
+  if (snapshot) {
+    snapshot.usageDaily = usageDaily;
+    const localLogCursors = snapshot.localLogCursors
+      && typeof snapshot.localLogCursors === 'object'
+      ? snapshot.localLogCursors
+      : {};
+    localLogCursors.codex = cursors;
+    snapshot.localLogCursors = localLogCursors;
+    store.store = snapshot;
+    return;
+  }
+  const previousUsageDaily = cloneStoreValue((store && store.get('usageDaily')) || {});
+  try {
+    store.set('usageDaily', usageDaily);
+    store.set(CURSOR_KEY, cursors);
+  } catch (error) {
+    try {
+      store.set('usageDaily', previousUsageDaily);
+    } catch (_) { /* Preserve the original commit failure. */ }
+    throw error;
+  }
+}
+
 // 解析单行:取 payload.info.last_token_usage,timestamp 取 data.timestamp。
 function parseRolloutLine(line, diagnostics, nowMs) {
   if (!line) return null;
@@ -270,7 +307,8 @@ async function scanCodexLogBatch({
   maxBytesPerScan,
   yieldToLoop,
   seenFingerprints,
-  openCandidate
+  openCandidate,
+  deferCursorCommit
 }) {
   const roots = resolveCodexLogRoots(store);
   const activeRoot = roots.activeRoot;
@@ -292,7 +330,7 @@ async function scanCodexLogBatch({
     });
   }
 
-  const cursors = (store && store.get(CURSOR_KEY)) || {};
+  const cursors = cloneStoreValue((store && store.get(CURSOR_KEY)) || {});
   const groups = await collectRolloutCandidates([activeRoot, archiveRoot]);
 
   const selected = [];
@@ -337,80 +375,76 @@ async function scanCodexLogBatch({
     }
   };
 
-  let result;
-  try {
-    result = await scanCandidateBatch({
-      candidates: selected,
-      parseLine: parseRolloutLine,
-      onRecord({ record, cursor, records }) {
-        if (record && record.eventFingerprint) {
-          const fingerprint = record.eventFingerprint;
-          let emit = true;
-          if (seenFingerprints) {
-            if (seenFingerprints.has(fingerprint)) {
-              incrementDiagnostic(diagnostics, 'duplicateEvent');
-              emit = false;
-            } else {
-              seenFingerprints.add(fingerprint);
-            }
-          } else if (cursor.lastEventFingerprint === fingerprint) {
+  const result = await scanCandidateBatch({
+    candidates: selected,
+    parseLine: parseRolloutLine,
+    onRecord({ record, cursor, records }) {
+      if (record && record.eventFingerprint) {
+        const fingerprint = record.eventFingerprint;
+        let emit = true;
+        if (seenFingerprints) {
+          if (seenFingerprints.has(fingerprint)) {
             incrementDiagnostic(diagnostics, 'duplicateEvent');
             emit = false;
+          } else {
+            seenFingerprints.add(fingerprint);
           }
-          if (emit) {
-            records.push(Object.assign({ provider: 'codex' }, record));
-          }
-          cursor.lastEventFingerprint = fingerprint;
+        } else if (cursor.lastEventFingerprint === fingerprint) {
+          incrementDiagnostic(diagnostics, 'duplicateEvent');
+          emit = false;
         }
-        return cursor;
-      },
-      isReplaced: async (candidate, cursor, stat) => {
-        if (stat.size < (Number(cursor.offset) || 0)) return true;
-        if (cursor.headBytes > 0) {
-          const hash = await readHeadHash(candidate.filePath, cursor.headBytes);
-          if (hash !== cursor.headFingerprint) return true;
+        if (emit) {
+          records.push(Object.assign({ provider: 'codex' }, record));
         }
-        return false;
-      },
-      computeHead: async (candidate, stat) => {
-        const headBytes = Math.min(HEAD_BYTES_CAP, stat.size);
-        const headFingerprint = headBytes > 0
-          ? await readHeadHash(candidate.filePath, headBytes)
-          : null;
-        return { headBytes, headFingerprint };
-      },
-      resetCursor(cursor, stat, headInfo) {
-        return {
-          offset: 0,
-          mtimeMs: stat.mtimeMs,
-          size: stat.size,
-          headBytes: headInfo ? headInfo.headBytes : 0,
-          headFingerprint: headInfo ? headInfo.headFingerprint : null,
-          lastEventFingerprint: null
-        };
-      },
-      setCursor(candidate, cursor) {
-        cursors[candidate.identity] = cursor;
-      },
-      openCandidate: openWithRetry,
-      diagnostics,
-      nowMs,
-      chunkBytes,
-      maxBytesPerScan,
-      yieldToLoop
-    });
-  } catch (error) {
-    store.set(CURSOR_KEY, cursors);
-    throw error;
-  }
+        cursor.lastEventFingerprint = fingerprint;
+      }
+      return cursor;
+    },
+    isReplaced: async (candidate, cursor, stat) => {
+      if (stat.size < (Number(cursor.offset) || 0)) return true;
+      if (cursor.headBytes > 0) {
+        const hash = await readHeadHash(candidate.filePath, cursor.headBytes);
+        if (hash !== cursor.headFingerprint) return true;
+      }
+      return false;
+    },
+    computeHead: async (candidate, stat) => {
+      const headBytes = Math.min(HEAD_BYTES_CAP, stat.size);
+      const headFingerprint = headBytes > 0
+        ? await readHeadHash(candidate.filePath, headBytes)
+        : null;
+      return { headBytes, headFingerprint };
+    },
+    resetCursor(cursor, stat, headInfo) {
+      return {
+        offset: 0,
+        mtimeMs: stat.mtimeMs,
+        size: stat.size,
+        headBytes: headInfo ? headInfo.headBytes : 0,
+        headFingerprint: headInfo ? headInfo.headFingerprint : null,
+        lastEventFingerprint: null
+      };
+    },
+    setCursor(candidate, cursor) {
+      cursors[candidate.identity] = cursor;
+    },
+    openCandidate: openWithRetry,
+    diagnostics,
+    nowMs,
+    chunkBytes,
+    maxBytesPerScan,
+    yieldToLoop
+  });
 
   // 游标清理使用两个根目录身份的完整并集,只在完整枚举完成后进行。
   const presentIdentities = new Set(groups.map((group) => group.identity));
   for (const identity of Object.keys(cursors)) {
     if (!presentIdentities.has(identity)) delete cursors[identity];
   }
-  store.set(CURSOR_KEY, cursors);
-  return result;
+  if (!deferCursorCommit) store.set(CURSOR_KEY, cursors);
+  return deferCursorCommit
+    ? Object.assign({}, result, { cursors })
+    : result;
 }
 
 // 异步增量扫描本机 codex 日志,返回 ScanBatch({ records, complete, bytesRead });
@@ -439,16 +473,18 @@ async function readLocalLog(ctx, opts) {
     chunkBytes: opts && opts.chunkBytes,
     maxBytesPerScan: opts && opts.maxBytesPerScan,
     yieldToLoop: opts && opts.yieldToLoop,
-    seenFingerprints: opts && opts.seenFingerprints
+    seenFingerprints: opts && opts.seenFingerprints,
+    openCandidate: opts && opts.openCandidate,
+    deferCursorCommit: mode === 'uuid'
   });
   const records = batch.records;
+  let usageDaily = cloneStoreValue((store && store.get('usageDaily')) || {});
   if (records.length && store) {
     // retainAll:全量重扫(历史同步)时绕过保留窗口过滤,否则旧日聚合在写入前即被丢弃
     const rolled = rollupDaily(records, diagnostics, nowMs);
     const daily = opts && opts.retainAll
       ? rolled
       : filterUsageDaily(rolled, store.get('data.historyDays'), nowMs);
-    const usageDaily = store.get('usageDaily') || {};
     Object.keys(daily).forEach((key) => {
       const prev = usageDaily[key] || { input: 0, cached: 0, output: 0, total: 0 };
       const add = daily[key];
@@ -459,6 +495,10 @@ async function readLocalLog(ctx, opts) {
         total: prev.total + add.total
       };
     });
+  }
+  if (store && mode === 'uuid') {
+    commitUuidScanState(store, usageDaily, batch.cursors || {});
+  } else if (records.length && store) {
     store.set('usageDaily', usageDaily);
   }
   return batch;

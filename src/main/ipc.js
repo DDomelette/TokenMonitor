@@ -157,6 +157,7 @@ module.exports = function setupIPC(deps) {
     };
     const readStore = (k) => deps.store.get(k);
     const writeStore = (k, v) => deps.store.set(k, v);
+    const deleteStore = (k) => deps.store.delete(k);
     const summary = {};
 
     const token = deps.store.get('providers.deepseek.sessionToken');
@@ -186,6 +187,7 @@ module.exports = function setupIPC(deps) {
           readLocalLog: () => codexProvider.readLocalLog({ store: deps.store }, { retainAll: true }),
           readStore,
           writeStore,
+          deleteStore,
           onProgress: sendProgress
         });
     } else {
@@ -199,6 +201,7 @@ module.exports = function setupIPC(deps) {
         readLocalLog: () => kimiProvider.readLocalLog({ store: deps.store }, { retainAll: true }),
         readStore,
         writeStore,
+        deleteStore,
         onProgress: sendProgress
       });
     } else {

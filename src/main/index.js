@@ -859,6 +859,11 @@ app.whenReady().then(() => {
       archiveRoot: codexProvider.archivedLogRoot({ store })
     })),
     incrementalScan: (opts) => codexProvider.readLocalLog({ store }, opts),
+    onCatchUpComplete: () => {
+      if (scheduler) {
+        broadcastToWindows('providers:changed', scheduler.getSnapshot());
+      }
+    },
     logger: ({ code, phase }) => console.log(`[codex] ${phase}: ${code}`)
   });
 

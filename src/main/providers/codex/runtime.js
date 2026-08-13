@@ -38,6 +38,7 @@ function createCodexUsageRuntime(options = {}) {
     || ((opts) => readLocalLog({ store }, opts));
   const baseBuildOptions = options.buildOptions || {};
   const logger = options.logger || null;
+  const onCatchUpComplete = options.onCatchUpComplete || null;
 
   // 迁移标记已提交 => 直接 ready;否则 idle,等待 startMigration。
   let phase = (store && store.get(CODEX_ARCHIVE_MIGRATION_KEY) === true) ? 'ready' : 'idle';
@@ -62,8 +63,21 @@ function createCodexUsageRuntime(options = {}) {
 
   function reportPreCommitFailure(code) {
     lastErrorCode = code;
-    if (phase !== 'stopped') phase = 'compatibility';
-    if (logger) logger({ code, phase: 'compatibility' });
+    if (phase !== 'stopped') {
+      phase = store && store.get(CODEX_ARCHIVE_MIGRATION_KEY) === true
+        ? 'ready'
+        : 'compatibility';
+    }
+    if (logger) logger({ code, phase });
+  }
+
+  async function notifyCatchUpComplete() {
+    if (typeof onCatchUpComplete !== 'function') return;
+    try {
+      await onCatchUpComplete();
+    } catch (_) {
+      if (logger) logger({ code: 'CODEX_USAGE_REFRESH_FAILED', phase: 'ready' });
+    }
   }
 
   // 共享影子重建 + 补扫。区分提交边界:rebuildCodexUsage 返回前失败(影子扫描
@@ -89,9 +103,11 @@ function createCodexUsageRuntime(options = {}) {
     } catch (error) {
       catchUpErrorCode = safeErrorCode(error);
       if (logger) logger({ code: catchUpErrorCode, phase: 'ready' });
+      await notifyCatchUpComplete();
       if (rejectOnFailure) return summary;
       return { migrated: true, skipped: false, summary, catchUpErrorCode };
     }
+    await notifyCatchUpComplete();
     if (rejectOnFailure) return summary;
     return { migrated: true, skipped: false, summary };
   }
