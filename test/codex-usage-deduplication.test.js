@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { scanFiles, rollupDaily } = require('../src/main/core/locallog');
+const { scanFileBatch, rollupDaily } = require('../src/main/core/locallog');
 const { parseRolloutLine } = require('../src/main/providers/codex/locallog');
 
 function makeTempDir() {
@@ -40,7 +40,7 @@ function tokenEvent(timestamp, cumulativeTotal, deltaTokens) {
 }
 
 function codexScan(dir, cursorStore, options) {
-  return scanFiles(Object.assign({
+  return scanFileBatch(Object.assign({
     root: dir,
     match: /rollout-.*\.jsonl$/,
     cursorStore,

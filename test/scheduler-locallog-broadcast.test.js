@@ -203,3 +203,68 @@ test('local-log error recovery plus new data produces one combined notification'
     scheduler.stop();
   }
 });
+
+test('codex local-log poll routes through the usage runtime', async () => {
+  const store = makeStore({ usageDaily: {} });
+  const seen = [];
+  const runtime = {
+    async runIncremental(fn) {
+      return fn({ mode: 'uuid' });
+    }
+  };
+  const provider = makeProvider('codex', {
+    async readLocalLog(ctx, opts) {
+      seen.push(opts);
+      ctx.store.set('usageDaily', {
+        'codex:2026-08-06': { input: 2, cached: 0, output: 3, total: 5 }
+      });
+      return [{ provider: 'codex', ts: Date.now(), usage: { total: 5 } }];
+    }
+  });
+  const broadcasts = [];
+  const scheduler = startScheduler({
+    registry: makeRegistry([provider]),
+    store,
+    broadcast(channel, payload) { broadcasts.push({ channel, payload }); },
+    intervals: false,
+    codexUsageRuntime: runtime
+  });
+
+  try {
+    broadcasts.length = 0;
+    await scheduler.poll('codex', 'localLog');
+    assert.deepEqual(seen, [{ mode: 'uuid' }], 'codex read receives the runtime-supplied mode');
+    assert.equal(changedBroadcasts(broadcasts).length, 1);
+  } finally {
+    scheduler.stop();
+  }
+});
+
+test('kimi local-log poll bypasses the codex runtime', async () => {
+  const seen = [];
+  const runtime = {
+    async runIncremental() {
+      throw new Error('must not be used for kimi');
+    }
+  };
+  const provider = makeProvider('kimi', {
+    async readLocalLog(ctx, opts) {
+      seen.push(opts);
+      return [];
+    }
+  });
+  const scheduler = startScheduler({
+    registry: makeRegistry([provider]),
+    store: makeStore({}),
+    broadcast() {},
+    intervals: false,
+    codexUsageRuntime: runtime
+  });
+
+  try {
+    await scheduler.poll('kimi', 'localLog');
+    assert.deepEqual(seen, [undefined], 'kimi read is called directly without runtime options');
+  } finally {
+    scheduler.stop();
+  }
+});

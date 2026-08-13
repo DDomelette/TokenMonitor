@@ -2,7 +2,7 @@
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
-const { scanFiles, rollupDaily } = require('../src/main/core/locallog');
+const { scanFileBatch, rollupDaily } = require('../src/main/core/locallog');
 const { localDayStr } = require('../src/main/core/beijing-calendar');
 const { parseRolloutLine } = require('../src/main/providers/codex/locallog');
 const { parseWireLine } = require('../src/main/providers/kimi/locallog');
@@ -18,7 +18,7 @@ function createMemoryCursorStore() {
   };
 }
 
-async function scanAllBatches(options, scan = scanFiles) {
+async function scanAllBatches(options, scan = scanFileBatch) {
   const records = [];
   let bytesRead = 0;
 

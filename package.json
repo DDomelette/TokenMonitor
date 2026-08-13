@@ -7,6 +7,7 @@
     "prestart": "npm run build:renderer",
     "start": "electron .",
     "test": "node --test",
+    "verify:codex-archive-usage": "node scripts/verify-codex-archive-usage.js",
     "generate:icons": "node scripts/generate-logo.js",
     "build:win": "npm run generate:icons && npm run build:renderer && electron-builder --win",
     "build:mac": "npm run generate:icons && npm run build:renderer && electron-builder --mac",

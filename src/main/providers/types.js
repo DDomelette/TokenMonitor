@@ -3,7 +3,7 @@
 /**
  * @typedef {Object} UsageRecord
  * @property {string} provider  - provider id ('deepseek'|'codex'|'kimi')
- * @property {string} date      - 'YYYY-MM-DD'(北京结算日)
+ * @property {string} date      - 'YYYY-MM-DD'(本地时区)
  * @property {string} model     - 模型名
  * @property {number} inputTokens
  * @property {number} outputTokens
@@ -15,7 +15,7 @@
 /**
  * @typedef {Object} ScanBatch
  * @property {UsageRecord[]} records - 本轮新扫描到的记录
- * @property {boolean} complete      - 是否已访问完整快照;false 表示预算耗尽需下一轮
+ * @property {boolean} complete      - 是否已覆盖扫描开始时的完整文件快照
  * @property {number} bytesRead      - 本轮实际读取的字节数
  */
 
@@ -48,7 +48,7 @@
  * @property {((ctx:ProviderContext)=>Promise<object|null>)} [fetchBalance]
  * @property {((ctx:ProviderContext,args:{month:number,year:number})=>Promise<object>)} [fetchUsage]
  * @property {((ctx:ProviderContext)=>Promise<QuotaState|null>)} [fetchQuota]
- * @property {((ctx:ProviderContext,args:{sinceMs?:number,retainAll?:boolean})=>Promise<ScanBatch>)} [readLocalLog]
+ * @property {((ctx:ProviderContext,args?:{sinceMs?:number,retainAll?:boolean,mode?:'legacy'|'uuid'})=>Promise<ScanBatch|UsageRecord[]>)} [readLocalLog]
  */
 
 /**

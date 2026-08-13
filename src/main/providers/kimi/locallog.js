@@ -2,7 +2,7 @@
 const os = require('os');
 const path = require('path');
 const {
-  scanFiles,
+  scanFileBatch,
   rollupDaily,
   normalizeTimestampMs,
   incrementDiagnostic
@@ -47,7 +47,8 @@ function parseWireLine(line, diagnostics, nowMs) {
   }
 }
 
-// 异步增量扫描本机 kimi 日志,返回新增 UsageRecord[];并按日聚合增量合并进 store 键 'usageDaily'。
+// 异步增量扫描本机 kimi 日志,返回 ScanBatch({ records, complete, bytesRead });
+// 并按日聚合增量合并进 store 键 'usageDaily'。
 async function readLocalLog(ctx, opts) {
   const store = ctx && ctx.store;
   const diagnostics = opts && opts.diagnostics;
@@ -68,7 +69,7 @@ async function readLocalLog(ctx, opts) {
     store.set(CURSOR_KEY, {});
     store.set(MIGRATION_KEY, true);
   }
-  const batch = await scanFiles({
+  const batch = await scanFileBatch({
     root: root,
     match: MATCH,
     cursorStore: store,

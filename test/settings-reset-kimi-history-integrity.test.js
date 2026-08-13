@@ -95,6 +95,7 @@ test('settings reset preserves Kimi migration state and history no longer presen
     const repeatedRecords = await readLocalLog({ store });
 
     assert.equal(repeatedRecords.records.length, 0);
+    assert.equal(repeatedRecords.complete, true);
     assert.deepEqual(kimiHistory(store), expectedHistory);
     assert.equal(store.get('usageDaily')[legacyHistoryKey].total, 99);
     assert.equal(kimiTotal(store), 109);

@@ -5,6 +5,7 @@ import * as echarts from 'echarts';
 import useECharts from '../hooks/useECharts.js';
 import { getTheme, getBarTheme } from '../lib/chartTheme.js';
 import { beijingMonthDayLabel, isAfterBeijingToday } from '../lib/beijing-calendar.js';
+import { echartsWindowPosition as windowClampedPosition } from '../lib/floating-layer.js';
 
 function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
@@ -164,22 +165,8 @@ export function formatToken(n) {
   return n.toString();
 }
 
-// 悬浮层挂 body,不受模块 overflow 裁切;位置回调把浮层钳制在窗口内,被遮挡时向窗口中间靠拢。
-// pos 是图表容器坐标:换算成页面坐标钳制后再减回容器偏移(echarts 挂 body 时会再做一次容器→页面换算)。
-export function windowClampedPosition(dom) {
-  return (pos, params, tipEl, rect, size) => {
-    const chartRect = dom ? dom.getBoundingClientRect() : { left: 0, top: 0 };
-    const cw = size.contentSize[0];
-    const ch = size.contentSize[1];
-    let px = chartRect.left + pos[0] + 14;
-    let py = chartRect.top + pos[1] + 14;
-    if (px + cw > window.innerWidth - 8) px = chartRect.left + pos[0] - cw - 14;
-    if (py + ch > window.innerHeight - 8) py = chartRect.top + pos[1] - ch - 14;
-    px = Math.max(8, Math.min(window.innerWidth - cw - 8, px));
-    py = Math.max(8, Math.min(window.innerHeight - ch - 8, py));
-    return [px - chartRect.left, py - chartRect.top];
-  };
-}
+// 悬浮层定位原语已收敛到 lib/floating-layer.js;保留 re-export 兼容 ProviderBar 的 import。
+export { windowClampedPosition };
 
 function buildDailyOption(dom, dailyData) {
   const isDark = document.body.classList.contains('dark');
@@ -189,8 +176,10 @@ function buildDailyOption(dom, dailyData) {
   const missData = [];
   const completionData = [];
   // 平台按月返回零填充数据:截掉今天之后的空白天,避免图表尾部大片空白
+  const now = new Date();
+  const todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
   (dailyData || []).forEach((d) => {
-    if (isAfterBeijingToday(d.date)) return;
+    if (d.date > todayStr) return;
     dates.push(d.date.slice(5));
     hitData.push(d.cacheHit || 0);
     missData.push(d.cacheMiss || 0);
@@ -239,7 +228,10 @@ function buildDailyOption(dom, dailyData) {
 function buildCurveOption(dom, points, config) {
   const isDark = document.body.classList.contains('dark');
   const theme = getTheme(isDark);
-  const dates = (points || []).map((p) => beijingMonthDayLabel(p.time));
+  const dates = (points || []).map((p) => {
+    const d = new Date(p.time);
+    return (d.getMonth() + 1) + '/' + d.getDate();
+  });
   const totalData = (points || []).map((p) => p[config.totalField] || 0);
   const deltaData = (points || []).map((p) => p[config.deltaField] || 0);
   const density = curveDensity(theme, dom, isCardMode(dom), dates.length);

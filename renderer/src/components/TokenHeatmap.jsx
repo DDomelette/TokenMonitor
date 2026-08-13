@@ -5,6 +5,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import { getHeatmap, onProvidersChanged } from '../api.js';
 import { buildSundayWeekTotals, buildWeeks, blockCount, colorLevel, formatToken, sundayWeekKey } from '../lib/heatmap.js';
+import { clampToWindow, resolveVerticalFlip } from '../lib/floating-layer.js';
 import {
   createLocalCalendarClock,
   findDayColumn,
@@ -128,7 +129,8 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
 
   // 自定义悬停提示(原生 title 在透明窗口不显示;内容:日期 + 平台/模型明细)
   // 初始位置用估计半宽钳制,渲染后由 useLayoutEffect 按实测宽度二次校正(向窗口中间靠拢)
-  const clampTipX = (x) => Math.max(104, Math.min(window.innerWidth - 104, x));
+  const ESTIMATED_TIP_HALF = 104;
+  const clampTipX = (x) => clampToWindow(x - ESTIMATED_TIP_HALF, 0, ESTIMATED_TIP_HALF * 2, 1).x + ESTIMATED_TIP_HALF;
   // GitHub 贡献图式悬停意图:鼠标在格子上停稳 SHOW_DELAY 后才加载浮层;
   // 快速划过时定时器不断被取消,浮层不会出现,信息不闪烁。
   const SHOW_DELAY = 220;
@@ -146,7 +148,8 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
     ['settle', 'hide', 'fade'].forEach(clearTimer);
     lastTipX.current = e.clientX;
     const r = e.currentTarget.getBoundingClientRect();
-    const below = r.top < 140;
+    // 浮层估计高约 140:上方放不下且下方够才向下展开(prefer above,保持原有默认朝向)
+    const below = resolveVerticalFlip(r, 140, { prefer: 'above' }).below;
     pendingTip.current = {
       x: clampTipX(r.left + r.width / 2),
       y: below ? r.bottom + 6 : r.top - 6,
@@ -188,7 +191,7 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
     const el = tipRef.current;
     if (!el || !tip) return;
     const half = el.offsetWidth / 2 + 8;
-    const x = Math.max(half, Math.min(window.innerWidth - half, tip.x));
+    const x = clampToWindow(tip.x - half, 0, half * 2, 1).x + half;
     if (Math.abs(x - tip.x) > 0.5) el.style.left = x + 'px';
   }, [tip]);
 

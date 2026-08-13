@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { scanFiles } = require('../src/main/core/locallog');
+const { scanFileBatch } = require('../src/main/core/locallog');
 
 function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'token-monitor-chunk-recovery-'));
@@ -24,7 +24,7 @@ function line(sequence, text = 'payload') {
 }
 
 function scan(root, store, parseLine, options = {}) {
-  return scanFiles(Object.assign({
+  return scanFileBatch(Object.assign({
     root,
     match: /fixture\.jsonl$/,
     cursorStore: store,
@@ -139,6 +139,7 @@ test('scheduler awaits asynchronous local-log providers before finishing the cha
     async readLocalLog() {
       started = true;
       await blocked;
+      return { records: [], complete: true, bytesRead: 0 };
     }
   };
   const registry = {

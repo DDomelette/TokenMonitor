@@ -1,15 +1,11 @@
 // 历史用量同步:DeepSeek 逐月全量回填 + Codex/Kimi 本机日志全量重扫。
 // 纯逻辑模块,依赖全部注入,便于 node --test 直测。
-// 月份迭代与结算日对齐固定 UTC+8 北京日历。
-const { retentionStartDay } = require('./usage-retention');
-const { beijingDateParts, addBeijingDays } = require('./beijing-calendar');
+const { retentionStartDay, localDayString } = require('./usage-retention');
 
 const MAX_MONTHS = 36;
 // 连续空月停止阈值:12,容忍使用量稀疏的长间隔(曾有 5/6 月空、4 月有数据的真实案例)
 const EMPTY_STREAK_STOP = 12;
 const MONTH_GAP_MS = 300;
-// 生产安全上限:单次手动重扫最多轮询这么多轮;扫描器每轮有 4MB 预算,
-// 只要仍在产出、未报告 complete,就继续;达到上限仍不完整则显式报错并回滚。
 const MAX_SCAN_PASSES = 10000;
 // 全量同步自己的月份标记:不能用 backfill 的 providers.deepseek.fetchedMonths——
 // backfill 抓取时 persistDaily 会按保留窗口丢弃旧日数据,月份却照标"已抓",
@@ -33,14 +29,6 @@ function monthKey(y, m) {
   return y + '-' + String(m).padStart(2, '0');
 }
 
-// 北京日历下某月最后一天(YYYY-MM-DD)。用下月首日回退一天,避免操作系统时区干扰。
-function beijingMonthLastDay(year, month) {
-  const nextYear = month === 12 ? year + 1 : year;
-  const nextMonth = month === 12 ? 1 : month + 1;
-  const nextFirst = monthKey(nextYear, nextMonth) + '-01';
-  return addBeijingDays(nextFirst, -1);
-}
-
 async function fetchMonthWithRetry(fetchMonth, year, month) {
   try {
     return await fetchMonth(year, month);
@@ -62,9 +50,8 @@ async function syncDeepSeekHistory(options) {
   const onProgress = options.onProgress || null;
   const sleep = options.sleep || defaultSleep;
   const current = options.now ? new Date(options.now) : new Date();
-  const currentParts = beijingDateParts(current.getTime());
-  let year = currentParts ? currentParts.year : current.getFullYear();
-  let month = currentParts ? currentParts.month : current.getMonth() + 1;
+  let year = current.getFullYear();
+  let month = current.getMonth() + 1;
 
   const usageDaily = readStore('usageDaily') || {};
   const syncedMonths = new Set(readStore(SYNCED_MONTHS_KEY) || []);
@@ -105,9 +92,9 @@ async function syncDeepSeekHistory(options) {
 
   for (let i = 0; i < MAX_MONTHS && emptyStreak < EMPTY_STREAK_STOP; i++) {
     const key = monthKey(year, month);
-    // 月份按新到旧迭代,整月(该月北京最后一天)落在保留窗口外时,
+    // 月份按新到旧迭代,整月(new Date(y, m, 0) = 该月最后一天)落在窗口外时,
     // 更老的月份必然也在窗外,直接终止。
-    if (cutoff && beijingMonthLastDay(year, month) < cutoff) break;
+    if (cutoff && localDayString(new Date(year, month, 0).getTime()) < cutoff) break;
     const trusted = (syncedMonths.has(key) && dataMonths.has(key) && monthCoversWindow(key))
       || (emptyMonths.has(key) && monthCoversWindow(key));
     if (!trusted) {
@@ -165,60 +152,57 @@ async function syncDeepSeekHistory(options) {
 
 // 全量重扫本机日志:先删该 provider 的 usageDaily 键并清游标(增量合并会重复累加,
 // 必须先行清除,先例见 src/main/providers/kimi/locallog.js 的 MIGRATION_KEY 流程),
-// 再循环调用 readLocalLog 直到批次报告 complete:true(scanFiles 单轮有 4MB 预算,
-// 全量需多轮;只有 complete 才代表整个快照已访问)。失败时把该 provider 的
-// 行与游标恢复到快照,不影响其他 provider。
+// 再循环调用 readLocalLog 直到 batch.complete === true(scanFileBatch 单轮有 4MB 预算,全量需多轮)。
+// 事务性:清空前深拷贝匹配的 provider 行与游标;任何失败都还原二者后重抛。
 async function rescanLocalLogs(options) {
   const providerId = options.providerId;
   const readLocalLog = options.readLocalLog;
   const readStore = options.readStore;
   const writeStore = options.writeStore;
+  const deleteStore = options.deleteStore;
   const onProgress = options.onProgress || null;
   const maxPasses = options.maxPasses || MAX_SCAN_PASSES;
 
   const prefix = providerId + ':';
+  const cursorKey = 'localLogCursors.' + providerId;
+
+  function cloneValue(value) {
+    return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+  }
+
   const usageDaily = readStore('usageDaily') || {};
-  // 事务快照:仅该 provider 的行 + 该 provider 的游标深拷贝
-  const snapshotRows = {};
+  const backupRows = {};
   Object.keys(usageDaily).forEach((k) => {
-    if (k.indexOf(prefix) === 0) snapshotRows[k] = usageDaily[k];
+    if (k.indexOf(prefix) === 0) backupRows[k] = cloneValue(usageDaily[k]);
   });
-  const snapshotCursor = JSON.parse(
-    JSON.stringify(readStore('localLogCursors.' + providerId) || {})
-  );
+  const backupCursor = cloneValue(readStore(cursorKey));
 
   let passes = 0;
   let records = 0;
   let bytesRead = 0;
-  let lastComplete = false;
+  let complete = false;
+
   try {
-    // 不原地修改 store 返回的对象:即便初始持久化失败,旧汇总仍可作为回滚来源。
-    const clearedDaily = Object.assign({}, usageDaily);
+    const clearedDaily = cloneValue(usageDaily);
     Object.keys(clearedDaily).forEach((k) => {
       if (k.indexOf(prefix) === 0) delete clearedDaily[k];
     });
     writeStore('usageDaily', clearedDaily);
-    writeStore('localLogCursors.' + providerId, {});
+    writeStore(cursorKey, {});
 
     while (passes < maxPasses) {
       const batch = await readLocalLog();
       passes++;
-      const list = Array.isArray(batch)
-        ? batch
-        : (batch && Array.isArray(batch.records)) ? batch.records : [];
-      const n = list.length;
-      records += n;
-      bytesRead += Number(batch && batch.bytesRead) || 0;
-      if (onProgress) onProgress({ stage: providerId, detail: 'pass ' + passes + ', +' + n });
-      // 新协议:批次显式报告 complete;旧协议:空数组即视为完成(兼容聚焦 IPC 测试)
-      const complete = Array.isArray(batch) ? n === 0 : batch.complete === true;
-      if (complete) {
-        lastComplete = true;
-        break;
-      }
+      const batchRecords = Array.isArray(batch) ? batch : (batch && batch.records) || [];
+      records += batchRecords.length;
+      bytesRead += Array.isArray(batch) ? 0 : (Number(batch && batch.bytesRead) || 0);
+      complete = !Array.isArray(batch) && !!(batch && batch.complete);
+      if (onProgress) onProgress({ stage: providerId, detail: 'pass ' + passes + ', +' + batchRecords.length });
+      if (complete) break;
     }
-    if (!lastComplete) {
-      const error = new Error('Local log rescan incomplete for ' + providerId);
+
+    if (!complete) {
+      const error = new Error(`Local log rescan incomplete for ${providerId}`);
       error.code = 'LOCAL_LOG_RESCAN_INCOMPLETE';
       error.providerId = providerId;
       error.passes = passes;
@@ -226,14 +210,21 @@ async function rescanLocalLogs(options) {
       throw error;
     }
   } catch (error) {
-    // 回滚:删除该 provider 新写入的行,恢复快照行与游标;不触碰其他 provider
-    const after = Object.assign({}, readStore('usageDaily') || {});
-    Object.keys(after).forEach((k) => {
-      if (k.indexOf(prefix) === 0) delete after[k];
+    const current = cloneValue(readStore('usageDaily') || {});
+    Object.keys(current).forEach((k) => {
+      if (k.indexOf(prefix) === 0) delete current[k];
     });
-    Object.assign(after, snapshotRows);
-    writeStore('usageDaily', after);
-    writeStore('localLogCursors.' + providerId, snapshotCursor);
+    Object.keys(backupRows).forEach((k) => {
+      current[k] = backupRows[k];
+    });
+    writeStore('usageDaily', current);
+    if (backupCursor !== undefined) {
+      writeStore(cursorKey, backupCursor);
+    } else if (typeof deleteStore === 'function') {
+      deleteStore(cursorKey);
+    } else {
+      writeStore(cursorKey, undefined);
+    }
     throw error;
   }
 

@@ -386,7 +386,21 @@ test('main creates, reuses, broadcasts to, and disposes the diagnostics window b
     if (parentFile.endsWith(path.join('src', 'main', 'index.js'))) {
       if (request === './store') return store;
       if (request === './providers/registry') return { register() {}, list: () => [] };
-      if (request === './providers/deepseek' || request === './providers/codex' || request === './providers/kimi') return {};
+      if (request === './providers/deepseek' || request === './providers/kimi') return {};
+      if (request === './providers/codex') return {
+        createCodexUsageRuntime() {
+          return {
+            startMigration() { return Promise.resolve({ migrated: true, skipped: false, summary: null }); },
+            stop() {},
+            rebuild() { return Promise.resolve({}); },
+            runIncremental(fn) { return fn({ mode: 'uuid' }); },
+            getStatus() { return { phase: 'ready', migrationPending: false, compatibilityMode: false, lastErrorCode: null }; }
+          };
+        },
+        localLogRoot() { return 'C:\\Users\\Alice\\.codex'; },
+        archivedLogRoot() { return 'C:\\Users\\Alice\\.codex\\archived_sessions'; },
+        readLocalLog: async () => ({ records: [], complete: true, bytesRead: 0 })
+      };
       if (request === './core/scheduler') return {
         startScheduler(dependencies) {
           sequence.push('scheduler');

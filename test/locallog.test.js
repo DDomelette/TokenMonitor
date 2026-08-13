@@ -59,71 +59,6 @@ function makeCursorStore() {
   };
 }
 
-function fixtureLine(sequence, text = 'payload') {
-  return JSON.stringify({ type: 'usage', sequence, text }) + '\n';
-}
-
-function scanFixture(dir, cursorStore, options) {
-  return scanFiles(Object.assign({
-    root: dir,
-    match: /fixture-.*\.jsonl$/,
-    cursorStore,
-    cursorKey: 'cursor.fixture',
-    providerId: 'fixture',
-    parseLine: (raw) => {
-      const data = JSON.parse(raw);
-      return data && data.type === 'usage' ? data : null;
-    }
-  }, options));
-}
-
-test('scanFiles reports incomplete when the byte budget leaves files unread', async () => {
-  const dir = makeTempDir();
-  const file = path.join(dir, 'fixture-budget-split.jsonl');
-  const cursorStore = makeCursorStore();
-  const firstLine = fixtureLine(1);
-  const secondLine = fixtureLine(2);
-  const firstLineBytes = Buffer.byteLength(firstLine);
-  try {
-    fs.writeFileSync(file, firstLine + secondLine);
-
-    const first = await scanFixture(dir, cursorStore, { maxBytesPerScan: firstLineBytes });
-    assert.equal(first.records.length, 1);
-    assert.equal(first.complete, false);
-    assert.equal(first.bytesRead, firstLineBytes);
-
-    const second = await scanFixture(dir, cursorStore, { maxBytesPerScan: firstLineBytes });
-    assert.equal(second.records.length, 1);
-    assert.equal(second.complete, true);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('scanFiles reports empty records with complete=false when the budget region holds no usage event', async () => {
-  const dir = makeTempDir();
-  const file = path.join(dir, 'fixture-budget-no-usage.jsonl');
-  const cursorStore = makeCursorStore();
-  const messageLine = JSON.stringify({ type: 'message', text: 'no usage here' }) + '\n';
-  const usageLine = JSON.stringify({ type: 'usage', sequence: 7 }) + '\n';
-  const firstRegionBytes = Buffer.byteLength(messageLine);
-  try {
-    fs.writeFileSync(file, messageLine + usageLine);
-
-    const first = await scanFixture(dir, cursorStore, { maxBytesPerScan: firstRegionBytes });
-    assert.equal(first.records.length, 0);
-    assert.equal(first.complete, false);
-    assert.equal(first.bytesRead, firstRegionBytes);
-
-    const second = await scanFixture(dir, cursorStore, { maxBytesPerScan: 4096 });
-    assert.equal(second.records.length, 1);
-    assert.equal(second.records[0].sequence, 7);
-    assert.equal(second.complete, true);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 test('scanFiles reads only new bytes on subsequent scans', async () => {
   const dir = makeTempDir();
   const file = path.join(dir, 'rollout-1.jsonl');
@@ -139,10 +74,9 @@ test('scanFiles reads only new bytes on subsequent scans', async () => {
       providerId: 'codex',
       parseLine: parseRolloutLine
     });
-    assert.equal(first.records.length, 1);
-    assert.equal(first.complete, true);
-    assert.equal(first.records[0].provider, 'codex');
-    assert.equal(first.records[0].usage.input, 10);
+    assert.equal(first.length, 1);
+    assert.equal(first[0].provider, 'codex');
+    assert.equal(first[0].usage.input, 10);
 
     fs.appendFileSync(file, '{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":20,"cached_input_tokens":10,"output_tokens":4,"reasoning_output_tokens":2,"total_tokens":24},"total_token_usage":{}}},"timestamp":"2026-08-02T10:01:00.000Z"}\n');
     const second = await scanFiles({
@@ -153,9 +87,8 @@ test('scanFiles reads only new bytes on subsequent scans', async () => {
       providerId: 'codex',
       parseLine: parseRolloutLine
     });
-    assert.equal(second.records.length, 1);
-    assert.equal(second.complete, true);
-    assert.equal(second.records[0].usage.input, 20);
+    assert.equal(second.length, 1);
+    assert.equal(second[0].usage.input, 20);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -170,12 +103,11 @@ test('scanFiles resets offset when a file is truncated', async () => {
   try {
     fs.writeFileSync(file, line + line + line);
     const first = await scanFiles({ root: dir, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'c', providerId: 'codex', parseLine: parseRolloutLine });
-    assert.equal(first.records.length, 3);
+    assert.equal(first.length, 3);
     fs.writeFileSync(file, truncated);
     const records = await scanFiles({ root: dir, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'c', providerId: 'codex', parseLine: parseRolloutLine });
-    assert.equal(records.records.length, 1);
-    assert.equal(records.complete, true);
-    assert.equal(records.records[0].usage.input, 99);
+    assert.equal(records.length, 1);
+    assert.equal(records[0].usage.input, 99);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -188,13 +120,11 @@ test('scanFiles skips a partial trailing line until it completes', async () => {
   try {
     fs.writeFileSync(file, '{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1},"total_token_usage":{}}},"timestamp":"2026-08-02T12:00:00.000Z"}\n{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":42');
     const records = await scanFiles({ root: dir, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'c', providerId: 'codex', parseLine: parseRolloutLine });
-    assert.equal(records.records.length, 1);
-    assert.equal(records.complete, true);
+    assert.equal(records.length, 1);
     fs.appendFileSync(file, '}}},"timestamp":"2026-08-02T12:01:00.000Z"}\n');
     const more = await scanFiles({ root: dir, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'c', providerId: 'codex', parseLine: parseRolloutLine });
-    assert.equal(more.records.length, 1);
-    assert.equal(more.complete, true);
-    assert.equal(more.records[0].usage.input, 42);
+    assert.equal(more.length, 1);
+    assert.equal(more[0].usage.input, 42);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -208,13 +138,13 @@ test('scanFiles uses byte offsets so multi-byte content is never re-counted', as
   try {
     fs.writeFileSync(file, '{"type":"message","payload":{"content":"' + '汉'.repeat(200) + '"}}\n' + rec(10));
     const first = await scanFiles({ root: dir, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'c', providerId: 'codex', parseLine: parseRolloutLine });
-    assert.equal(first.records.length, 1);
-    assert.equal(first.records[0].usage.input, 10);
+    assert.equal(first.length, 1);
+    assert.equal(first[0].usage.input, 10);
 
     fs.appendFileSync(file, rec(20));
     const second = await scanFiles({ root: dir, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'c', providerId: 'codex', parseLine: parseRolloutLine });
-    assert.equal(second.records.length, 1);
-    assert.equal(second.records[0].usage.input, 20);
+    assert.equal(second.length, 1);
+    assert.equal(second[0].usage.input, 20);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -228,14 +158,14 @@ test('scanFiles resets offset when a rotated file has an older mtime', async () 
   try {
     fs.writeFileSync(file, rec(1) + rec(2) + rec(3));
     const first = await scanFiles({ root: dir, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'c', providerId: 'codex', parseLine: parseRolloutLine });
-    assert.equal(first.records.length, 3);
+    assert.equal(first.length, 3);
 
     fs.writeFileSync(file, rec(7) + rec(8) + rec(9) + rec(10));
     const old = new Date(Date.now() - 60 * 60 * 1000);
     fs.utimesSync(file, old, old);
     const rotated = await scanFiles({ root: dir, match: /rollout-.*\.jsonl$/, cursorStore, cursorKey: 'c', providerId: 'codex', parseLine: parseRolloutLine });
-    assert.equal(rotated.records.length, 4);
-    assert.equal(rotated.records[0].usage.input, 7);
+    assert.equal(rotated.length, 4);
+    assert.equal(rotated[0].usage.input, 7);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -258,6 +188,7 @@ test('readLocalLog merges incremental daily rollup into store usageDaily', async
     const { readLocalLog } = require('../src/main/providers/codex/locallog');
     const first = await readLocalLog({ store });
     assert.equal(first.records.length, 1);
+    assert.equal(first.complete, true);
     fs.appendFileSync(file, line2);
     const second = await readLocalLog({ store });
     assert.equal(second.records.length, 1);

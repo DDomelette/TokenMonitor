@@ -7,7 +7,6 @@ const { resetSettingsStore } = require('./core/settings-reset');
 const { saveSetting } = require('./core/settings-write');
 const { replaceDeepseekApiKey } = require('./core/api-key-replacement');
 const { filterUsageDaily, retentionStartDay } = require('./core/usage-retention');
-const { beijingDateParts, inclusiveBeijingDayCount } = require('./core/beijing-calendar');
 const { getSessionSnapshot } = require('./core/session-state');
 const { skipDeepseekLogin } = require('./core/startup-windows');
 const { syncDeepSeekHistory, rescanLocalLogs } = require('./core/history-sync');
@@ -143,9 +142,7 @@ module.exports = function setupIPC(deps) {
         deepseekModels[date] = models.map((m) => ({ model: m.model, tokens: m.tokens }));
       }
     });
-    // 默认热力图年份取北京结算年,避免跨年瞬间(UTC 12-31T16:00 起)显示为旧年。
-    const nowParts = beijingDateParts();
-    const result = buildHeatmap(byProvider, provider || 'all', year || (nowParts ? nowParts.year : new Date().getFullYear()));
+    const result = buildHeatmap(byProvider, provider || 'all', year || new Date().getFullYear());
     result.details = { byProvider: byProvider, cachedByProvider: cachedByProvider, deepseekModels: deepseekModels };
     return result;
   });
@@ -160,6 +157,11 @@ module.exports = function setupIPC(deps) {
     };
     const readStore = (k) => deps.store.get(k);
     const writeStore = (k, v) => deps.store.set(k, v);
+    const deleteStore = (k) => deps.store.delete(k);
+    const runLocalLogExclusive = (providerId, operation) =>
+      deps.scheduler && typeof deps.scheduler.runExclusive === 'function'
+        ? deps.scheduler.runExclusive(providerId, 'localLog', operation)
+        : operation();
     const summary = {};
 
     const token = deps.store.get('providers.deepseek.sessionToken');
@@ -178,24 +180,36 @@ module.exports = function setupIPC(deps) {
       summary.deepseek = { skipped: true, reason: 'not-logged-in' };
     }
 
-    for (const pid of ['codex', 'kimi']) {
-      const provider = deps.registry.get(pid);
-      if (!provider || typeof provider.readLocalLog !== 'function') {
-        summary[pid] = { daysRebuilt: 0, earliestDate: null, skipped: true };
-        continue;
-      }
-      // 整个重扫放在调度器的 provider:localLog 排他 key 下执行,与后台定时轮询串行,
-      // 避免两个读者并发扫描同一日志导致重复累加;兼容无 runExclusive 的 IPC 测试环境。
-      const runRescan = () => rescanLocalLogs({
-        providerId: pid,
-        readLocalLog: () => provider.readLocalLog({ store: deps.store }, { retainAll: true }),
+    // Codex 手动历史同步走运行时安全影子重建(全局事件去重 + 单次快照提交);
+    // Kimi 保持通用事务性重扫。未注入 Codex 运行时(兼容测试夹具)时回退到通用重扫。
+    const codexProvider = deps.registry.get('codex');
+    if (codexProvider && typeof codexProvider.readLocalLog === 'function') {
+      summary.codex = deps.codexUsageRuntime
+        ? await deps.codexUsageRuntime.rebuild({ onProgress: sendProgress })
+        : await runLocalLogExclusive('codex', () => rescanLocalLogs({
+          providerId: 'codex',
+          readLocalLog: () => codexProvider.readLocalLog({ store: deps.store }, { retainAll: true }),
+          readStore,
+          writeStore,
+          deleteStore,
+          onProgress: sendProgress
+        }));
+    } else {
+      summary.codex = { daysRebuilt: 0, earliestDate: null, skipped: true };
+    }
+
+    const kimiProvider = deps.registry.get('kimi');
+    if (kimiProvider && typeof kimiProvider.readLocalLog === 'function') {
+      summary.kimi = await runLocalLogExclusive('kimi', () => rescanLocalLogs({
+        providerId: 'kimi',
+        readLocalLog: () => kimiProvider.readLocalLog({ store: deps.store }, { retainAll: true }),
         readStore,
         writeStore,
+        deleteStore,
         onProgress: sendProgress
-      });
-      summary[pid] = typeof deps.scheduler.runExclusive === 'function'
-        ? await deps.scheduler.runExclusive(pid, 'localLog', runRescan)
-        : await runRescan();
+      }));
+    } else {
+      summary.kimi = { daysRebuilt: 0, earliestDate: null, skipped: true };
     }
 
     // 历史保留提示:最早日期落在保留窗口外时给出建议天数(只提示不擅改)

@@ -6,7 +6,6 @@ const {
   SYSTEM_PROXY_VALUE,
   resolveElectronSystemProxy
 } = require('./proxy-settings');
-const { beijingDateParts } = require('./beijing-calendar');
 
 const DEFAULT_INTERVALS = { usage: 10 * 1000, quota: 60 * 1000, balance: 60 * 1000, localLog: 60 * 1000 };
 
@@ -23,12 +22,12 @@ function startScheduler({
   onStateChange,
   getProxyInput,
   onUsageObservation,
-  onUsageUnavailable
+  onUsageUnavailable,
+  codexUsageRuntime
 }) {
   const enabled = intervals === false ? false : Object.assign({}, DEFAULT_INTERVALS, intervals || {});
   const timers = [];
   const states = Object.create(null);
-  // 按 provider:channel key 跟踪进行中/排队中的任务,实现同 key 串行与合并
   const inflight = new Map();
 
   function getProxyUrl() {
@@ -194,21 +193,18 @@ function startScheduler({
     return true;
   }
 
-  // 排他执行:同一 provider:channel key 下串行。无前序任务时同步启动 fn,
-  // 有前序任务时在前序完成后启动;吞掉前序任务自身的拒绝以保证队列连续性,
-  // 当前任务的拒绝仍会传播给 await 方。
   function runExclusive(providerId, channel, fn) {
     const key = providerId + ':' + channel;
     const prior = inflight.get(key);
     let task;
-    if (!prior) {
+    if (prior) {
+      task = Promise.resolve(prior).catch(() => {}).then(fn);
+    } else {
       try {
         task = Promise.resolve(fn());
       } catch (error) {
         task = Promise.reject(error);
       }
-    } else {
-      task = Promise.resolve(prior).catch(() => {}).then(fn);
     }
     inflight.set(key, task);
     const cleanup = () => {
@@ -218,12 +214,9 @@ function startScheduler({
     return task;
   }
 
-  // 合并执行:同 key 已有排队/运行中的任务时直接返回它,不重复调用 fn。
   function runOnce(providerId, channel, fn) {
     const key = providerId + ':' + channel;
-    const existing = inflight.get(key);
-    if (existing) return existing;
-    return runExclusive(providerId, channel, fn);
+    return inflight.get(key) || runExclusive(providerId, channel, fn);
   }
 
   async function pollBalance(provider) {
@@ -242,11 +235,10 @@ function startScheduler({
       return;
     }
     const now = new Date();
-    const nowParts = beijingDateParts(now.getTime());
     try {
       const usage = await provider.fetchUsage(ctxFor(provider), {
-        month: nowParts ? nowParts.month : now.getMonth() + 1,
-        year: nowParts ? nowParts.year : now.getFullYear()
+        month: now.getMonth() + 1,
+        year: now.getFullYear()
       });
       recordSuccess(provider, 'usage', 'usage', usage);
       notifyUsageObservation(provider, 'usage');
@@ -277,10 +269,15 @@ function startScheduler({
   async function pollLocalLog(provider) {
     try {
       // Provider 先把增量合并进 usageDaily,随后按真实新增记录决定是否刷新界面。
-      // readLocalLog 现返回 ScanBatch { records, complete, bytesRead };兼容旧数组返回。
-      const batch = await provider.readLocalLog(ctxFor(provider));
-      const records = Array.isArray(batch) ? batch : (batch && batch.records) || [];
-      const changed = records.length > 0;
+      // Codex 经由运行时 FIFO 协调器串行化所有写操作;其它 provider 直接读取。
+      const ctx = ctxFor(provider);
+      const batch = (provider.id === 'codex' && codexUsageRuntime)
+        ? await codexUsageRuntime.runIncremental((scanOptions) =>
+          provider.readLocalLog(ctx, scanOptions)
+        )
+        : await provider.readLocalLog(ctx);
+      const records = Array.isArray(batch) ? batch : batch.records;
+      const changed = Array.isArray(records) && records.length > 0;
       const recovered = recordChannelRecovery(provider, 'localLog', false);
       if (changed || recovered) touch(provider.id);
       notifyUsageObservation(provider, 'localLog');
