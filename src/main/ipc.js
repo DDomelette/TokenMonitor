@@ -175,19 +175,34 @@ module.exports = function setupIPC(deps) {
       summary.deepseek = { skipped: true, reason: 'not-logged-in' };
     }
 
-    for (const pid of ['codex', 'kimi']) {
-      const provider = deps.registry.get(pid);
-      if (!provider || typeof provider.readLocalLog !== 'function') {
-        summary[pid] = { daysRebuilt: 0, earliestDate: null, skipped: true };
-        continue;
-      }
-      summary[pid] = await rescanLocalLogs({
-        providerId: pid,
-        readLocalLog: () => provider.readLocalLog({ store: deps.store }, { retainAll: true }),
+    // Codex 手动历史同步走运行时安全影子重建(全局事件去重 + 单次快照提交);
+    // Kimi 保持通用事务性重扫。未注入 Codex 运行时(兼容测试夹具)时回退到通用重扫。
+    const codexProvider = deps.registry.get('codex');
+    if (codexProvider && typeof codexProvider.readLocalLog === 'function') {
+      summary.codex = deps.codexUsageRuntime
+        ? await deps.codexUsageRuntime.rebuild({ onProgress: sendProgress })
+        : await rescanLocalLogs({
+          providerId: 'codex',
+          readLocalLog: () => codexProvider.readLocalLog({ store: deps.store }, { retainAll: true }),
+          readStore,
+          writeStore,
+          onProgress: sendProgress
+        });
+    } else {
+      summary.codex = { daysRebuilt: 0, earliestDate: null, skipped: true };
+    }
+
+    const kimiProvider = deps.registry.get('kimi');
+    if (kimiProvider && typeof kimiProvider.readLocalLog === 'function') {
+      summary.kimi = await rescanLocalLogs({
+        providerId: 'kimi',
+        readLocalLog: () => kimiProvider.readLocalLog({ store: deps.store }, { retainAll: true }),
         readStore,
         writeStore,
         onProgress: sendProgress
       });
+    } else {
+      summary.kimi = { daysRebuilt: 0, earliestDate: null, skipped: true };
     }
 
     // 历史保留提示:最早日期落在保留窗口外时给出建议天数(只提示不擅改)

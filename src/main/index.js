@@ -9,6 +9,8 @@ const deepseekProvider = require('./providers/deepseek');
 const codexProvider = require('./providers/codex');
 const kimiProvider = require('./providers/kimi');
 const { startScheduler } = require('./core/scheduler');
+const { rebuildCodexUsage } = require('./providers/codex/rebuild');
+const { startCodexUsageBootstrap, CODEX_USAGE_BOOTSTRAP_FAILED } = require('./core/codex-usage-bootstrap');
 const { createDiagnostics } = require('./core/diagnostics');
 const { projectDiagnosticsTheme } = require('./core/diagnostics/theme');
 const { validateEncryptionKey } = require('./core/encryption-key');
@@ -49,6 +51,7 @@ let diagnostics = null;
 let getProxyInput = null;
 let tokenSpeedRuntime = null;
 let mcpRuntime = null;
+let codexUsageRuntime = null;
 let moveDebounce = null;
 // 贴边自动隐藏状态机(issue #170),随主窗口创建
 let edgeDock = null;
@@ -730,11 +733,12 @@ function notifyFocusState(win, focused) {
 
 /* ======== 调度器 ======== */
 
-function startSchedulerRuntime() {
+function startSchedulerRuntime(codexRuntime) {
   scheduler = startScheduler({
     registry,
     store,
     getProxyInput,
+    codexUsageRuntime: codexRuntime,
     broadcast: (channel, payload) => broadcastToWindows(channel, payload),
     onStateChange: (providerId, state) => {
       if (providerId !== 'deepseek' || !state) return;
@@ -759,6 +763,7 @@ function startSchedulerRuntime() {
     broadcast: (channel, payload) => broadcastToWindows(channel, payload)
   });
   tokenSpeedRuntime.start();
+  return scheduler;
 }
 
 /* ======== App 生命周期 ======== */
@@ -843,7 +848,28 @@ app.whenReady().then(() => {
   registry.register(codexProvider);
   registry.register(kimiProvider);
   getProxyInput = createRuntimeProxyInputGetter();
-  startSchedulerRuntime();
+
+  // Codex 归档迁移:先创建运行时并立即启动影子迁移(不等待),再构造调度器,
+  // 使调度器对 Codex 的首次 localLog 轮询排队在迁移 Promise 之后。旧用量保持可见。
+  codexUsageRuntime = codexProvider.createCodexUsageRuntime({
+    store,
+    rebuildCodexUsage,
+    incrementalScan: (opts) => codexProvider.readLocalLog({ store }, opts),
+    logger: ({ code, phase }) => console.log(`[codex] ${phase}: ${code}`),
+    buildOptions: {
+      activeRoot: codexProvider.localLogRoot({ store }),
+      archiveRoot: codexProvider.archivedLogRoot({ store })
+    }
+  });
+
+  const codexBootstrap = startCodexUsageBootstrap({
+    createRuntime: () => codexUsageRuntime,
+    startScheduler: (runtime) => startSchedulerRuntime(runtime),
+    onUnexpectedMigrationError: () => console.error(`[codex] ${CODEX_USAGE_BOOTSTRAP_FAILED}`)
+  });
+  codexUsageRuntime = codexBootstrap.runtime;
+  scheduler = codexBootstrap.scheduler;
+
   diagnostics = createDiagnosticsRuntime();
 
   mcpRuntime = startMCP({ store, scheduler, logger: console });
@@ -854,6 +880,7 @@ app.whenReady().then(() => {
     registry,
     scheduler,
     tokenSpeedRuntime,
+    codexUsageRuntime,
     runtime,
     resizeState,
     getMcpRuntime: () => mcpRuntime,
@@ -914,6 +941,7 @@ app.on('before-quit', () => {
   app.isQuitting = true;
   if (tokenSpeedRuntime) tokenSpeedRuntime.stop();
   if (scheduler) scheduler.stop();
+  if (codexUsageRuntime) { codexUsageRuntime.stop(); codexUsageRuntime = null; }
   if (tray) { tray.destroy(); tray = null; }
   if (mcpRuntime) { mcpRuntime.stop(); mcpRuntime = null; }
 });

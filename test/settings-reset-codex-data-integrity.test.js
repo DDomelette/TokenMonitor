@@ -163,10 +163,12 @@ test('reset preserves a UUID-keyed Codex cursor and its aggregate', async (t) =>
 
   assert.equal(totalForProvider(store, 'codex'), 7);
   assert.ok(store.get('localLogCursors.codex')[uuid]);
+  // 汇总、UUID 游标与迁移完成标记是同一份持久单元,必须一起保留
+  assert.equal(store.get('localLogMigrations.codexArchiveUuidCursorV1'), true);
 
   store.set('providers.codex.localLogRoot', root);
   store.set('providers.codex.archivedLogRoot', archive);
-  store.set('localLogMigrations.codexArchiveUuidCursorV1', true);
+  // 迁移标记已随重置保留,无需重新写入
 
   const repeatedRecords = await readLocalLog({ store });
   assert.equal(repeatedRecords.records.length, 0);
