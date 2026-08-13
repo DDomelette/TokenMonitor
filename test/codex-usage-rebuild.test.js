@@ -11,6 +11,7 @@ const {
   replaceCodexSnapshot,
   rebuildCodexUsage
 } = require('../src/main/providers/codex/rebuild');
+const { verifyCodexArchiveUsage } = require('../scripts/verify-codex-archive-usage');
 
 const NOW_MS = Date.UTC(2026, 7, 13, 12, 0, 0);
 const UUID_ACTIVE = '019fe62f-0000-7000-8000-000000000001';
@@ -305,4 +306,78 @@ test('buildCodexShadow throws LOCAL_LOG_RESCAN_INCOMPLETE with safe counters whe
       return true;
     }
   );
+});
+
+// ---------------------------------------------------------------------------
+// Task 7: read-only local acceptance verifier.
+// ---------------------------------------------------------------------------
+
+function makeHostileStoreProjection(usageDaily) {
+  const projection = { usageDaily };
+  Object.defineProperty(projection, 'store', {
+    enumerable: false,
+    set() { throw new Error('STORE_MUTATION'); }
+  });
+  projection.set = () => { throw new Error('STORE_MUTATION'); };
+  projection.delete = () => { throw new Error('STORE_MUTATION'); };
+  return projection;
+}
+
+test('verifyCodexArchiveUsage is read-only and returns exact totals', async () => {
+  const { base, sessions, archived } = makeTempRoots();
+  try {
+    fs.writeFileSync(path.join(sessions, `rollout-${UUID_ACTIVE}.jsonl`), usageLine(EVENTS.A));
+    fs.writeFileSync(path.join(archived, `rollout-${UUID_ARCHIVE}.jsonl`),
+      usageLine(EVENTS.B) + usageLine(EVENTS.C));
+
+    const dayA = localDayKey(EVENTS.A.ts);
+    const dayB = localDayKey(EVENTS.B.ts);
+    const hostile = makeHostileStoreProjection({
+      [`codex:${dayA}`]: { total: 16 },
+      [`codex:${dayB}`]: { total: 71 }
+    });
+
+    const result = await verifyCodexArchiveUsage({
+      activeRoot: sessions,
+      archiveRoot: archived,
+      nowMs: NOW_MS,
+      storeProjection: hostile
+    });
+
+    assert.equal(result.files, 2);
+    assert.equal(result.uniqueEvents, 3);
+    assert.equal(result.duplicateEvents, 0);
+    assert.equal(result.daily[`codex:${dayA}`].total, 16);
+    assert.equal(result.daily[`codex:${dayB}`].total, 71);
+
+    assert.equal(result.comparedStoreDaily[dayA].match, true);
+    assert.equal(result.comparedStoreDaily[dayB].match, true);
+    assert.equal(result.comparedStoreDaily[dayB].total, 71);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('verifyCodexArchiveUsage flags mismatch without mutating the projection', async () => {
+  const { base, sessions, archived } = makeTempRoots();
+  try {
+    fs.writeFileSync(path.join(sessions, `rollout-${UUID_ACTIVE}.jsonl`), usageLine(EVENTS.A));
+
+    const dayA = localDayKey(EVENTS.A.ts);
+    const hostile = makeHostileStoreProjection({ [`codex:${dayA}`]: { total: 999 } });
+
+    const result = await verifyCodexArchiveUsage({
+      activeRoot: sessions,
+      archiveRoot: archived,
+      nowMs: NOW_MS,
+      storeProjection: hostile,
+      date: dayA
+    });
+
+    assert.equal(result.comparedStoreDaily[dayA].match, false);
+    assert.equal(result.comparedStoreDaily[dayA].total, 16);
+    assert.equal(result.comparedStoreDaily[dayA].storeTotal, 999);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
 });

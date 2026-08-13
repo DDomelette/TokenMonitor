@@ -8,6 +8,7 @@ A multi-platform AI usage monitor as a desktop floating widget — track quotas,
 
 ## Recent Updates
 
+- **Codex archived-usage rebuild** (2026-08): on first launch after upgrade, Codex historical usage is automatically rebuilt by event-level deduplication across the active (`~/.codex/sessions`) and archived (`~/.codex/archived_sessions`) rollout logs. Old usage stays visible while the migration runs; a failure never mutates existing data and retries on the next launch; rollouts moved between the two directories resume from their original offset by stable UUID. A custom archive directory requires the explicit `providers.codex.archivedLogRoot` setting.
 - **Edge Auto Hide** (2026-08): drag the window to the left, right or top screen edge to dock it; it collapses to a thin trigger strip and slides back out on hover with a damped animation. Dragging undocks instantly, tray wake / opening settings fully expands it, and the dock state is restored after restart.
 - **Read-only credential reuse** (2026-08): Codex / Kimi credentials are now read-only views of the local CLI credential files, eliminating the refresh_token rotation race with the CLI; also fixed false "session expired" flashes during the CLI's refresh window.
 - **Proxy UX** (2026-08): custom proxy IP / port fields are pre-filled (auto-detecting the current system proxy port, or the last used value).
@@ -81,7 +82,10 @@ npm run build:renderer   # build the renderer only (React + Vite)
 npm run dev:renderer     # renderer Vite dev server
 npm run build:win        # package the Windows installer (electron-builder)
 npm run build:mac        # package for macOS
+npm run verify:codex-archive-usage -- --date 2026-08-09   # read-only Codex archived-usage verification
 ```
+
+`npm run verify:codex-archive-usage` performs a read-only shadow rebuild of the local Codex active/archived directories: it only prints per-day aggregates and counts, never writes the store, never mutates rollout files, and never prints session content, UUIDs, or full private paths.
 
 ## Tech Stack
 
