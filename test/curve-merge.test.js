@@ -6,7 +6,7 @@ const { mergeCurves } = require('../renderer/src/lib/curve-merge.js');
 
 function point(dateStr, totalCost, deltaCost) {
   const [y, m, d] = dateStr.split('-').map(Number);
-  return { time: new Date(y, m - 1, d).getTime(), totalCost, deltaCost };
+  return { time: Date.UTC(y, m - 1, d), totalCost, deltaCost };
 }
 
 // 浮点累加用容差比较(0.1+0.2 !== 0.3 是 IEEE-754 语义,不是合并逻辑错误)。
@@ -57,4 +57,23 @@ test('mergeCurves collapses same-day points from one curve into a single point',
   const merged = mergeCurves([a]);
   assert.equal(merged.length, 1);
   assert.deepEqual(merged[0], { time: point('2026-08-12', 0, 0).time, totalCost: 0.5, deltaCost: 0.5 });
+});
+
+test('mergeCurves keeps Beijing day keys stable on a UTC-minus host', () => {
+  const previousTz = process.env.TZ;
+  process.env.TZ = 'America/Los_Angeles';
+  try {
+    const merged = mergeCurves([[
+      point('2026-08-14', 0.2, 0.2),
+      point('2026-08-15', 0.5, 0.3)
+    ]]);
+    assert.deepEqual(merged.map((p) => p.time), [
+      Date.UTC(2026, 7, 14),
+      Date.UTC(2026, 7, 15)
+    ]);
+    assertClose(merged.map((p) => p.totalCost), [0.2, 0.5]);
+  } finally {
+    if (previousTz === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTz;
+  }
 });
