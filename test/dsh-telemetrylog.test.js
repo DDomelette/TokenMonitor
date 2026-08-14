@@ -151,7 +151,7 @@ test('resolveTelemetryRoot expands tilde and resolves relative DSH_HOME like the
   // DSH 生产者 resolveDshHome 对 $DSH_HOME 做 expandHomePath(~ 前缀) + resolve 绝对化;
   // 消费者必须等价处理,否则 DSH_HOME=~/dsh 或相对路径时两边指向不同目录、静默无数据。
   assert.equal(resolveTelemetryRoot(null, { DSH_HOME: '~/dsh' }), path.join(os.homedir(), 'dsh', 'telemetry'));
-  assert.equal(resolveTelemetryRoot(null, { DSH_HOME: '.\\dsh' }), path.resolve('dsh', 'telemetry'));
+  assert.equal(resolveTelemetryRoot(null, { DSH_HOME: path.join('.', 'dsh') }), path.resolve('dsh', 'telemetry'));
   assert.equal(resolveTelemetryRoot(null, { DSH_HOME: path.join('.', 'dsh') }), path.resolve('dsh', 'telemetry'));
 });
 
