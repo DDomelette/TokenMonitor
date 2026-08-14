@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-// 与 ChartWidget/buildCurvePoints 一致的点构造:本地午夜时间,date 为 YYYY-MM-DD。
+// 与 ChartWidget/buildCurvePoints 一致的点构造: UTC 午夜时间，date 为 YYYY-MM-DD。
 const { mergeCurves } = require('../renderer/src/lib/curve-merge.js');
 
 function point(dateStr, totalCost, deltaCost) {
