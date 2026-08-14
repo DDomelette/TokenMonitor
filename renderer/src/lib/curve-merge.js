@@ -4,12 +4,7 @@
 // 输入:若干点列,每点形如 { time, totalCost, deltaCost, ... }(token 字段不需要);
 // 输出:[{ time, totalCost, deltaCost }] 按 time 升序;空输入/全空列返回 []。
 
-function localDayKey(timeMs) {
-  const d = new Date(timeMs);
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return d.getFullYear() + '-' + month + '-' + day;
-}
+import { beijingDayKey } from './beijing-calendar.js';
 
 export function mergeCurves(curves) {
   const deltaByDay = new Map();
@@ -17,7 +12,8 @@ export function mergeCurves(curves) {
     (points || []).forEach((p) => {
       const t = Number(p && p.time);
       if (!Number.isFinite(t)) return;
-      const key = localDayKey(t);
+      const key = beijingDayKey(t);
+      if (!key) return;
       deltaByDay.set(key, (deltaByDay.get(key) || 0) + (Number(p.deltaCost) || 0));
     });
   });
@@ -29,7 +25,7 @@ export function mergeCurves(curves) {
     const delta = deltaByDay.get(day);
     cumulative += delta;
     const [y, m, d] = day.split('-').map(Number);
-    out.push({ time: new Date(y, m - 1, d).getTime(), totalCost: cumulative, deltaCost: delta });
+    out.push({ time: Date.UTC(y, m - 1, d), totalCost: cumulative, deltaCost: delta });
   });
   return out;
 }
