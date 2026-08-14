@@ -9,6 +9,10 @@ const SECRET_SETTING_PATHS = [
 
 function sanitizeSettings(storeData) {
   const clone = JSON.parse(JSON.stringify(storeData || {}));
+  // 用量/费用聚合属于大数据键:渲染层经专用 IPC(get:heatmap / get:dashboard)获取,
+  // 不进 settings 载荷(避免每 60s 整库深拷贝广播放大载荷体积)。
+  delete clone.usageDaily;
+  delete clone.usageDailyCost;
   SECRET_SETTING_PATHS.forEach(function (pathParts) {
     let node = clone;
     for (let i = 0; i < pathParts.length - 1; i++) {

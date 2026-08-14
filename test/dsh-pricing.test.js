@@ -14,11 +14,21 @@ test('calcDshCost bills cache writes at the input price', () => {
   assert.equal(cost, 0.001);
 });
 
-test('getDshModelPrice resolves prefix matches and the default row', () => {
+test('getDshModelPrice resolves prefix matches and returns undefined for unknown models', () => {
   assert.equal(getDshModelPrice('deepseek-v4-pro-20260101').cacheHit, DSH_PRICING['deepseek-v4-pro'].cacheHit);
-  assert.equal(getDshModelPrice('some-future-model'), DSH_PRICING.default);
-  assert.equal(getDshModelPrice(''), DSH_PRICING.default);
-  assert.equal(getDshModelPrice(null), DSH_PRICING.default);
+  assert.equal(getDshModelPrice('deepseek-v4-flash-20260101').input, DSH_PRICING['deepseek-v4-flash'].input);
+  assert.equal(getDshModelPrice('deepseek-reasoner-x'), DSH_PRICING['deepseek-reasoner']);
+  assert.equal(getDshModelPrice('some-future-model'), undefined);
+  assert.equal(getDshModelPrice(''), undefined);
+  assert.equal(getDshModelPrice(null), undefined);
+});
+
+test('calcDshCost returns 0 for unknown models instead of silently billing at the pro rate', () => {
+  assert.equal(calcDshCost('some-future-model', 1000, 2000, 3000, 100), 0);
+  assert.equal(calcDshCost('', 1000, 0, 0, 0), 0);
+  assert.equal(calcDshCost(null, 0, 0, 0, 0), 0);
+  // 已知模型计费不变
+  assert.equal(calcDshCost('deepseek-v4-pro', 1000, 2000, 3000, 100), 1 * 0.001 + 2 * 0.004 + 3 * 0.0001 + 0.1 * 0.001);
 });
 
 test('existing PRICING and calcCost are untouched', () => {

@@ -271,16 +271,27 @@ function startScheduler({
       // Provider 先把增量合并进 usageDaily,随后按真实新增记录决定是否刷新界面。
       // Codex 经由运行时 FIFO 协调器串行化所有写操作;其它 provider 直接读取。
       const ctx = ctxFor(provider);
+      // dsh 的 readLocalLog 接受 opts.diagnostics(行解析/截断尾行等计数);
+      // 其余 provider 保持原调用形态不变。
+      const diagnostics = {};
       const batch = (provider.id === 'codex' && codexUsageRuntime)
         ? await codexUsageRuntime.runIncremental((scanOptions) =>
           provider.readLocalLog(ctx, scanOptions)
         )
-        : await provider.readLocalLog(ctx);
+        : (provider.id === 'dsh'
+            ? await provider.readLocalLog(ctx, { diagnostics })
+            : await provider.readLocalLog(ctx));
       const records = Array.isArray(batch) ? batch : batch.records;
       const changed = Array.isArray(records) && records.length > 0;
       const recovered = recordChannelRecovery(provider, 'localLog', false);
       if (changed || recovered) touch(provider.id);
       notifyUsageObservation(provider, 'localLog');
+      // 非零解析诊断打一行日志,便于观测遥测数据完整性(坏行/截断尾行/版本不符等)。
+      const diagnosticKeys = Object.keys(diagnostics).filter((key) => diagnostics[key] > 0);
+      if (diagnosticKeys.length) {
+        console.warn('[scheduler] localLog diagnostics for ' + provider.id + ': '
+          + diagnosticKeys.map((key) => key + '=' + diagnostics[key]).join(', '));
+      }
     } catch (error) {
       recordFailure(provider, 'localLog', error);
       notifyUsageUnavailable(provider, 'localLog');

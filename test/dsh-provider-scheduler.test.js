@@ -24,7 +24,14 @@ function makeStore(initial = {}) {
   const data = JSON.parse(JSON.stringify(initial));
   return {
     get(key) { return getPath(data, key); },
-    set(key, value) { setPath(data, key, value); }
+    // 与 electron-store/conf 语义一致:set(object) 一次应用多键(dot 键写嵌套路径)。
+    set(key, value) {
+      if (typeof key === 'object' && key !== null) {
+        Object.keys(key).forEach((k) => setPath(data, k, key[k]));
+        return;
+      }
+      setPath(data, key, value);
+    }
   };
 }
 function makeRegistry(providers) {
@@ -61,6 +68,33 @@ test('scheduler polls dsh localLog and the merged daily lands in the store', asy
     assert.equal(daily['dsh:2026-08-14'].output, 200);
     assert.ok(store.get('usageDailyCost')['dsh:2026-08-14'] > 0);
     assert.ok(broadcasts.some((b) => b.channel === 'providers:changed'));
+  } finally {
+    scheduler.stop();
+  }
+});
+
+test('scheduler collects dsh localLog parse diagnostics and logs them', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-sched-'));
+  fs.writeFileSync(path.join(root, 'usage-2026-08-14.jsonl'), 'not json\n');
+
+  const store = makeStore({ usageDaily: {}, providers: { dsh: { telemetryRoot: root } }, data: { historyDays: 30 } });
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => { warnings.push(args.join(' ')); };
+  t.after(() => { console.warn = originalWarn; });
+
+  const scheduler = startScheduler({
+    registry: makeRegistry([dshProvider]),
+    store,
+    broadcast() {},
+    intervals: false
+  });
+  try {
+    await scheduler.poll('dsh', 'localLog');
+    assert.ok(
+      warnings.some((w) => w.includes('malformedLine=1')),
+      'non-zero parse diagnostics must be logged, got: ' + JSON.stringify(warnings)
+    );
   } finally {
     scheduler.stop();
   }

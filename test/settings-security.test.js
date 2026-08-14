@@ -63,3 +63,22 @@ test('sanitizeSettings strips mcp.token from renderer-bound copies', () => {
   assert.equal(out.mcp.enabled, true);
   assert.equal(out.mcp.token, undefined);
 });
+
+test('sanitizeSettings strips usageDaily and usageDailyCost from renderer-bound copies', () => {
+  const raw = {
+    usageDaily: {
+      'dsh:2026-08-14': { input: 1, cached: 0, output: 1, total: 2 },
+      'kimi:2026-08-14': { input: 0, cached: 0, output: 5, total: 5 }
+    },
+    usageDailyCost: { 'dsh:2026-08-14': 0.001 },
+    window: { opacity: 92 }
+  };
+  const clean = sanitizeSettings(raw);
+  // 用量/费用聚合属于大数据键,走专用 IPC(get:heatmap/get:dashboard),不进 settings 载荷。
+  assert.equal(clean.usageDaily, undefined);
+  assert.equal(clean.usageDailyCost, undefined);
+  // 其余设置不受影响,原对象不被修改
+  assert.equal(clean.window.opacity, 92);
+  assert.ok(raw.usageDaily['dsh:2026-08-14']);
+  assert.ok(raw.usageDailyCost['dsh:2026-08-14']);
+});

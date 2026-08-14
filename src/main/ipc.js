@@ -15,6 +15,7 @@ const { httpGet } = require('./core/http');
 const { SYSTEM_PROXY_VALUE, resolveElectronSystemProxy } = require('./core/proxy-settings');
 const { registerDiagnosticsIpc } = require('./core/diagnostics/ipc-registration');
 const { detectProxyPort } = require('./core/proxy-detect');
+const { buildDshDashboard } = require('./core/dsh-dashboard');
 
 function deepseekApiKeyCtx(deps, apiKey) {
   return {
@@ -59,6 +60,18 @@ module.exports = function setupIPC(deps) {
         costDaily: st.usage.cost.dailyData,
         tokenDaily: st.usage.amount.dailyData
       };
+      payload.stats = stats;
+      const curves = deps.buildCurvePoints(stats);
+      payload.curveToken = curves.token;
+      payload.curveCost = curves.cost;
+    }
+    if (pid === 'dsh') {
+      // DSH 平台数据源是本地遥测文件聚合(usageDaily/usageDailyCost 的 dsh: 前缀日行),
+      // 与 deepseek stats 同构后复用同一套 buildCurvePoints 生成曲线。
+      const stats = buildDshDashboard(
+        deps.store.get('usageDaily') || {},
+        deps.store.get('usageDailyCost') || {}
+      );
       payload.stats = stats;
       const curves = deps.buildCurvePoints(stats);
       payload.curveToken = curves.token;
