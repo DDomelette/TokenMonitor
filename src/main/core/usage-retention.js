@@ -68,7 +68,11 @@ function pruneUsageDaily(store, nowMs) {
   const current = store.get('usageDaily') || {};
   const filtered = filterUsageDaily(current, historyDays, nowMs);
   const removed = Math.max(0, Object.keys(current).length - Object.keys(filtered).length);
+  const currentCost = store.get('usageDailyCost') || {};
+  const filteredCost = filterUsageDaily(currentCost, historyDays, nowMs);
+  const removedCost = Math.max(0, Object.keys(currentCost).length - Object.keys(filteredCost).length);
   if (removed > 0) store.set('usageDaily', filtered);
+  if (removedCost > 0) store.set('usageDailyCost', filteredCost);
   return removed;
 }
 
