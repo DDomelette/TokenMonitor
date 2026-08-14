@@ -20,24 +20,47 @@ const PRICING = {
 // cost = input×input + output×output + cacheRead×cacheHit + cacheWrite×input。
 // 无 default 行:未知模型查无价格 → getDshModelPrice 返回 undefined、calcDshCost 记 0,
 // 由调用方(telemetrylog.parseTelemetryLine)计 unknownModel 诊断,避免静默按 pro 单价错估。
-const DSH_PRICING = {
-  'deepseek-v4-pro': { input: 0.001, output: 0.004, cacheHit: 0.0001 },
-  'deepseek-v4-flash': { input: 0.0005, output: 0.002, cacheHit: 0.00005 },
-  'deepseek-reasoner': { input: 0.001, output: 0.004, cacheHit: 0.0001 }
-};
+const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
+const DSH_PEAK_PRICING_EFFECTIVE_MS = Date.UTC(2026, 7, 16, 16, 0, 0);
 
-function getDshModelPrice(model) {
-  if (!model) return undefined;
-  if (DSH_PRICING[model]) return DSH_PRICING[model];
-  const name = String(model);
-  if (name.startsWith('deepseek-v4-pro')) return DSH_PRICING['deepseek-v4-pro'];
-  if (name.startsWith('deepseek-v4-flash')) return DSH_PRICING['deepseek-v4-flash'];
-  if (name.includes('reasoner')) return DSH_PRICING['deepseek-reasoner'];
-  return undefined;
+const DSH_PRICING = Object.freeze({
+  'deepseek-v4-flash': Object.freeze({
+    beforeEffective: Object.freeze({ input: 0.001, output: 0.002, cacheHit: 0.00002 }),
+    offPeak: Object.freeze({ input: 0.0015, output: 0.0045, cacheHit: 0.00005 }),
+    peak: Object.freeze({ input: 0.003, output: 0.009, cacheHit: 0.0001 })
+  }),
+  'deepseek-v4-pro': Object.freeze({
+    beforeEffective: Object.freeze({ input: 0.003, output: 0.006, cacheHit: 0.000025 }),
+    offPeak: Object.freeze({ input: 0.0045, output: 0.0135, cacheHit: 0.00015 }),
+    peak: Object.freeze({ input: 0.009, output: 0.027, cacheHit: 0.0003 })
+  })
+});
+
+function dshModelKey(model) {
+  if (typeof model !== 'string') return null;
+  if (model.startsWith('deepseek-v4-flash')) return 'deepseek-v4-flash';
+  if (model.startsWith('deepseek-v4-pro')) return 'deepseek-v4-pro';
+  return null;
 }
 
-function calcDshCost(model, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens) {
-  const price = getDshModelPrice(model);
+function isDshPeakTime(timeMs) {
+  const shifted = new Date(timeMs + BEIJING_OFFSET_MS);
+  const minute = shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
+  return (minute >= 9 * 60 && minute < 12 * 60)
+    || (minute >= 14 * 60 && minute < 18 * 60);
+}
+
+function getDshModelPrice(model, timeMs) {
+  const key = dshModelKey(model);
+  const at = timeMs;
+  if (!key || !Number.isFinite(at)) return undefined;
+  const schedule = DSH_PRICING[key];
+  if (at < DSH_PEAK_PRICING_EFFECTIVE_MS) return schedule.beforeEffective;
+  return isDshPeakTime(at) ? schedule.peak : schedule.offPeak;
+}
+
+function calcDshCost(model, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, timeMs) {
+  const price = getDshModelPrice(model, timeMs);
   if (!price) return 0;
   return (inputTokens / 1000) * price.input
     + (outputTokens / 1000) * price.output
