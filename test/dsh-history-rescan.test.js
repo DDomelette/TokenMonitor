@@ -36,15 +36,22 @@ function makeStore(initial = {}) {
 test('rescanLocalLogs clears and rebuilds dsh usageDaily AND usageDailyCost transactionally', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-rescan-'));
   const dayFile = 'usage-2026-08-14.jsonl';
-  fs.writeFileSync(path.join(root, dayFile),
+  const dayPath = path.join(root, dayFile);
+  fs.writeFileSync(dayPath,
     [
       JSON.stringify({ v: 1, time: Date.UTC(2026, 7, 14, 2, 0, 0), sessionId: 's1', model: 'deepseek-v4-pro', inputTokens: 1000, outputTokens: 2000, cacheReadTokens: 0, cacheWriteTokens: 0 }),
       JSON.stringify({ v: 1, time: Date.UTC(2026, 7, 14, 3, 0, 0), sessionId: 's1', model: 'deepseek-v4-pro', inputTokens: 500, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 })
     ].join('\n') + '\n');
 
+  const staleCursor = {
+    offset: fs.statSync(dayPath).size,
+    mtimeMs: fs.statSync(dayPath).mtimeMs,
+    lastEventFingerprint: 'sha256:stale-end-of-file'
+  };
   const store = makeStore({
     usageDaily: { 'dsh:2026-08-13': { input: 1, cached: 0, output: 1, total: 2 } },
     usageDailyCost: { 'dsh:2026-08-13': 0.004 },
+    localLogCursors_dsh: { [dayPath]: staleCursor },
     root,
     historyDays: 30
   });
@@ -63,6 +70,9 @@ test('rescanLocalLogs clears and rebuilds dsh usageDaily AND usageDailyCost tran
   const cost = store.get('usageDailyCost');
   assert.equal(cost['dsh:2026-08-13'], undefined);
   assert.ok(cost['dsh:2026-08-14'] > 0);
+  const cursors = store.get('localLogCursors.dsh');
+  assert.equal(cursors[dayPath].offset, fs.statSync(dayPath).size);
+  assert.notEqual(cursors[dayPath].lastEventFingerprint, staleCursor.lastEventFingerprint);
 });
 
 test('rescanLocalLogs restores usageDailyCost when the scan fails', async () => {
