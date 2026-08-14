@@ -10,6 +10,12 @@ const {
   MATCH
 } = require('../src/main/providers/dsh/telemetrylog');
 
+const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+function beijingMs(year, month, day, hour, minute = 0) {
+  return Date.UTC(year, month - 1, day, hour, minute) - BEIJING_OFFSET_MS;
+}
+
 const LINE = JSON.stringify({
   v: 1, time: 1786641087069, sessionId: 'session-1', cwd: 'D:\\Deepseek_Monitor',
   model: 'deepseek-v4-pro', inputTokens: 1000, outputTokens: 2000,
@@ -25,6 +31,21 @@ test('parseTelemetryLine maps the four buckets into the UsageRecord shape', () =
   assert.deepEqual(rec.usage, { input: 1100, cached: 3000, output: 2000, total: 6100 });
   assert.ok(typeof rec.cost === 'number' && rec.cost > 0);
   assert.match(rec.eventFingerprint, /^sha256:[0-9a-f]{64}$/);
+});
+
+test('parseTelemetryLine prices historical rows using the row time', () => {
+  const time = beijingMs(2026, 8, 16, 23, 59);
+  const record = parseTelemetryLine(JSON.stringify({
+    v: 1,
+    time,
+    sessionId: 's-price',
+    model: 'deepseek-v4-pro',
+    inputTokens: 1000,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0
+  }), {}, time);
+  assert.equal(record.cost, 0.003);
 });
 
 test('parseTelemetryLine rejects malformed rows with diagnostics', () => {

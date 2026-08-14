@@ -77,7 +77,7 @@ function parseTelemetryLine(line, diagnostics, nowMs) {
   const model = typeof data.model === 'string' && data.model.length > 0 ? data.model : 'unknown';
   const sessionId = typeof data.sessionId === 'string' && data.sessionId.length > 0 ? data.sessionId : 'unknown';
   // 未知模型(查无单价)按设计规格记 0 费用并计诊断,避免静默按 pro 单价错估。
-  if (!getDshModelPrice(model)) {
+  if (!getDshModelPrice(model, ts)) {
     incrementDiagnostic(diagnostics, 'unknownModel');
   }
   const record = {
@@ -91,7 +91,7 @@ function parseTelemetryLine(line, diagnostics, nowMs) {
       total: input + cacheWrite + cacheRead + output
     },
     // 费用按原始四桶计算(与 UsageRecord 映射独立,不重复计费);未知模型为 0。
-    cost: calcDshCost(model, input, output, cacheRead, cacheWrite)
+    cost: calcDshCost(model, input, output, cacheRead, cacheWrite, ts)
   };
   record.eventFingerprint = 'sha256:' + crypto.createHash('sha256')
     .update([

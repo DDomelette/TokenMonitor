@@ -1,34 +1,54 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { getDshModelPrice, calcDshCost, DSH_PRICING } = require('../src/main/pricing');
+const { getDshModelPrice, calcDshCost } = require('../src/main/pricing');
 
-test('calcDshCost prices the four raw telemetry buckets', () => {
-  // deepseek-v4-pro: input 0.001, output 0.004, cacheHit 0.0001 per 1000 tokens.
-  const cost = calcDshCost('deepseek-v4-pro', 1000, 2000, 3000, 100);
-  assert.equal(cost, 1 * 0.001 + 2 * 0.004 + 3 * 0.0001 + 0.1 * 0.001);
+const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+function beijingMs(year, month, day, hour, minute = 0) {
+  return Date.UTC(year, month - 1, day, hour, minute) - BEIJING_OFFSET_MS;
+}
+
+test('DSH pricing uses the official rates before the 2026-08-17 effective instant', () => {
+  const at = beijingMs(2026, 8, 16, 23, 59);
+  assert.deepEqual(getDshModelPrice('deepseek-v4-flash', at), {
+    input: 0.001, output: 0.002, cacheHit: 0.00002
+  });
+  assert.deepEqual(getDshModelPrice('deepseek-v4-pro', at), {
+    input: 0.003, output: 0.006, cacheHit: 0.000025
+  });
 });
 
-test('calcDshCost bills cache writes at the input price', () => {
-  const cost = calcDshCost('deepseek-v4-pro', 0, 0, 0, 1000);
-  assert.equal(cost, 0.001);
+test('DSH pricing applies Beijing peak boundaries after the effective instant', () => {
+  const cases = [
+    [beijingMs(2026, 8, 17, 0, 0), 0.0045],
+    [beijingMs(2026, 8, 17, 8, 59), 0.0045],
+    [beijingMs(2026, 8, 17, 9, 0), 0.009],
+    [beijingMs(2026, 8, 17, 11, 59), 0.009],
+    [beijingMs(2026, 8, 17, 12, 0), 0.0045],
+    [beijingMs(2026, 8, 17, 13, 59), 0.0045],
+    [beijingMs(2026, 8, 17, 14, 0), 0.009],
+    [beijingMs(2026, 8, 17, 17, 59), 0.009],
+    [beijingMs(2026, 8, 17, 18, 0), 0.0045]
+  ];
+  cases.forEach(([at, expectedInput]) => {
+    assert.equal(getDshModelPrice('deepseek-v4-pro', at).input, expectedInput);
+  });
 });
 
-test('getDshModelPrice resolves prefix matches and returns undefined for unknown models', () => {
-  assert.equal(getDshModelPrice('deepseek-v4-pro-20260101').cacheHit, DSH_PRICING['deepseek-v4-pro'].cacheHit);
-  assert.equal(getDshModelPrice('deepseek-v4-flash-20260101').input, DSH_PRICING['deepseek-v4-flash'].input);
-  assert.equal(getDshModelPrice('deepseek-reasoner-x'), DSH_PRICING['deepseek-reasoner']);
-  assert.equal(getDshModelPrice('some-future-model'), undefined);
-  assert.equal(getDshModelPrice(''), undefined);
-  assert.equal(getDshModelPrice(null), undefined);
+test('calcDshCost prices all four raw buckets at the event-time rate', () => {
+  const at = beijingMs(2026, 8, 17, 9, 0);
+  assert.equal(
+    calcDshCost('deepseek-v4-flash', 1000, 2000, 3000, 100, at),
+    1 * 0.003 + 2 * 0.009 + 3 * 0.0001 + 0.1 * 0.003
+  );
 });
 
-test('calcDshCost returns 0 for unknown models instead of silently billing at the pro rate', () => {
-  assert.equal(calcDshCost('some-future-model', 1000, 2000, 3000, 100), 0);
-  assert.equal(calcDshCost('', 1000, 0, 0, 0), 0);
-  assert.equal(calcDshCost(null, 0, 0, 0, 0), 0);
-  // 已知模型计费不变
-  assert.equal(calcDshCost('deepseek-v4-pro', 1000, 2000, 3000, 100), 1 * 0.001 + 2 * 0.004 + 3 * 0.0001 + 0.1 * 0.001);
+test('DSH pricing does not map unlisted reasoner or future models to pro', () => {
+  const at = beijingMs(2026, 8, 17, 9, 0);
+  assert.equal(getDshModelPrice('deepseek-reasoner', at), undefined);
+  assert.equal(getDshModelPrice('some-future-model', at), undefined);
+  assert.equal(calcDshCost('deepseek-reasoner', 1000, 0, 0, 0, at), 0);
 });
 
 test('existing PRICING and calcCost are untouched', () => {
