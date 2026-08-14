@@ -52,7 +52,7 @@ test('usage filtering keeps only valid dated keys inside the configured window',
   assert.equal(Object.keys(input).length, 5, 'filtering must not mutate its input');
 });
 
-test('physical cleanup mutates only usageDaily and preserves fetch markers plus local-log cursors', () => {
+test('physical cleanup mutates only retained daily usage and cost stores while preserving fetch markers plus local-log cursors', () => {
   const { pruneUsageDaily } = loadRetention();
   const cursor = { '/tmp/rollout.jsonl': { offset: 123, mtimeMs: 456 } };
   const kimiCursor = { '/tmp/wire.jsonl': { offset: 789, mtimeMs: 987 } };
