@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **2026-08-15 review correction:** The pricing, strict-schema, cursor-absence,
+> retention, and curve-timezone details in Tasks 6-8 are superseded by
+> `docs/superpowers/plans/2026-08-15-dsh-token-monitoring-review-fixes.md`.
+> The approved frontend boundary excludes new DSH platform entries, but permits
+> merging DSH cost into the existing cost-line widget.
+
 **Goal:** 让 DeepSeek Harness(DSH)把每次模型请求的 token usage 写入 `$DSH_HOME/telemetry/usage-YYYY-MM-DD.jsonl`,并让 DeepSeek Monitor 把它作为第 4 个平台(`dsh`)并入每日聚合、费用与 Token 速度卡。
 
 **Architecture:** DSH 侧新增独立 cordis 包 `@deepseek-ai/dsh-usage-telemetry`(订阅 `session/event`,仅取 `assistant/message` 的最终 usage,未压缩 JSONL 按天轮转,默认开启、settings.yaml 可关);Monitor 侧新增 `providers/dsh` ProviderAdapter,复用 `core/locallog.js` 游标扫描管线把遥测行并入 `usageDaily` 与新增的 `usageDailyCost`,并把 `'dsh'` 加入 token-speed-tracker 的 PROVIDER_IDS。渲染层面板不在此计划内(Kimi 负责)。
@@ -17,7 +23,7 @@
 - 遥测根目录:`$DSH_HOME/telemetry`(经 `resolveDshHome`,默认 `~/.dsh`;`DSH_HOME` 环境变量生效),文件名 `usage-YYYY-MM-DD.jsonl`(本地日期)。
 - 遥测行不含任何 prompt/工具文本;写入必须 fail-soft(不抛进 `session/event` 事件路径——cordis emit 是 stop-on-throw)。
 - DSH 不动任何现有包;bundle 注册仅加 web-app 的 `cordis.patch.yml`。
-- Monitor 不新增依赖;渲染层(`renderer/`)一行不改(前后端边界,spec 4.6);`npm test` 必须全绿。
+- Monitor 不新增依赖;前后端边界(spec 4.6)禁止新增 DSH 平台条目或独立 DSH 面板,但允许修改现有 cost-line 的数据合并;`npm test` 必须全绿。
 - 费用口径(Monitor `pricing.js`):单价表存 ¥/1000 tokens(与现有 `PRICING` 同单位);`cost = input×input + output×output + cacheRead×cacheHit + cacheWrite×input`;UsageRecord 映射中 `inputTokens = input + cacheWrite`、`cachedTokens = cacheRead`。
 - 两个仓库分别提交;commit 信息按任务给出。
 
@@ -1928,7 +1934,7 @@ git commit -m "docs: add DeepSeek Harness row to data sources"
 
 ## Self-Review Notes(已完成,供执行者参考)
 
-- Spec 覆盖:spec 1-8 节分别落在 Task 1-12;spec 3.3 行格式由 Task 2 冻结;spec 3.5 开关由 Task 4 的 settings 注入测试覆盖;spec 4.4 费用口径在 Task 6/7;spec 4.5 在 Task 10;spec 4.6 前后端边界在 Global Constraints(渲染层不改);spec 5 错误处理逐项落在 Task 2/4/7/8 的测试;spec 6 测试清单一一对应各 Task 的 Step 1。
+- Spec 覆盖:spec 1-8 节分别落在 Task 1-12;spec 3.3 行格式由 Task 2 冻结;spec 3.5 开关由 Task 4 的 settings 注入测试覆盖;spec 4.4 费用口径在 Task 6/7;spec 4.5 在 Task 10;spec 4.6 前后端边界在 Global Constraints(不新增 DSH 平台条目或独立 DSH 面板,已实现 `renderer/src/lib/curve-merge.js` 的 cost-line 数据合并);spec 5 错误处理逐项落在 Task 2/4/7/8 的测试;spec 6 测试清单一一对应各 Task 的 Step 1。
 - 类型一致性:`parseTelemetryLine` 返回 `{ ts, model, usage: { input, cached, output, total }, cost, eventFingerprint }`,Task 8 的 `scanTelemetryBatch` 消费 `record.eventFingerprint`/`record.cost` 与 `rollupDaily` 的 `rec.ts`/`rec.usage`/`rec.provider` 字段,名称全程一致;`commitTelemetryScanState(store, usageDaily, usageDailyCost, cursors)` 三处调用签名一致;`readLocalLog(ctx, opts)` 返回值形状 `{ records, complete, bytesRead }` 满足 scheduler(`batch.records`)与 history-sync(`batch.complete`)双消费方。
 - 已知偏差(有意为之,已向用户说明):DSH writer 用 `appendFile` 每行重开文件而非缓存句柄——轮转语义等价、无句柄失效状态。
 - 修订(费用消费通道,与原记录不符):原记录称"`usageDailyCost` 经 `sanitizeSettings` 白名单外放行,渲染层可读"——与实现事实不符:`settings-security.js` 的 `sanitizeSettings` 是"整库深拷贝 + 仅删 3 个密钥路径"的黑名单,不存在白名单;`usageDailyCost` 混入 `get:settings`/`settings:loaded` 载荷只是深拷贝副作用,且当时无任何渲染方消费该键。修复后费用走 `get:dashboard` 的 `dsh` 分支(`src/main/core/dsh-dashboard.js` 聚合 `usageDaily`/`usageDailyCost` 的 `dsh:` 前缀日行 → `buildCurvePoints` → `curveCost`),渲染层 cost-line 用 `renderer/src/lib/curve-merge.js` 的 `mergeCurves` 合并 deepseek 与 dsh 两条费用曲线展示。
