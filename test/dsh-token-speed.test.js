@@ -7,7 +7,7 @@ test('PROVIDER_IDS includes dsh', () => {
   assert.deepEqual(PROVIDER_IDS, ['deepseek', 'codex', 'kimi', 'dsh']);
 });
 
-test('dsh observes, samples, and computes window metrics like other providers', () => {
+test('dsh observes, samples, and contributes metrics through the all snapshot', () => {
   let now = 1000000;
   const tracker = createTokenSpeedTracker({ now: () => now });
   tracker.observe({ providerId: 'dsh', dayKey: '2026-08-14', totalTokens: 0 });
@@ -16,8 +16,8 @@ test('dsh observes, samples, and computes window metrics like other providers', 
   tracker.observe({ providerId: 'dsh', dayKey: '2026-08-14', totalTokens: 600 });
   tracker.sample();
 
-  const snapshot = tracker.getSnapshot({ providerFilter: 'dsh', intervalSeconds: 60, at: now });
-  assert.equal(snapshot.providerFilter, 'dsh');
+  const snapshot = tracker.getSnapshot({ providerFilter: 'all', intervalSeconds: 60, at: now });
+  assert.equal(snapshot.providerFilter, 'all');
   const dsh = snapshot.providers.find((p) => p.providerId === 'dsh');
   assert.ok(dsh);
   assert.equal(dsh.status, 'ok');

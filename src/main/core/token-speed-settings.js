@@ -1,5 +1,5 @@
 const INTERVAL_SECONDS = Object.freeze([10, 20, 30, 60, 180, 300, 3600, 18000]);
-const PROVIDER_FILTERS = Object.freeze(['all', 'deepseek', 'codex', 'kimi', 'dsh']);
+const PROVIDER_FILTERS = Object.freeze(['all', 'deepseek', 'codex', 'kimi']);
 const DEFAULT_TOKEN_SPEED_SETTINGS = Object.freeze({
   intervalSeconds: 30,
   providerFilter: 'all'

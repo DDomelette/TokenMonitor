@@ -29,6 +29,8 @@ test('parseTelemetryLine maps the four buckets into the UsageRecord shape', () =
   assert.ok(rec);
   assert.equal(rec.ts, 1786641087069);
   assert.equal(rec.model, 'deepseek-v4-pro');
+  // Production mutation caught: omitting the DSH currency violates UsageRecord.
+  assert.equal(rec.currency, 'CNY');
   assert.deepEqual(rec.usage, { input: 1100, cached: 3000, output: 2000, total: 6100 });
   assert.ok(typeof rec.cost === 'number' && rec.cost > 0);
   assert.match(rec.eventFingerprint, /^sha256:[0-9a-f]{64}$/);

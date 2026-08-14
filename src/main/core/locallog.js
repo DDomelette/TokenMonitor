@@ -8,6 +8,7 @@ const MIN_TIMESTAMP_MS = Date.UTC(2000, 0, 1);
 const MAX_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_SCAN_CHUNK_BYTES = 64 * 1024;
 const DEFAULT_SCAN_BUDGET_BYTES = 4 * 1024 * 1024;
+const DEFAULT_MAX_LOGICAL_LINE_BYTES = 256 * 1024;
 
 function incrementDiagnostic(diagnostics, key) {
   if (!diagnostics || typeof diagnostics !== 'object') return;
@@ -91,11 +92,13 @@ async function scanCandidateBatch({
   nowMs,
   chunkBytes,
   maxBytesPerScan,
+  maxLineBytes,
   yieldToLoop
 }) {
   const records = [];
   const evaluationNowMs = evaluationTimeMs(nowMs);
   const readChunkBytes = positiveInteger(chunkBytes, DEFAULT_SCAN_CHUNK_BYTES);
+  const maximumLineBytes = positiveInteger(maxLineBytes, DEFAULT_MAX_LOGICAL_LINE_BYTES);
   let remainingBudget = positiveInteger(maxBytesPerScan, DEFAULT_SCAN_BUDGET_BYTES);
   const yieldBlock = typeof yieldToLoop === 'function' ? yieldToLoop : defaultYieldToLoop;
   let complete = true;
@@ -131,6 +134,9 @@ async function scanCandidateBatch({
     if (replaced) {
       const headInfo = computeHead ? await computeHead(candidate, stat) : null;
       workingCursor = await resetCursor(cursor, stat, headInfo);
+      // A replacement starts a new logical stream even when the prior file ended
+      // while an oversized line was being discarded.
+      delete workingCursor.discardingOversizedLine;
     }
 
     const offset = Number(workingCursor.offset) || 0;
@@ -143,6 +149,7 @@ async function scanCandidateBatch({
     let committedOffset = offset;
     let readPosition = offset;
     let pending = Buffer.alloc(0);
+    let discardingOversizedLine = workingCursor.discardingOversizedLine === true;
     let handle = null;
     let failure = null;
 
@@ -153,17 +160,25 @@ async function scanCandidateBatch({
       if (!handle) continue;
 
       while (readPosition < stat.size) {
-        if (remainingBudget <= 0 && pending.length === 0) break;
+        if (remainingBudget <= 0 && (pending.length === 0 || discardingOversizedLine)) break;
 
-        const finishingStartedLine = remainingBudget <= 0;
+        const finishingStartedLine = !discardingOversizedLine && remainingBudget <= 0;
         const fileRemaining = stat.size - readPosition;
         const budgetAllowance = finishingStartedLine
           ? readChunkBytes
           : remainingBudget;
-        const readSize = Math.min(readChunkBytes, fileRemaining, budgetAllowance);
+        let readSize = Math.min(readChunkBytes, fileRemaining, budgetAllowance);
+        if (!discardingOversizedLine) {
+          // Read at most one byte beyond the logical-line ceiling. This preserves
+          // the ordinary "finish a started line" budget exception without ever
+          // accumulating an unbounded unterminated line.
+          const bytesUntilLimitDecision = maximumLineBytes - pending.length + 1;
+          readSize = Math.min(readSize, Math.max(1, bytesUntilLimitDecision));
+        }
         if (readSize <= 0) break;
 
         const buffer = Buffer.alloc(readSize);
+        const chunkStartOffset = readPosition;
         const result = await handle.read(buffer, 0, readSize, readPosition);
         if (!result.bytesRead) break;
 
@@ -171,9 +186,31 @@ async function scanCandidateBatch({
         readPosition += result.bytesRead;
         bytesRead += result.bytesRead;
         remainingBudget = Math.max(0, remainingBudget - result.bytesRead);
-        pending = pending.length
-          ? Buffer.concat([pending, chunk])
-          : Buffer.from(chunk);
+
+        if (discardingOversizedLine) {
+          const newlineIndex = chunk.indexOf(0x0a);
+          if (newlineIndex < 0) {
+            // During discard, offset is deliberately a physical read position,
+            // not a newline boundary. No discarded content is retained.
+            workingCursor.offset = readPosition;
+            workingCursor.mtimeMs = stat.mtimeMs;
+            workingCursor.discardingOversizedLine = true;
+            await setCursor(candidate, workingCursor);
+            await yieldBlock();
+            continue;
+          }
+
+          committedOffset = chunkStartOffset + newlineIndex + 1;
+          workingCursor.offset = committedOffset;
+          workingCursor.mtimeMs = stat.mtimeMs;
+          delete workingCursor.discardingOversizedLine;
+          discardingOversizedLine = false;
+          pending = Buffer.from(chunk.subarray(newlineIndex + 1));
+        } else {
+          pending = pending.length
+            ? Buffer.concat([pending, chunk])
+            : Buffer.from(chunk);
+        }
 
         let lineStart = 0;
         let completedLines = 0;
@@ -181,10 +218,14 @@ async function scanCandidateBatch({
           const newlineIndex = pending.indexOf(0x0a, lineStart);
           if (newlineIndex < 0) break;
 
-          const line = pending.subarray(lineStart, newlineIndex).toString('utf8');
           let record = null;
-          if (line) {
-            record = parseLine(line, diagnostics, evaluationNowMs);
+          if (newlineIndex - lineStart > maximumLineBytes) {
+            incrementDiagnostic(diagnostics, 'oversizedLine');
+          } else {
+            const line = pending.subarray(lineStart, newlineIndex).toString('utf8');
+            if (line) {
+              record = parseLine(line, diagnostics, evaluationNowMs);
+            }
           }
 
           committedOffset += newlineIndex + 1 - lineStart;
@@ -206,6 +247,14 @@ async function scanCandidateBatch({
         if (lineStart > 0) {
           pending = Buffer.from(pending.subarray(lineStart));
         }
+        if (pending.length > maximumLineBytes) {
+          incrementDiagnostic(diagnostics, 'oversizedLine');
+          pending = Buffer.alloc(0);
+          discardingOversizedLine = true;
+          workingCursor.offset = readPosition;
+          workingCursor.mtimeMs = stat.mtimeMs;
+          workingCursor.discardingOversizedLine = true;
+        }
         await setCursor(candidate, workingCursor);
 
         await yieldBlock();
@@ -223,7 +272,7 @@ async function scanCandidateBatch({
       // 其余情况(预算耗尽仍剩可读字节)标记本轮未完成。
       if (readPosition < stat.size) {
         complete = false;
-      } else if (pending.length > 0) {
+      } else if (!discardingOversizedLine && pending.length > 0) {
         // EOF 处存在无换行残留字节 = 截断尾行(崩溃/写中断产物,已被丢弃,补齐后重读)。
         // 计数一次诊断,便于观测数据完整性;每个受影响文件每轮至多一次。
         incrementDiagnostic(diagnostics, 'truncatedTail');
@@ -259,6 +308,7 @@ async function scanFileBatch({
   nowMs,
   chunkBytes,
   maxBytesPerScan,
+  maxLineBytes,
   yieldToLoop
 }) {
   if (!root || !(await pathExists(root))) {
@@ -299,6 +349,7 @@ async function scanFileBatch({
       nowMs,
       chunkBytes,
       maxBytesPerScan,
+      maxLineBytes,
       yieldToLoop
     });
   } catch (error) {
@@ -353,5 +404,6 @@ module.exports = {
   MIN_TIMESTAMP_MS,
   MAX_FUTURE_SKEW_MS,
   DEFAULT_SCAN_CHUNK_BYTES,
-  DEFAULT_SCAN_BUDGET_BYTES
+  DEFAULT_SCAN_BUDGET_BYTES,
+  DEFAULT_MAX_LOGICAL_LINE_BYTES
 };
