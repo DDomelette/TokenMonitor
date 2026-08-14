@@ -60,22 +60,38 @@ function parseTelemetryLine(line, diagnostics, nowMs) {
     incrementDiagnostic(diagnostics, 'unknownRowVersion');
     return null;
   }
+  if (typeof data.time !== 'number' || !Number.isSafeInteger(data.time)) {
+    incrementDiagnostic(diagnostics, 'invalidTimestamp');
+    return null;
+  }
   const ts = normalizeTimestampMs(data.time, nowMs);
   if (ts === null) {
     incrementDiagnostic(diagnostics, 'invalidTimestamp');
     return null;
   }
-  const input = Number(data.inputTokens);
-  const output = Number(data.outputTokens);
-  const cacheRead = Number(data.cacheReadTokens) || 0;
-  const cacheWrite = Number(data.cacheWriteTokens) || 0;
-  const buckets = [input, output, cacheRead, cacheWrite];
-  if (!buckets.every((n) => Number.isSafeInteger(n) && n >= 0)) {
+  if (typeof data.sessionId !== 'string' || data.sessionId.length === 0) {
+    incrementDiagnostic(diagnostics, 'invalidSessionId');
+    return null;
+  }
+  if (data.model !== undefined && typeof data.model !== 'string') {
+    incrementDiagnostic(diagnostics, 'invalidModel');
+    return null;
+  }
+  if (data.cwd !== undefined && typeof data.cwd !== 'string') {
+    incrementDiagnostic(diagnostics, 'invalidCwd');
+    return null;
+  }
+  const input = data.inputTokens;
+  const output = data.outputTokens;
+  const cacheRead = data.cacheReadTokens === undefined ? 0 : data.cacheReadTokens;
+  const cacheWrite = data.cacheWriteTokens === undefined ? 0 : data.cacheWriteTokens;
+  if (![input, output, cacheRead, cacheWrite]
+    .every((n) => Number.isSafeInteger(n) && n >= 0)) {
     incrementDiagnostic(diagnostics, 'invalidTokenCount');
     return null;
   }
   const model = typeof data.model === 'string' && data.model.length > 0 ? data.model : 'unknown';
-  const sessionId = typeof data.sessionId === 'string' && data.sessionId.length > 0 ? data.sessionId : 'unknown';
+  const sessionId = data.sessionId;
   // 未知模型(查无单价)按设计规格记 0 费用并计诊断,避免静默按 pro 单价错估。
   if (!getDshModelPrice(model, ts)) {
     incrementDiagnostic(diagnostics, 'unknownModel');
