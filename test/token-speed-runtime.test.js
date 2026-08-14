@@ -40,7 +40,8 @@ function runtimeHarness(initial = {}) {
   const providers = [
     { id: 'deepseek', capabilities: { localLog: false } },
     { id: 'codex', capabilities: { localLog: true } },
-    { id: 'kimi', capabilities: { localLog: true } }
+    { id: 'kimi', capabilities: { localLog: true } },
+    { id: 'dsh', capabilities: { localLog: true } }
   ];
   const registry = {
     list() { return providers.slice(); },
@@ -113,7 +114,7 @@ test('enabling establishes baselines, starts two timers and polls all usage sour
   assert.equal(h.intervals.length, 2);
   assert.equal(h.watchStarts, 1);
   assert.deepEqual(h.polls, [
-    ['deepseek', 'usage'], ['codex', 'localLog'], ['kimi', 'localLog']
+    ['deepseek', 'usage'], ['codex', 'localLog'], ['kimi', 'localLog'], ['dsh', 'localLog']
   ]);
   assert.equal(h.runtime.getSnapshot().providers[0].status, 'collecting');
 });

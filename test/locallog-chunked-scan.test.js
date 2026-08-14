@@ -181,6 +181,47 @@ test('multi-block scans yield to the event loop before resolving', async () => {
   }
 });
 
+test('scanCandidateBatch counts a truncatedTail diagnostic when EOF leaves unterminated bytes', async () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'fixture-tail.jsonl');
+  const cursorStore = makeCursorStore();
+
+  try {
+    // 第二行无换行:EOF 残留字节 = 截断尾行(崩溃/写中断产物)。
+    fs.writeFileSync(file, fixtureLine(1) + '{"sequence":2,"text":"unterminated"}');
+    const diagnostics = {};
+    const first = await scanFixture(dir, cursorStore, { diagnostics });
+    assert.equal(first.records.length, 1, 'truncated tail is dropped, complete line kept');
+    assert.equal(first.complete, true);
+    assert.equal(diagnostics.truncatedTail, 1);
+
+    // 补全换行后:截断行被读取,且本轮不再计截断诊断(每文件每轮至多一次)。
+    fs.appendFileSync(file, '\n');
+    const diagnostics2 = {};
+    const second = await scanFixture(dir, cursorStore, { diagnostics: diagnostics2 });
+    assert.equal(second.records.length, 1);
+    assert.equal(diagnostics2.truncatedTail, undefined);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('scanCandidateBatch does not count truncatedTail when every line is complete', async () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'fixture-complete.jsonl');
+  const cursorStore = makeCursorStore();
+
+  try {
+    fs.writeFileSync(file, fixtureLine(1) + fixtureLine(2));
+    const diagnostics = {};
+    const batch = await scanFixture(dir, cursorStore, { diagnostics });
+    assert.equal(batch.records.length, 2);
+    assert.equal(diagnostics.truncatedTail, undefined);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('local-log providers expose asynchronous reads for the scheduler', async () => {
   const dir = makeTempDir();
   const file = path.join(dir, 'rollout-async.jsonl');

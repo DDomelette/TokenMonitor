@@ -19,6 +19,11 @@ function makeStore(initial = {}) {
       return undefined;
     },
     set(key, value) {
+      // 与 electron-store/conf 语义一致:set(object) 一次应用多键(dsh 提交路径使用)。
+      if (typeof key === 'object' && key !== null) {
+        Object.keys(key).forEach((k) => this.set(k, key[k]));
+        return;
+      }
       if (key === 'usageDaily') data.usageDaily = JSON.parse(JSON.stringify(value));
       else if (key === 'usageDailyCost') data.usageDailyCost = JSON.parse(JSON.stringify(value));
       else if (key === 'localLogCursors.dsh') data.localLogCursors_dsh = JSON.parse(JSON.stringify(value));

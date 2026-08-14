@@ -2,7 +2,7 @@
 
 /**
  * @typedef {Object} UsageRecord
- * @property {string} provider  - provider id ('deepseek'|'codex'|'kimi')
+ * @property {string} provider  - provider id ('deepseek'|'codex'|'kimi'|'dsh')
  * @property {string} date      - 'YYYY-MM-DD'(本地时区)
  * @property {string} model     - 模型名
  * @property {number} inputTokens
@@ -10,6 +10,9 @@
  * @property {number} cachedTokens
  * @property {number} cost
  * @property {string} currency
+ * @property {number} [ts]                - dsh 记录:epoch 毫秒(dsh 用 ts 而非 date)
+ * @property {object} [usage]             - dsh 记录:{ input, cached, output, total }
+ * @property {string} [eventFingerprint]  - dsh 记录:去重指纹
  */
 
 /**

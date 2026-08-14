@@ -125,6 +125,7 @@ function createTokenSpeedRuntime(options = {}) {
     poll('deepseek', 'usage');
     poll('codex', 'localLog');
     poll('kimi', 'localLog');
+    poll('dsh', 'localLog');
     broadcastSnapshot();
   }
 

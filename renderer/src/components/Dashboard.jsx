@@ -14,6 +14,7 @@ import {
   nearestFreePosition
 } from '../grid/policy.js';
 import { mergeLayoutItems, visibleComponentIds } from '../grid/visibility.js';
+import { mergeCurves } from '../lib/curve-merge.js';
 import FeeCard from './FeeCard.jsx';
 import ChartWidget from './ChartWidget.jsx';
 import QuotaCard from './QuotaCard.jsx';
@@ -54,6 +55,7 @@ const MIN_SIZES = {
 
 function WidgetBody({ id, onContentChange }) {
   const dashboard = useDashboard('deepseek');
+  const dshDashboard = useDashboard('dsh');
   const providers = useProviders();
   // 数据驱动的重渲染后通知 grid 重新检查内容是否溢出(无依赖 = 每次渲染后都跑)
   useEffect(() => { if (onContentChange) onContentChange(); });
@@ -82,6 +84,15 @@ function WidgetBody({ id, onContentChange }) {
   }
   if (id === 'provider-bar') {
     return <ProviderBar />;
+  }
+  if (id === 'cost-line') {
+    // 费用增长趋势 = deepseek 平台曲线 + DSH 本地费用曲线按日合并(同日增量求和、重算累计)。
+    // deepseek 未登录时只渲染 dsh 曲线;两者皆空时渲染空图。
+    const curvePoints = mergeCurves([
+      dashboard && dashboard.curveCost,
+      dshDashboard && dshDashboard.curveCost
+    ].filter(Boolean));
+    return <ChartWidget id={id} dashboard={dashboard} curvePoints={curvePoints} />;
   }
   return <ChartWidget id={id} dashboard={dashboard} />;
 }

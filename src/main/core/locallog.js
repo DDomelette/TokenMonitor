@@ -221,7 +221,13 @@ async function scanCandidateBatch({
 
       // 到达 EOF 后仍未提交的字节只能是缺少换行的尾行,不算未完成;
       // 其余情况(预算耗尽仍剩可读字节)标记本轮未完成。
-      if (readPosition < stat.size) complete = false;
+      if (readPosition < stat.size) {
+        complete = false;
+      } else if (pending.length > 0) {
+        // EOF 处存在无换行残留字节 = 截断尾行(崩溃/写中断产物,已被丢弃,补齐后重读)。
+        // 计数一次诊断,便于观测数据完整性;每个受影响文件每轮至多一次。
+        incrementDiagnostic(diagnostics, 'truncatedTail');
+      }
     } catch (error) {
       failure = error;
     } finally {

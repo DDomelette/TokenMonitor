@@ -11,7 +11,7 @@ const {
   incrementDiagnostic,
   localDayStr
 } = require('../../core/locallog');
-const { calcDshCost } = require('../../pricing');
+const { calcDshCost, getDshModelPrice } = require('../../pricing');
 
 const fsp = fs.promises;
 
@@ -22,11 +22,19 @@ const MATCH = /^usage-\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\.jsonl$/;
 const CURSOR_KEY = 'localLogCursors.dsh';
 
 // 遥测根目录优先级:设置项 providers.dsh.telemetryRoot > DSH_HOME 环境变量 > ~/.dsh/telemetry。
+// 与 DSH 生产者 resolveDshHome 对齐:支持 ~ / ~/ / ~\ 前缀展开并 resolve 为绝对路径,
+// 否则用户按 DSH 文档设 DSH_HOME=~/dsh 或相对路径时,两边指向不同目录、静默无数据。
+function expandHomePath(value) {
+  if (value === '~') return os.homedir();
+  if (value.startsWith('~/') || value.startsWith('~\\')) return path.join(os.homedir(), value.slice(2));
+  return value;
+}
+
 function resolveTelemetryRoot(store, env) {
   const custom = store && typeof store.get === 'function' ? store.get('providers.dsh.telemetryRoot') : undefined;
-  if (typeof custom === 'string' && custom.trim()) return custom.trim();
+  if (typeof custom === 'string' && custom.trim()) return path.resolve(expandHomePath(custom.trim()));
   const dshHome = env && typeof env.DSH_HOME === 'string' ? env.DSH_HOME.trim() : '';
-  if (dshHome) return path.join(dshHome, 'telemetry');
+  if (dshHome) return path.resolve(expandHomePath(dshHome), 'telemetry');
   return DEFAULT_ROOT();
 }
 
@@ -68,6 +76,10 @@ function parseTelemetryLine(line, diagnostics, nowMs) {
   }
   const model = typeof data.model === 'string' && data.model.length > 0 ? data.model : 'unknown';
   const sessionId = typeof data.sessionId === 'string' && data.sessionId.length > 0 ? data.sessionId : 'unknown';
+  // 未知模型(查无单价)按设计规格记 0 费用并计诊断,避免静默按 pro 单价错估。
+  if (!getDshModelPrice(model)) {
+    incrementDiagnostic(diagnostics, 'unknownModel');
+  }
   const record = {
     ts: ts,
     model: model,
@@ -78,7 +90,7 @@ function parseTelemetryLine(line, diagnostics, nowMs) {
       output: output,
       total: input + cacheWrite + cacheRead + output
     },
-    // 费用按原始四桶计算(与 UsageRecord 映射独立,不重复计费)。
+    // 费用按原始四桶计算(与 UsageRecord 映射独立,不重复计费);未知模型为 0。
     cost: calcDshCost(model, input, output, cacheRead, cacheWrite)
   };
   record.eventFingerprint = 'sha256:' + crypto.createHash('sha256')
@@ -99,6 +111,12 @@ function cloneStoreValue(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
+// 深比较两组游标(键为文件完整路径,JSON 序列化稳定)。仅用于判断"扫描是否产生任何
+// 需要落盘的变化"(游标推进/过期条目 GC),避免空扫描每 60s 无条件全量重写 store。
+function cursorsChanged(stored, next) {
+  return JSON.stringify(stored || {}) !== JSON.stringify(next || {});
+}
+
 // 快照式原子提交:usageDaily、usageDailyCost 与游标同属一份持久单元
 // (仿 codex commitUuidScanState;electron-store 的 store 快照替换失败时退化为逐键提交)。
 function commitTelemetryScanState(store, usageDaily, usageDailyCost, cursors) {
@@ -114,16 +132,24 @@ function commitTelemetryScanState(store, usageDaily, usageDailyCost, cursors) {
     store.store = copy;
     return;
   }
-  const previousDaily = cloneStoreValue(store.get('usageDaily')) || {};
-  const previousCost = cloneStoreValue(store.get('usageDailyCost')) || {};
+  // 回退路径(electron-store 无 store.store 快照时):单次多键 set 一次落盘
+  // (conf.set(object) 逐个应用键后整体 _write);dot 键 localLogCursors.dsh
+  // 写入嵌套路径且保留其他 provider 游标。失败时同样单次多键 set 还原三键
+  // (含游标),消除三次独立 set 之间的崩溃窗口。
+  const previous = {
+    'usageDaily': cloneStoreValue(store.get('usageDaily')) || {},
+    'usageDailyCost': cloneStoreValue(store.get('usageDailyCost')) || {},
+    [CURSOR_KEY]: cloneStoreValue(store.get(CURSOR_KEY)) || {}
+  };
   try {
-    store.set('usageDaily', usageDaily);
-    store.set('usageDailyCost', usageDailyCost);
-    store.set(CURSOR_KEY, cursors);
+    store.set({
+      'usageDaily': usageDaily,
+      'usageDailyCost': usageDailyCost,
+      [CURSOR_KEY]: cursors
+    });
   } catch (error) {
     try {
-      store.set('usageDaily', previousDaily);
-      store.set('usageDailyCost', previousCost);
+      store.set(previous);
     } catch (_) { /* 保留原始提交失败 */ }
     throw error;
   }
@@ -195,6 +221,9 @@ async function readLocalLog(ctx, opts) {
     ? parsedNowMs
     : Date.now();
   const root = resolveTelemetryRoot(store, process.env);
+  // 扫描前的已存游标:仅当扫描后游标集合相对它实际变化(推进/GC)或产生新记录时才提交,
+  // 否则空扫描(根缺失、无新行、无过期条目)完全不碰 store,避免每 60s 整库克隆+落盘。
+  const storedCursors = (store && store.get(CURSOR_KEY)) || {};
   const batch = await scanTelemetryBatch({
     store,
     root,
@@ -239,7 +268,8 @@ async function readLocalLog(ctx, opts) {
       usageDailyCost[key] = Number(usageDailyCost[key] || 0) + Number(costDaily[key]);
     });
     commitTelemetryScanState(store, usageDaily, usageDailyCost, batch.cursors || {});
-  } else if (store) {
+  } else if (store && cursorsChanged(storedCursors, batch.cursors)) {
+    // 无新记录但游标集合变化(游标推进/过期条目 GC):同样必须提交,否则每轮重解析或残留死条目。
     commitTelemetryScanState(store, usageDaily, usageDailyCost, batch.cursors || {});
   }
   return batch;

@@ -70,6 +70,19 @@ test('resolveTelemetryRoot precedence: setting > DSH_HOME env > ~/.dsh/telemetry
   assert.equal(resolveTelemetryRoot({ get: () => ' ' }, { DSH_HOME: ' ' }), DEFAULT_ROOT());
 });
 
+test('resolveTelemetryRoot expands tilde and resolves relative DSH_HOME like the DSH producer', () => {
+  // DSH 生产者 resolveDshHome 对 $DSH_HOME 做 expandHomePath(~ 前缀) + resolve 绝对化;
+  // 消费者必须等价处理,否则 DSH_HOME=~/dsh 或相对路径时两边指向不同目录、静默无数据。
+  assert.equal(resolveTelemetryRoot(null, { DSH_HOME: '~/dsh' }), path.join(os.homedir(), 'dsh', 'telemetry'));
+  assert.equal(resolveTelemetryRoot(null, { DSH_HOME: '.\\dsh' }), path.resolve('dsh', 'telemetry'));
+  assert.equal(resolveTelemetryRoot(null, { DSH_HOME: 'C:\\dsh-home' }), path.join('C:\\dsh-home', 'telemetry'));
+});
+
+test('resolveTelemetryRoot expands tilde for the custom telemetryRoot setting', () => {
+  const store = { get: (key) => key === 'providers.dsh.telemetryRoot' ? '~/custom-telemetry' : undefined };
+  assert.equal(resolveTelemetryRoot(store, { DSH_HOME: 'C:\\dsh-home' }), path.join(os.homedir(), 'custom-telemetry'));
+});
+
 test('MATCH accepts only usage-YYYY-MM-DD.jsonl names', () => {
   assert.ok(MATCH.test('usage-2026-08-14.jsonl'));
   assert.ok(!MATCH.test('usage-2026-08-14.jsonl.tmp'));
@@ -97,7 +110,14 @@ function makeStore(initial) {
   }
   return {
     get(key) { return getPath(data, key); },
-    set(key, value) { setPath(data, key, value); }
+    // 与 electron-store/conf 语义一致:set(object) 一次应用多键(dot 键写嵌套路径)。
+    set(key, value) {
+      if (typeof key === 'object' && key !== null) {
+        Object.keys(key).forEach((k) => setPath(data, k, key[k]));
+        return;
+      }
+      setPath(data, key, value);
+    }
   };
 }
 
@@ -141,6 +161,10 @@ test('readLocalLog commits via the electron-store snapshot path and preserves un
     store: JSON.parse(JSON.stringify({
       usageDaily: {},
       usageDailyCost: {},
+      localLogCursors: {
+        codex: { 'C:\\codex-sessions': { offset: 7, mtimeMs: 1 } },
+        kimi: { 'C:\\kimi-sessions': { offset: 9, mtimeMs: 2 } }
+      },
       providers: { dsh: { telemetryRoot: root } },
       data: { historyDays: 30 },
       unrelatedKey: { keep: true }
@@ -170,6 +194,9 @@ test('readLocalLog commits via the electron-store snapshot path and preserves un
   assert.ok(fileKeys.length >= 1 && fileKeys.some((k) => k.endsWith(dayFile)));
   assert.ok(fileKeys.every((k) => cursors[k] && cursors[k].offset > 0));
   assert.deepEqual(store.get('unrelatedKey'), { keep: true });
+  // 其他 provider 的游标必须原样保留(dsh 快照提交只合并 localLogCursors.dsh)
+  assert.deepEqual(store.get('localLogCursors.codex'), { 'C:\\codex-sessions': { offset: 7, mtimeMs: 1 } });
+  assert.deepEqual(store.get('localLogCursors.kimi'), { 'C:\\kimi-sessions': { offset: 9, mtimeMs: 2 } });
 });
 
 test('readLocalLog rescans incrementally: failed commit restores data and the re-read merges exactly once', async () => {
@@ -196,7 +223,10 @@ test('readLocalLog rescans incrementally: failed commit restores data and the re
   });
   const realSet = failing.set.bind(failing);
   failing.set = function (key, value) {
-    if (key === 'localLogCursors.dsh') throw new Error('cursor commit failed');
+    // 回退提交路径是单次多键 set(object):游标键在其中即整体失败,且不落任何键。
+    if (typeof key === 'object' && key !== null && Object.prototype.hasOwnProperty.call(key, 'localLogCursors.dsh')) {
+      throw new Error('cursor commit failed');
+    }
     realSet(key, value);
   };
   await assert.rejects(readLocalLog({ store: failing }, { nowMs: now }), /cursor commit failed/);
@@ -210,6 +240,166 @@ test('readLocalLog rescans incrementally: failed commit restores data and the re
   const batch3 = await readLocalLog({ store }, { nowMs: now });
   assert.equal(batch3.records.length, 0);
   assert.equal(store.get('usageDaily')['dsh:2026-08-14'].input, 300);
+});
+
+/* ======== M1: 空扫描不无条件提交 ======== */
+
+// electron-store 形态快照 store:store.store 赋值 = 一次整体提交(计数 writes)。
+function makeSnapshotStore(initial) {
+  const data = JSON.parse(JSON.stringify(initial || {}));
+  const store = {
+    writes: 0,
+    get(key) {
+      return key.split('.').reduce((value, part) => (value == null ? undefined : value[part]), data);
+    },
+    set(key, value) {
+      const parts = key.split('.');
+      let current = data;
+      while (parts.length > 1) {
+        const part = parts.shift();
+        if (!current[part] || typeof current[part] !== 'object') current[part] = {};
+        current = current[part];
+      }
+      current[parts[0]] = value;
+    }
+  };
+  Object.defineProperty(store, 'store', {
+    get() { return data; },
+    set(value) {
+      store.writes += 1;
+      Object.keys(data).forEach((k) => delete data[k]);
+      Object.assign(data, value);
+    }
+  });
+  return store;
+}
+
+test('readLocalLog skips the store commit entirely when root is missing and no cursors exist', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-telemetry-'));
+  const { readLocalLog } = require('../src/main/providers/dsh/telemetrylog');
+  const store = makeSnapshotStore({
+    usageDaily: {},
+    usageDailyCost: {},
+    providers: { dsh: { telemetryRoot: root } },
+    data: { historyDays: 30 }
+  });
+  const batch = await readLocalLog({ store }, { nowMs: Date.UTC(2026, 7, 14, 4, 0, 0) });
+  assert.equal(batch.records.length, 0);
+  assert.equal(batch.complete, true);
+  assert.equal(store.writes, 0, 'empty scan without cursors must not rewrite the store');
+  assert.deepEqual(store.get('usageDaily'), {});
+});
+
+test('readLocalLog commits exactly once to GC stale cursor entries when root is missing', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-telemetry-'));
+  const stale = path.join(root, 'usage-2026-08-10.jsonl');
+  const { readLocalLog } = require('../src/main/providers/dsh/telemetrylog');
+  const store = makeSnapshotStore({
+    usageDaily: {},
+    usageDailyCost: {},
+    localLogCursors: { dsh: { [stale]: { offset: 42, mtimeMs: 1 } } },
+    providers: { dsh: { telemetryRoot: root } },
+    data: { historyDays: 30 }
+  });
+  const batch = await readLocalLog({ store }, { nowMs: Date.UTC(2026, 7, 14, 4, 0, 0) });
+  assert.equal(batch.records.length, 0);
+  assert.equal(store.writes, 1, 'stale cursor GC must be committed exactly once');
+  assert.deepEqual(store.get('localLogCursors.dsh'), {}, 'stale cursor entries must be removed');
+});
+
+test('readLocalLog commits to advance cursors even when every line is malformed', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-telemetry-'));
+  const dayFile = 'usage-2026-08-14.jsonl';
+  fs.writeFileSync(path.join(root, dayFile), 'not json\nalso not json\n');
+  const { readLocalLog } = require('../src/main/providers/dsh/telemetrylog');
+  const store = makeSnapshotStore({
+    usageDaily: {},
+    usageDailyCost: {},
+    providers: { dsh: { telemetryRoot: root } },
+    data: { historyDays: 30 }
+  });
+  const diagnostics = {};
+  const batch = await readLocalLog({ store }, { nowMs: Date.UTC(2026, 7, 14, 4, 0, 0), diagnostics });
+  assert.equal(batch.records.length, 0);
+  assert.equal(diagnostics.malformedLine, 2);
+  assert.equal(store.writes, 1, 'cursor advance without records must still be committed');
+  const cursors = store.get('localLogCursors.dsh');
+  const fileKey = Object.keys(cursors).find((k) => k.endsWith(dayFile));
+  assert.ok(fileKey, 'cursor must be recorded for the malformed file');
+  assert.equal(cursors[fileKey].offset, fs.statSync(path.join(root, dayFile)).size);
+});
+
+test('fallback commit path applies all three keys in a single set call', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-telemetry-'));
+  writeRows(root, 'usage-2026-08-14.jsonl', [
+    { v: 1, time: Date.UTC(2026, 7, 14, 2, 0, 0), sessionId: 's1', model: 'deepseek-v4-pro', inputTokens: 100, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 }
+  ]);
+  const { readLocalLog } = require('../src/main/providers/dsh/telemetrylog');
+  const store = makeStore({ usageDaily: {}, providers: { dsh: { telemetryRoot: root } }, data: { historyDays: 30 } });
+  const setCalls = [];
+  const realSet = store.set.bind(store);
+  store.set = function (key, value) { setCalls.push(key); realSet(key, value); };
+
+  await readLocalLog({ store }, { nowMs: Date.UTC(2026, 7, 14, 4, 0, 0) });
+
+  const objectCalls = setCalls.filter((key) => typeof key === 'object' && key !== null);
+  assert.equal(objectCalls.length, 1, 'fallback commit must be a single multi-key set');
+  assert.deepEqual(Object.keys(objectCalls[0]).sort(), ['localLogCursors.dsh', 'usageDaily', 'usageDailyCost']);
+  assert.equal(store.get('usageDaily')['dsh:2026-08-14'].input, 100);
+  assert.ok(store.get('usageDailyCost')['dsh:2026-08-14'] > 0);
+  assert.ok(store.get('localLogCursors.dsh') && Object.keys(store.get('localLogCursors.dsh')).length >= 1);
+});
+
+test('fallback commit failure is rolled back by a single multi-key set restoring all three keys', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-telemetry-'));
+  writeRows(root, 'usage-2026-08-14.jsonl', [
+    { v: 1, time: Date.UTC(2026, 7, 14, 2, 0, 0), sessionId: 's1', model: 'deepseek-v4-pro', inputTokens: 100, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 }
+  ]);
+  const { readLocalLog } = require('../src/main/providers/dsh/telemetrylog');
+  const store = makeStore({
+    usageDaily: { 'dsh:2026-08-14': { input: 100, cached: 0, output: 0, total: 100 } },
+    usageDailyCost: { 'dsh:2026-08-14': 0.1 },
+    providers: { dsh: { telemetryRoot: root } },
+    data: { historyDays: 30 }
+  });
+  const calls = [];
+  const realSet = store.set.bind(store);
+  let failCommit = true;
+  store.set = function (key, value) {
+    calls.push(key);
+    if (failCommit && typeof key === 'object' && key !== null) {
+      failCommit = false;
+      throw new Error('commit failed');
+    }
+    realSet(key, value);
+  };
+
+  await assert.rejects(readLocalLog({ store }, { nowMs: Date.UTC(2026, 7, 14, 4, 0, 0) }), /commit failed/);
+
+  const objectCalls = calls.filter((key) => typeof key === 'object' && key !== null);
+  assert.equal(objectCalls.length, 2, 'one failed commit set plus one restore set');
+  assert.deepEqual(Object.keys(objectCalls[0]).sort(), ['localLogCursors.dsh', 'usageDaily', 'usageDailyCost']);
+  assert.deepEqual(Object.keys(objectCalls[1]).sort(), ['localLogCursors.dsh', 'usageDaily', 'usageDailyCost']);
+  // 三键全部还原到提交前状态
+  assert.equal(store.get('usageDaily')['dsh:2026-08-14'].input, 100);
+  assert.equal(store.get('usageDailyCost')['dsh:2026-08-14'], 0.1);
+  assert.deepEqual(store.get('localLogCursors.dsh'), {}, 'cursors restored to the pre-commit state');
+});
+
+test('parseTelemetryLine counts an unknownModel diagnostic and zeroes cost for unknown models', () => {
+  const diagnostics = {};
+  const known = parseTelemetryLine(JSON.stringify({ v: 1, time: 1786641087069, sessionId: 's', model: 'deepseek-v4-pro', inputTokens: 1000, outputTokens: 1000, cacheReadTokens: 0, cacheWriteTokens: 0 }), diagnostics, Date.now());
+  assert.ok(known && known.cost > 0);
+
+  const unknown = parseTelemetryLine(JSON.stringify({ v: 1, time: 1786641087069, sessionId: 's', model: 'some-future-model', inputTokens: 1000, outputTokens: 1000, cacheReadTokens: 0, cacheWriteTokens: 0 }), diagnostics, Date.now());
+  assert.ok(unknown);
+  assert.equal(unknown.cost, 0);
+  assert.equal(diagnostics.unknownModel, 1);
+
+  // 缺失 model(回退 'unknown')同样按未知模型处理
+  const missing = parseTelemetryLine(JSON.stringify({ v: 1, time: 1786641087069, sessionId: 's', inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 }), diagnostics, Date.now());
+  assert.equal(missing.cost, 0);
+  assert.equal(diagnostics.unknownModel, 2);
 });
 
 test('scanTelemetryBatch skips a re-read line via cursor.lastEventFingerprint', async () => {
