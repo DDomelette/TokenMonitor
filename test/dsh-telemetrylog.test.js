@@ -6,6 +6,7 @@ const os = require('node:os');
 const {
   parseTelemetryLine,
   resolveTelemetryRoot,
+  readLocalLog,
   DEFAULT_ROOT,
   MATCH
 } = require('../src/main/providers/dsh/telemetrylog');
@@ -73,6 +74,53 @@ test('parseTelemetryLine defaults a missing model to unknown and zeroes missing 
   assert.deepEqual(rec.usage, { input: 5, cached: 0, output: 6, total: 11 });
 });
 
+test('parseTelemetryLine rejects coercible token values and missing session identity', () => {
+  const base = {
+    v: 1,
+    time: 1786641087069,
+    sessionId: 'session-1',
+    model: 'deepseek-v4-pro',
+    inputTokens: 1,
+    outputTokens: 2,
+    cacheReadTokens: 3,
+    cacheWriteTokens: 4
+  };
+  const cases = [
+    [{ ...base, time: String(base.time) }, 'invalidTimestamp'],
+    [{ ...base, sessionId: null }, 'invalidSessionId'],
+    [{ ...base, sessionId: '' }, 'invalidSessionId'],
+    [{ ...base, inputTokens: null }, 'invalidTokenCount'],
+    [{ ...base, inputTokens: '1' }, 'invalidTokenCount'],
+    [{ ...base, outputTokens: true }, 'invalidTokenCount'],
+    [{ ...base, cacheReadTokens: false }, 'invalidTokenCount'],
+    [{ ...base, cacheWriteTokens: '4' }, 'invalidTokenCount'],
+    [{ ...base, model: 7 }, 'invalidModel'],
+    [{ ...base, cwd: 7 }, 'invalidCwd']
+  ];
+  cases.forEach(([row, diagnostic]) => {
+    const diagnostics = {};
+    assert.equal(parseTelemetryLine(JSON.stringify(row), diagnostics, Date.now()), null);
+    assert.equal(diagnostics[diagnostic], 1);
+  });
+});
+
+test('parseTelemetryLine requires input/output but defaults only absent cache buckets', () => {
+  const base = { v: 1, time: 1786641087069, sessionId: 's' };
+  const missingInputDiagnostics = {};
+  assert.equal(
+    parseTelemetryLine(JSON.stringify({ ...base, outputTokens: 1 }), missingInputDiagnostics, Date.now()),
+    null
+  );
+  assert.equal(missingInputDiagnostics.invalidTokenCount, 1);
+
+  const record = parseTelemetryLine(
+    JSON.stringify({ ...base, inputTokens: 5, outputTokens: 6 }),
+    {},
+    Date.now()
+  );
+  assert.deepEqual(record.usage, { input: 5, cached: 0, output: 6, total: 11 });
+});
+
 test('eventFingerprint includes sessionId and model so identical ms+buckets rows differ', () => {
   const base = { v: 1, time: 1786641087069, model: 'deepseek-v4-pro', inputTokens: 1000, outputTokens: 2000, cacheReadTokens: 3000, cacheWriteTokens: 100 };
   const a = parseTelemetryLine(JSON.stringify({ ...base, sessionId: 'session-a' }), {}, Date.now());
@@ -84,10 +132,18 @@ test('eventFingerprint includes sessionId and model so identical ms+buckets rows
 });
 
 test('resolveTelemetryRoot precedence: setting > DSH_HOME env > ~/.dsh/telemetry', () => {
+  const nativeDshHome = path.resolve('test-fixtures', 'dsh-home');
+  const nativeCustomRoot = path.resolve('test-fixtures', 'custom-telemetry');
   assert.equal(resolveTelemetryRoot(null, {}), path.join(os.homedir(), '.dsh', 'telemetry'));
-  assert.equal(resolveTelemetryRoot(null, { DSH_HOME: 'D:\\dsh-home' }), path.join('D:\\dsh-home', 'telemetry'));
-  const store = { get: (key) => key === 'providers.dsh.telemetryRoot' ? 'D:\\custom' : undefined };
-  assert.equal(resolveTelemetryRoot(store, { DSH_HOME: 'D:\\dsh-home' }), 'D:\\custom');
+  assert.equal(
+    resolveTelemetryRoot(null, { DSH_HOME: nativeDshHome }),
+    path.join(nativeDshHome, 'telemetry')
+  );
+  const store = {
+    get: (key) => key === 'providers.dsh.telemetryRoot' ? nativeCustomRoot : undefined
+  };
+  assert.equal(resolveTelemetryRoot(store, { DSH_HOME: nativeDshHome }), nativeCustomRoot);
+  assert.equal(resolveTelemetryRoot(null, { DSH_HOME: path.join('.', 'dsh') }), path.resolve('dsh', 'telemetry'));
   assert.equal(resolveTelemetryRoot({ get: () => ' ' }, { DSH_HOME: ' ' }), DEFAULT_ROOT());
 });
 
@@ -96,12 +152,12 @@ test('resolveTelemetryRoot expands tilde and resolves relative DSH_HOME like the
   // 消费者必须等价处理,否则 DSH_HOME=~/dsh 或相对路径时两边指向不同目录、静默无数据。
   assert.equal(resolveTelemetryRoot(null, { DSH_HOME: '~/dsh' }), path.join(os.homedir(), 'dsh', 'telemetry'));
   assert.equal(resolveTelemetryRoot(null, { DSH_HOME: '.\\dsh' }), path.resolve('dsh', 'telemetry'));
-  assert.equal(resolveTelemetryRoot(null, { DSH_HOME: 'C:\\dsh-home' }), path.join('C:\\dsh-home', 'telemetry'));
+  assert.equal(resolveTelemetryRoot(null, { DSH_HOME: path.join('.', 'dsh') }), path.resolve('dsh', 'telemetry'));
 });
 
 test('resolveTelemetryRoot expands tilde for the custom telemetryRoot setting', () => {
   const store = { get: (key) => key === 'providers.dsh.telemetryRoot' ? '~/custom-telemetry' : undefined };
-  assert.equal(resolveTelemetryRoot(store, { DSH_HOME: 'C:\\dsh-home' }), path.join(os.homedir(), 'custom-telemetry'));
+  assert.equal(resolveTelemetryRoot(store, { DSH_HOME: path.resolve('test-fixtures', 'dsh-home') }), path.join(os.homedir(), 'custom-telemetry'));
 });
 
 test('MATCH accepts only usage-YYYY-MM-DD.jsonl names', () => {
