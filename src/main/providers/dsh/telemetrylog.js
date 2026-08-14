@@ -99,6 +99,7 @@ function parseTelemetryLine(line, diagnostics, nowMs) {
   const record = {
     ts: ts,
     model: model,
+    currency: 'CNY',
     // UsageRecord 映射:input 含 cacheWrite(按输入计费),cached = cacheRead。
     usage: {
       input: input + cacheWrite,

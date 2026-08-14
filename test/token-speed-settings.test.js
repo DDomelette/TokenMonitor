@@ -6,13 +6,16 @@ const vm = require('node:vm');
 
 const registry = require('../src/renderer/js/layout/component-registry.js');
 
-test('token speed settings accept only the eight windows and five filters', () => {
+// Production mutation caught: admitting backend-only `dsh` into persisted filters
+// can make the renderer display a different provider than the backend snapshot.
+test('token speed settings accept only renderer-owned persisted filters', () => {
   const settings = require('../src/main/core/token-speed-settings');
   assert.deepEqual(settings.INTERVAL_SECONDS, [10, 20, 30, 60, 180, 300, 3600, 18000]);
-  assert.deepEqual(settings.PROVIDER_FILTERS, ['all', 'deepseek', 'codex', 'kimi', 'dsh']);
+  assert.deepEqual(settings.PROVIDER_FILTERS, ['all', 'deepseek', 'codex', 'kimi']);
   assert.equal(settings.normalizeIntervalSeconds('180'), 180);
   assert.equal(settings.normalizeIntervalSeconds(11), 30);
   assert.equal(settings.normalizeProviderFilter('kimi'), 'kimi');
+  assert.equal(settings.normalizeProviderFilter('dsh'), 'all');
   assert.equal(settings.normalizeProviderFilter('unknown'), 'all');
   assert.deepEqual(settings.normalizeTokenSpeedSettings({
     intervalSeconds: '300', providerFilter: 'codex'

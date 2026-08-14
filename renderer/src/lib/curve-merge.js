@@ -4,7 +4,11 @@
 // 输入:若干点列,每点形如 { time, totalCost, deltaCost, ... }(token 字段不需要);
 // 输出:[{ time, totalCost, deltaCost }] 按 time 升序;空输入/全空列返回 []。
 
-import { beijingDayKey } from './beijing-calendar.js';
+import { beijingDayKey, beijingMonthDayLabel } from './beijing-calendar.js';
+
+export function curvePointLabels(points) {
+  return (points || []).map((point) => beijingMonthDayLabel(point && point.time));
+}
 
 export function mergeCurves(curves) {
   const deltaByDay = new Map();

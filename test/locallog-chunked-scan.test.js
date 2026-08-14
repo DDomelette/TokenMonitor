@@ -222,6 +222,147 @@ test('scanCandidateBatch does not count truncatedTail when every line is complet
   }
 });
 
+// Production mutation caught: removing the finite line ceiling, discard cursor, or
+// one-shot diagnostic makes an unterminated line replay or grow without a bound.
+test('oversized unterminated lines advance a bounded discard cursor and recover once', async () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'fixture-oversized.jsonl');
+  const cursorStore = makeCursorStore();
+  const diagnostics = {};
+  const maxLineBytes = 64;
+  const maxBytesPerScan = 16;
+
+  try {
+    fs.writeFileSync(file, 'x'.repeat(160));
+
+    const first = await scanFixture(dir, cursorStore, {
+      diagnostics,
+      chunkBytes: 16,
+      maxBytesPerScan,
+      maxLineBytes
+    });
+    const cursor = cursorStore.data['cursor.fixture'][file];
+    assert.deepEqual(first.records, []);
+    assert.ok(
+      first.bytesRead <= maxLineBytes + 1,
+      `oversized-line detection read ${first.bytesRead} bytes for a ${maxLineBytes}-byte ceiling`
+    );
+    assert.ok(cursor.offset > 0 && cursor.offset < fs.statSync(file).size);
+    assert.equal(cursor.discardingOversizedLine, true);
+    assert.equal(diagnostics.oversizedLine, 1);
+
+    while (cursor.offset < fs.statSync(file).size) {
+      const previousOffset = cursor.offset;
+      const discarded = await scanFixture(dir, cursorStore, {
+        diagnostics,
+        chunkBytes: 16,
+        maxBytesPerScan,
+        maxLineBytes
+      });
+      assert.ok(discarded.bytesRead <= maxBytesPerScan);
+      assert.ok(cursor.offset > previousOffset, 'discard polls must persist physical progress');
+      assert.equal(cursor.discardingOversizedLine, true);
+      assert.equal(diagnostics.oversizedLine, 1, 'one logical line gets one diagnostic');
+    }
+
+    const unchanged = await scanFixture(dir, cursorStore, {
+      diagnostics,
+      chunkBytes: 16,
+      maxBytesPerScan,
+      maxLineBytes
+    });
+    assert.equal(unchanged.bytesRead, 0, 'unchanged oversized EOF must not be reread');
+    assert.equal(diagnostics.oversizedLine, 1);
+
+    fs.appendFileSync(file, '\n' + fixtureLine(7, 'recovered'));
+    const recovered = await scanFixture(dir, cursorStore, {
+      diagnostics,
+      chunkBytes: 16,
+      maxBytesPerScan,
+      maxLineBytes
+    });
+    assert.deepEqual(recovered.records.map((record) => record.sequence), [7]);
+    assert.equal(cursor.discardingOversizedLine, undefined);
+    assert.equal(cursor.offset, fs.statSync(file).size);
+    assert.equal(diagnostics.oversizedLine, 1);
+
+    const afterRecovery = await scanFixture(dir, cursorStore, {
+      diagnostics,
+      chunkBytes: 16,
+      maxBytesPerScan,
+      maxLineBytes
+    });
+    assert.equal(afterRecovery.bytesRead, 0);
+    assert.deepEqual(afterRecovery.records, []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Production mutation caught: carrying discard state through reset would skip a
+// replacement file's first valid row.
+test('file replacement clears an oversized-line discard cursor', async () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'fixture-replaced-oversized.jsonl');
+  const cursorStore = makeCursorStore();
+  const diagnostics = {};
+  const options = {
+    diagnostics,
+    chunkBytes: 16,
+    maxBytesPerScan: 16,
+    maxLineBytes: 32
+  };
+
+  try {
+    fs.writeFileSync(file, 'x'.repeat(96));
+    let batch;
+    do {
+      batch = await scanFixture(dir, cursorStore, options);
+    } while (!batch.complete);
+
+    const cursor = cursorStore.data['cursor.fixture'][file];
+    assert.equal(cursor.offset, 96);
+    assert.equal(cursor.discardingOversizedLine, true);
+    assert.equal(diagnostics.oversizedLine, 1);
+
+    fs.writeFileSync(file, fixtureLine(9, ''));
+    const replacement = await scanFixture(dir, cursorStore, options);
+    assert.deepEqual(replacement.records.map((record) => record.sequence), [9]);
+    assert.equal(cursorStore.data['cursor.fixture'][file].discardingOversizedLine, undefined);
+    assert.equal(cursorStore.data['cursor.fixture'][file].offset, fs.statSync(file).size);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Production mutation caught: enforcing the scan budget as a hard stop would
+// regress the existing promise to finish an already-started below-limit line.
+test('a below-limit line may cross the scan budget and still commits once', async () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'fixture-below-limit.jsonl');
+  const cursorStore = makeCursorStore();
+  const diagnostics = {};
+
+  try {
+    const line = fixtureLine(1, 'y'.repeat(80));
+    fs.writeFileSync(file, line);
+    const batch = await scanFixture(dir, cursorStore, {
+      diagnostics,
+      chunkBytes: 16,
+      maxBytesPerScan: 16,
+      maxLineBytes: 128
+    });
+
+    assert.deepEqual(batch.records.map((record) => record.sequence), [1]);
+    assert.equal(batch.bytesRead, Buffer.byteLength(line));
+    assert.ok(batch.bytesRead > 16);
+    assert.equal(diagnostics.oversizedLine, undefined);
+    assert.equal(cursorStore.data['cursor.fixture'][file].offset, fs.statSync(file).size);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('local-log providers expose asynchronous reads for the scheduler', async () => {
   const dir = makeTempDir();
   const file = path.join(dir, 'rollout-async.jsonl');

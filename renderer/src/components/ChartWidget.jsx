@@ -4,7 +4,7 @@ import React, { useRef } from 'react';
 import * as echarts from 'echarts';
 import useECharts from '../hooks/useECharts.js';
 import { getTheme, getBarTheme } from '../lib/chartTheme.js';
-import { beijingMonthDayLabel, isAfterBeijingToday } from '../lib/beijing-calendar.js';
+import { curvePointLabels } from '../lib/curve-merge.js';
 import { echartsWindowPosition as windowClampedPosition } from '../lib/floating-layer.js';
 
 function clamp(value, minimum, maximum) {
@@ -228,10 +228,7 @@ function buildDailyOption(dom, dailyData) {
 function buildCurveOption(dom, points, config) {
   const isDark = document.body.classList.contains('dark');
   const theme = getTheme(isDark);
-  const dates = (points || []).map((p) => {
-    const d = new Date(p.time);
-    return (d.getMonth() + 1) + '/' + d.getDate();
-  });
+  const dates = curvePointLabels(points);
   const totalData = (points || []).map((p) => p[config.totalField] || 0);
   const deltaData = (points || []).map((p) => p[config.deltaField] || 0);
   const density = curveDensity(theme, dom, isCardMode(dom), dates.length);

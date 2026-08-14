@@ -1,5 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+const { spawnSync } = require('node:child_process');
 
 // 与 ChartWidget/buildCurvePoints 一致的点构造: UTC 午夜时间，date 为 YYYY-MM-DD。
 const { mergeCurves } = require('../renderer/src/lib/curve-merge.js');
@@ -76,4 +79,32 @@ test('mergeCurves keeps Beijing day keys stable on a UTC-minus host', () => {
     if (previousTz === undefined) delete process.env.TZ;
     else process.env.TZ = previousTz;
   }
+});
+
+// Production mutation caught: replacing the Beijing-aware pure label path with
+// host-local Date getters shifts UTC-midnight merged points back one day in LA.
+test('ChartWidget curve labels keep merged UTC-midnight days on a Los Angeles host', () => {
+  const curveModuleUrl = pathToFileURL(
+    path.resolve(__dirname, '../renderer/src/lib/curve-merge.js')
+  ).href;
+  const source = `
+    (async () => {
+      const { mergeCurves, curvePointLabels } = await import(${JSON.stringify(curveModuleUrl)});
+      const merged = mergeCurves([[
+        { time: Date.UTC(2026, 7, 14), totalCost: 1, deltaCost: 1 },
+        { time: Date.UTC(2026, 7, 15), totalCost: 2, deltaCost: 1 }
+      ]]);
+      console.log(JSON.stringify(curvePointLabels(merged)));
+    })().catch((error) => {
+      console.error(error && error.stack ? error.stack : error);
+      process.exitCode = 1;
+    });
+  `;
+  const result = spawnSync(process.execPath, ['--eval', source], {
+    env: Object.assign({}, process.env, { TZ: 'America/Los_Angeles' }),
+    encoding: 'utf8'
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.deepEqual(JSON.parse(result.stdout.trim()), ['8/14', '8/15']);
 });
