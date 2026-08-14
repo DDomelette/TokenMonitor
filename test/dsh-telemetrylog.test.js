@@ -152,7 +152,6 @@ test('resolveTelemetryRoot expands tilde and resolves relative DSH_HOME like the
   // 消费者必须等价处理,否则 DSH_HOME=~/dsh 或相对路径时两边指向不同目录、静默无数据。
   assert.equal(resolveTelemetryRoot(null, { DSH_HOME: '~/dsh' }), path.join(os.homedir(), 'dsh', 'telemetry'));
   assert.equal(resolveTelemetryRoot(null, { DSH_HOME: path.join('.', 'dsh') }), path.resolve('dsh', 'telemetry'));
-  assert.equal(resolveTelemetryRoot(null, { DSH_HOME: path.join('.', 'dsh') }), path.resolve('dsh', 'telemetry'));
 });
 
 test('resolveTelemetryRoot expands tilde for the custom telemetryRoot setting', () => {
@@ -367,21 +366,59 @@ test('readLocalLog skips the store commit entirely when root is missing and no c
   assert.deepEqual(store.get('usageDaily'), {});
 });
 
-test('readLocalLog commits exactly once to GC stale cursor entries when root is missing', async () => {
+test('readLocalLog preserves cursors when a previously scanned file is absent', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-telemetry-'));
-  const stale = path.join(root, 'usage-2026-08-10.jsonl');
-  const { readLocalLog } = require('../src/main/providers/dsh/telemetrylog');
+  const missing = path.join(root, 'usage-2026-08-10.jsonl');
+  const cursor = { offset: 42, mtimeMs: 1, lastEventFingerprint: 'sha256:old' };
   const store = makeSnapshotStore({
     usageDaily: {},
     usageDailyCost: {},
-    localLogCursors: { dsh: { [stale]: { offset: 42, mtimeMs: 1 } } },
+    localLogCursors: { dsh: { [missing]: cursor } },
     providers: { dsh: { telemetryRoot: root } },
     data: { historyDays: 30 }
   });
-  const batch = await readLocalLog({ store }, { nowMs: Date.UTC(2026, 7, 14, 4, 0, 0) });
+  const batch = await readLocalLog({ store }, { nowMs: Date.UTC(2026, 7, 14, 4) });
   assert.equal(batch.records.length, 0);
-  assert.equal(store.writes, 1, 'stale cursor GC must be committed exactly once');
-  assert.deepEqual(store.get('localLogCursors.dsh'), {}, 'stale cursor entries must be removed');
+  assert.equal(store.writes, 0);
+  assert.deepEqual(store.get('localLogCursors.dsh'), { [missing]: cursor });
+});
+
+test('a telemetry root disappearing and returning does not double-count prior rows', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-telemetry-'));
+  const offlineRoot = root + '-offline';
+  const dayFile = 'usage-2026-08-14.jsonl';
+  writeRows(root, dayFile, [{
+    v: 1,
+    time: Date.UTC(2026, 7, 14, 2),
+    sessionId: 's1',
+    model: 'deepseek-v4-pro',
+    inputTokens: 100,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0
+  }]);
+  const store = makeStore({
+    usageDaily: {},
+    usageDailyCost: {},
+    providers: { dsh: { telemetryRoot: root } },
+    data: { historyDays: 30 }
+  });
+  const options = { nowMs: Date.UTC(2026, 7, 14, 4) };
+
+  await readLocalLog({ store }, options);
+  const firstCursor = JSON.parse(JSON.stringify(store.get('localLogCursors.dsh')));
+  assert.equal(store.get('usageDaily')['dsh:2026-08-14'].total, 100);
+
+  fs.renameSync(root, offlineRoot);
+  try {
+    await readLocalLog({ store }, options);
+    assert.deepEqual(store.get('localLogCursors.dsh'), firstCursor);
+  } finally {
+    fs.renameSync(offlineRoot, root);
+  }
+
+  await readLocalLog({ store }, options);
+  assert.equal(store.get('usageDaily')['dsh:2026-08-14'].total, 100);
 });
 
 test('readLocalLog commits to advance cursors even when every line is malformed', async () => {

@@ -127,8 +127,8 @@ function cloneStoreValue(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
-// 深比较两组游标(键为文件完整路径,JSON 序列化稳定)。仅用于判断"扫描是否产生任何
-// 需要落盘的变化"(游标推进/过期条目 GC),避免空扫描每 60s 无条件全量重写 store。
+// Deep-compare cursor maps (file identity keys, stable JSON serialization).
+// This identifies cursor advancement that must be persisted after a scan.
 function cursorsChanged(stored, next) {
   return JSON.stringify(stored || {}) !== JSON.stringify(next || {});
 }
@@ -218,9 +218,6 @@ async function scanTelemetryBatch({ store, root, parseLine, diagnostics, nowMs, 
     yieldToLoop
   });
 
-  for (const identity of Object.keys(cursors)) {
-    if (!files.includes(identity)) delete cursors[identity];
-  }
   return Object.assign({}, result, { cursors });
 }
 
@@ -237,8 +234,7 @@ async function readLocalLog(ctx, opts) {
     ? parsedNowMs
     : Date.now();
   const root = resolveTelemetryRoot(store, process.env);
-  // 扫描前的已存游标:仅当扫描后游标集合相对它实际变化(推进/GC)或产生新记录时才提交,
-  // 否则空扫描(根缺失、无新行、无过期条目)完全不碰 store,避免每 60s 整库克隆+落盘。
+  // Persist only new records or cursor advancement; empty scans do not rewrite the store.
   const storedCursors = (store && store.get(CURSOR_KEY)) || {};
   const batch = await scanTelemetryBatch({
     store,
@@ -285,7 +281,7 @@ async function readLocalLog(ctx, opts) {
     });
     commitTelemetryScanState(store, usageDaily, usageDailyCost, batch.cursors || {});
   } else if (store && cursorsChanged(storedCursors, batch.cursors)) {
-    // 无新记录但游标集合变化(游标推进/过期条目 GC):同样必须提交,否则每轮重解析或残留死条目。
+    // Persist cursor advancement even when a scan emits no records.
     commitTelemetryScanState(store, usageDaily, usageDailyCost, batch.cursors || {});
   }
   return batch;
