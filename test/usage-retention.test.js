@@ -64,6 +64,11 @@ test('physical cleanup mutates only usageDaily and preserves fetch markers plus 
       'codex:2026-08-03': { total: 2 },
       'kimi:2026-08-05': { total: 3 }
     },
+    usageDailyCost: {
+      'dsh:2026-08-02': 0.2,
+      'dsh:2026-08-03': 0.3,
+      'dsh:2026-08-05': 0.5
+    },
     'localLogCursors.codex': cursor,
     'localLogCursors.kimi': kimiCursor,
     'providers.deepseek.fetchedMonths': fetchedMonths
@@ -84,7 +89,11 @@ test('physical cleanup mutates only usageDaily and preserves fetch markers plus 
     'codex:2026-08-03': { total: 2 },
     'kimi:2026-08-05': { total: 3 }
   });
-  assert.deepEqual(writes.map((entry) => entry[0]), ['usageDaily']);
+  assert.deepEqual(data.usageDailyCost, {
+    'dsh:2026-08-03': 0.3,
+    'dsh:2026-08-05': 0.5
+  });
+  assert.deepEqual(writes.map((entry) => entry[0]), ['usageDaily', 'usageDailyCost']);
   assert.strictEqual(data['localLogCursors.codex'], cursor);
   assert.strictEqual(data['localLogCursors.kimi'], kimiCursor);
   assert.strictEqual(data['providers.deepseek.fetchedMonths'], fetchedMonths);
