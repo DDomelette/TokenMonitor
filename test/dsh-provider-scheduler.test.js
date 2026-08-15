@@ -132,4 +132,8 @@ test('RESET_KEEP_KEYS preserves dsh aggregates and cursors across a settings res
   const { RESET_KEEP_KEYS } = require('../src/main/core/settings-reset');
   assert.ok(RESET_KEEP_KEYS.includes('usageDailyCost'));
   assert.ok(RESET_KEEP_KEYS.includes('localLogCursors.dsh'));
+  assert.ok(RESET_KEEP_KEYS.includes('usageDailyPush'));
+  assert.ok(RESET_KEEP_KEYS.includes('usageDailyCostPush'));
+  assert.ok(RESET_KEEP_KEYS.includes('ingest.dsh.batchRegistry'));
+  assert.ok(RESET_KEEP_KEYS.includes('ingest.dsh.sources'));
 });

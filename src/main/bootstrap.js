@@ -1,7 +1,7 @@
 const { app, dialog, shell } = require('electron');
 const storeModule = require('./store');
 const { runStoreBootstrap } = require('./core/startup-recovery');
-const { pruneUsageDaily } = require('./core/usage-retention');
+const { pruneUsageDaily, pruneDshPushUsage } = require('./core/usage-retention');
 const { assertRendererBuild } = require('./core/renderer-entry');
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -18,7 +18,10 @@ if (!gotTheLock) {
         dialog,
         shell,
         storeModule,
-        afterInitialize: () => pruneUsageDaily(storeModule),
+        afterInitialize: () => {
+          pruneUsageDaily(storeModule);
+          pruneDshPushUsage(storeModule);
+        },
         loadMain: () => require('./index'),
         logger: console
       });

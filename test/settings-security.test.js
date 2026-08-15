@@ -82,3 +82,33 @@ test('sanitizeSettings strips usageDaily and usageDailyCost from renderer-bound 
   assert.ok(raw.usageDaily['dsh:2026-08-14']);
   assert.ok(raw.usageDailyCost['dsh:2026-08-14']);
 });
+
+test('collectionMode is writable but ingest token remains protected', () => {
+  assert.equal(isWritableSettingKey('providers.dsh.collectionMode'), true);
+  assert.equal(isWritableSettingKey('ingest.dsh.token'), false);
+});
+
+test('sanitizeSettings strips push ledger, registry, sources and ingest token', () => {
+  const raw = {
+    usageDailyPush: { 'dsh:2026-08-14': { input: 1, cached: 0, output: 1, total: 2 } },
+    usageDailyCostPush: { 'dsh:2026-08-14': 0.001 },
+    ingest: {
+      dsh: {
+        enabled: true,
+        token: 'secret-ingest-token',
+        batchRegistry: { src: { b: { acceptedAt: 1 } } },
+        sources: { src: { lastIngestAt: 1 } },
+        diagnostics: { 'invalid-row': 1 }
+      }
+    },
+    window: { opacity: 92 }
+  };
+  const clean = sanitizeSettings(raw);
+  assert.equal(clean.usageDailyPush, undefined);
+  assert.equal(clean.usageDailyCostPush, undefined);
+  assert.equal(clean.ingest.dsh.enabled, true);
+  assert.equal(clean.ingest.dsh.token, undefined);
+  assert.equal(clean.ingest.dsh.batchRegistry, undefined);
+  assert.equal(clean.ingest.dsh.sources, undefined);
+  assert.equal(clean.ingest.dsh.diagnostics, undefined);
+});

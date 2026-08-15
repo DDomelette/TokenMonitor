@@ -4,7 +4,8 @@
 const SECRET_SETTING_PATHS = [
   ['providers', 'deepseek', 'apiKey'],
   ['providers', 'deepseek', 'sessionToken'],
-  ['mcp', 'token']
+  ['mcp', 'token'],
+  ['ingest', 'dsh', 'token']
 ];
 
 function sanitizeSettings(storeData) {
@@ -13,6 +14,13 @@ function sanitizeSettings(storeData) {
   // 不进 settings 载荷(避免每 60s 整库深拷贝广播放大载荷体积)。
   delete clone.usageDaily;
   delete clone.usageDailyCost;
+  delete clone.usageDailyPush;
+  delete clone.usageDailyCostPush;
+  if (clone.ingest && clone.ingest.dsh) {
+    delete clone.ingest.dsh.batchRegistry;
+    delete clone.ingest.dsh.sources;
+    delete clone.ingest.dsh.diagnostics;
+  }
   SECRET_SETTING_PATHS.forEach(function (pathParts) {
     let node = clone;
     for (let i = 0; i < pathParts.length - 1; i++) {
@@ -31,7 +39,13 @@ function sanitizeSettings(storeData) {
 }
 
 // 通用 settings:update/settings:save 的键白名单。凭证只能通过专用验证通道写入。
-const WRITABLE_SETTING_KEYS = new Set(['layout', 'componentOrder', 'providers.proxyUrl', 'mcp.enabled']);
+const WRITABLE_SETTING_KEYS = new Set([
+  'layout',
+  'componentOrder',
+  'providers.proxyUrl',
+  'mcp.enabled',
+  'providers.dsh.collectionMode'
+]);
 const WRITABLE_SETTING_PREFIXES = ['window.', 'components.', 'data.'];
 const WRITABLE_KEY_ALIASES = Object.freeze({});
 
