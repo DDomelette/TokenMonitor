@@ -66,9 +66,22 @@ var tokenSpeedDefinitions = [
   }
 ];
 
+var dshCollectionDefinitions = [
+  {
+    group: '数据', key: 'providers.dsh.collectionMode', type: 'select',
+    label: 'DeepSeek Harness 采集模式', default: 'auto',
+    options: [
+      { value: 'auto', label: '自动(推送时停止文件轮询)' },
+      { value: 'localLog', label: '仅本地文件' },
+      { value: 'push', label: '仅推送接收' }
+    ]
+  }
+];
+
 var tailDefinitions = [
   { group: 'MCP 服务', key: 'mcp.enabled', type: 'toggle', label: '启用 MCP 服务', default: true },
   { group: 'MCP 服务', key: 'mcp.serverInfo', type: 'mcpServer', label: '连接信息', default: '' },
+  { group: 'DSH 用量接收', key: 'ingest.dsh.serverInfo', type: 'ingestServer', label: '接收连接信息', default: '' },
   { group: '数据', key: 'data.historyDays', type: 'select', label: '历史数据保留', options: [
     { value: 3, label: '3 天' }, { value: 7, label: '7 天' }, { value: 30, label: '30 天' },
     { value: 90, label: '90 天' }, { value: 180, label: '180 天' }, { value: 365, label: '365 天' }
@@ -81,6 +94,7 @@ window.SettingsDefinitions = windowDefinitions.concat(
   historyDefinitions,
   diagnosticsDefinitions,
   componentDefinitions,
+  dshCollectionDefinitions,
   tokenSpeedDefinitions,
   tailDefinitions
 );
