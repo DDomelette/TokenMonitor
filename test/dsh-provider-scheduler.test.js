@@ -100,6 +100,34 @@ test('scheduler collects dsh localLog parse diagnostics and logs them', async (t
   }
 });
 
+test('auto mode skips localLog while a matching root source is active', async () => {
+  const { deriveDshRootId } = require('../src/main/core/dsh-collection-mode');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-skip-'));
+  const store = makeStore({
+    usageDaily: {},
+    'providers.dsh.telemetryRoot': root,
+    'providers.dsh.collectionMode': 'auto',
+    'ingest.dsh.sources': { src1: { rootId: deriveDshRootId(root, process.platform), lastIngestAt: Date.now() } },
+    'ingest.dsh.pushLeaseMs': 600000,
+    data: { historyDays: 30 }
+  });
+  fs.writeFileSync(path.join(root, 'usage-2026-08-14.jsonl'),
+    JSON.stringify({ v: 1, time: Date.UTC(2026, 7, 14, 2, 0, 0), sessionId: 's', inputTokens: 1, outputTokens: 1 }) + '\n');
+
+  const scheduler = startScheduler({
+    registry: makeRegistry([dshProvider]),
+    store,
+    broadcast() {},
+    intervals: false
+  });
+  try {
+    await scheduler.poll('dsh', 'localLog');
+    assert.equal(store.get('usageDaily')['dsh:2026-08-14'], undefined, 'suppressed root must not be scanned');
+  } finally {
+    scheduler.stop();
+  }
+});
+
 test('RESET_KEEP_KEYS preserves dsh aggregates and cursors across a settings reset', () => {
   const { RESET_KEEP_KEYS } = require('../src/main/core/settings-reset');
   assert.ok(RESET_KEEP_KEYS.includes('usageDailyCost'));
