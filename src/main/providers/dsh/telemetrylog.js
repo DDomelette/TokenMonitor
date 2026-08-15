@@ -2,16 +2,12 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const crypto = require('node:crypto');
 const {
   scanCandidateBatch,
-  rollupDaily,
   walkFiles,
-  normalizeTimestampMs,
-  incrementDiagnostic,
-  localDayStr
+  incrementDiagnostic
 } = require('../../core/locallog');
-const { calcDshCost, getDshModelPrice } = require('../../pricing');
+const { parseTelemetryLine, rollupDshRecords } = require('./usage-records');
 
 const fsp = fs.promises;
 
@@ -36,92 +32,6 @@ function resolveTelemetryRoot(store, env) {
   const dshHome = env && typeof env.DSH_HOME === 'string' ? env.DSH_HOME.trim() : '';
   if (dshHome) return path.resolve(expandHomePath(dshHome), 'telemetry');
   return DEFAULT_ROOT();
-}
-
-// 解析一行遥测 JSON。任何非法行返回 null 并计诊断;绝不伪造时间戳。
-function parseTelemetryLine(line, diagnostics, nowMs) {
-  if (!line) return null;
-  let data;
-  try {
-    data = JSON.parse(line);
-  } catch (e) {
-    incrementDiagnostic(diagnostics, 'malformedLine');
-    return null;
-  }
-  if (!data || typeof data !== 'object') {
-    incrementDiagnostic(diagnostics, 'malformedLine');
-    return null;
-  }
-  if (data.v === undefined) {
-    incrementDiagnostic(diagnostics, 'missingRowVersion');
-    return null;
-  }
-  if (data.v !== 1) {
-    incrementDiagnostic(diagnostics, 'unknownRowVersion');
-    return null;
-  }
-  if (typeof data.time !== 'number' || !Number.isSafeInteger(data.time)) {
-    incrementDiagnostic(diagnostics, 'invalidTimestamp');
-    return null;
-  }
-  const ts = normalizeTimestampMs(data.time, nowMs);
-  if (ts === null) {
-    incrementDiagnostic(diagnostics, 'invalidTimestamp');
-    return null;
-  }
-  if (typeof data.sessionId !== 'string' || data.sessionId.length === 0) {
-    incrementDiagnostic(diagnostics, 'invalidSessionId');
-    return null;
-  }
-  if (data.model !== undefined && typeof data.model !== 'string') {
-    incrementDiagnostic(diagnostics, 'invalidModel');
-    return null;
-  }
-  if (data.cwd !== undefined && typeof data.cwd !== 'string') {
-    incrementDiagnostic(diagnostics, 'invalidCwd');
-    return null;
-  }
-  const input = data.inputTokens;
-  const output = data.outputTokens;
-  const cacheRead = data.cacheReadTokens === undefined ? 0 : data.cacheReadTokens;
-  const cacheWrite = data.cacheWriteTokens === undefined ? 0 : data.cacheWriteTokens;
-  if (![input, output, cacheRead, cacheWrite]
-    .every((n) => Number.isSafeInteger(n) && n >= 0)) {
-    incrementDiagnostic(diagnostics, 'invalidTokenCount');
-    return null;
-  }
-  const model = typeof data.model === 'string' && data.model.length > 0 ? data.model : 'unknown';
-  const sessionId = data.sessionId;
-  // 未知模型(查无单价)按设计规格记 0 费用并计诊断,避免静默按 pro 单价错估。
-  if (!getDshModelPrice(model, ts)) {
-    incrementDiagnostic(diagnostics, 'unknownModel');
-  }
-  const record = {
-    ts: ts,
-    model: model,
-    currency: 'CNY',
-    // UsageRecord 映射:input 含 cacheWrite(按输入计费),cached = cacheRead。
-    usage: {
-      input: input + cacheWrite,
-      cached: cacheRead,
-      output: output,
-      total: input + cacheWrite + cacheRead + output
-    },
-    // 费用按原始四桶计算(与 UsageRecord 映射独立,不重复计费);未知模型为 0。
-    cost: calcDshCost(model, input, output, cacheRead, cacheWrite, ts)
-  };
-  record.eventFingerprint = 'sha256:' + crypto.createHash('sha256')
-    .update([
-      new Date(ts).toISOString(),
-      sessionId,
-      model,
-      input,
-      output,
-      cacheRead,
-      cacheWrite
-    ].join('\0'), 'utf8')
-    .digest('hex');
-  return record;
 }
 
 function cloneStoreValue(value) {
@@ -253,10 +163,10 @@ async function readLocalLog(ctx, opts) {
   let usageDailyCost = cloneStoreValue((store && store.get('usageDailyCost')) || {});
   if (records.length && store) {
     const { filterUsageDaily } = require('../../core/usage-retention');
-    const rolled = rollupDaily(records, diagnostics, nowMs);
+    const rolledAll = rollupDshRecords(records, diagnostics, nowMs);
     const daily = opts && opts.retainAll
-      ? rolled
-      : filterUsageDaily(rolled, store.get('data.historyDays'), nowMs);
+      ? rolledAll.usageDaily
+      : filterUsageDaily(rolledAll.usageDaily, store.get('data.historyDays'), nowMs);
     Object.keys(daily).forEach((key) => {
       const prev = usageDaily[key] || { input: 0, cached: 0, output: 0, total: 0 };
       const add = daily[key];
@@ -268,15 +178,9 @@ async function readLocalLog(ctx, opts) {
       };
     });
 
-    const costRolled = {};
-    records.forEach((rec) => {
-      const day = localDayStr(rec.ts);
-      const key = 'dsh:' + day;
-      costRolled[key] = Number(costRolled[key] || 0) + Number(rec.cost || 0);
-    });
     const costDaily = opts && opts.retainAll
-      ? costRolled
-      : filterUsageDaily(costRolled, store.get('data.historyDays'), nowMs);
+      ? rolledAll.usageDailyCost
+      : filterUsageDaily(rolledAll.usageDailyCost, store.get('data.historyDays'), nowMs);
     Object.keys(costDaily).forEach((key) => {
       usageDailyCost[key] = Number(usageDailyCost[key] || 0) + Number(costDaily[key]);
     });
@@ -295,6 +199,5 @@ module.exports = {
   scanTelemetryBatch,
   DEFAULT_ROOT,
   MATCH,
-  CURSOR_KEY,
-  localDayStr
+  CURSOR_KEY
 };
