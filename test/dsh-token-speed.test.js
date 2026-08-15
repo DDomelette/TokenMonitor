@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { createTokenSpeedTracker, PROVIDER_IDS } = require('../src/main/core/token-speed-tracker');
+const { readObservation } = require('../src/main/core/token-speed-runtime');
 
 test('PROVIDER_IDS includes dsh', () => {
   assert.deepEqual(PROVIDER_IDS, ['deepseek', 'codex', 'kimi', 'dsh']);
@@ -28,4 +29,15 @@ test('dsh observes, samples, and contributes metrics through the all snapshot', 
 test('unknown provider ids still throw', () => {
   const tracker = createTokenSpeedTracker({ now: () => 0 });
   assert.throws(() => tracker.observe({ providerId: 'nope', totalTokens: 1 }), /Unknown token speed provider/);
+});
+
+test('readObservation for dsh includes the push aggregate', () => {
+  const store = {
+    get(k) {
+      if (k === 'usageDaily') return { 'dsh:2026-08-14': { total: 30 } };
+      if (k === 'usageDailyPush') return { 'dsh:2026-08-14': { total: 15 } };
+      return undefined;
+    }
+  };
+  assert.equal(readObservation(store, 'dsh', Date.UTC(2026, 7, 14, 2, 0, 0)).totalTokens, 45);
 });

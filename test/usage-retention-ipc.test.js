@@ -19,14 +19,15 @@ test('legacy settings:update delegates to the acknowledged settings writer', () 
   );
 });
 
-test('heatmap reads a defensively filtered usage snapshot without retention window', () => {
+test('heatmap reads the effective DSH usage snapshot without retention window', () => {
   assert.match(
     ipcSource,
-    /const \{ filterUsageDaily(, retentionStartDay)? \} = require\('\.\/core\/usage-retention'\);/
+    /const \{\s*PUSH_USAGE_KEY,\s*PUSH_COST_KEY,\s*effectiveUsageDaily\s*\} = require\('\.\/core\/dsh-usage-merge'\);/
   );
-  // 显示层不传 historyDays:已同步历史全量可见,清理交给 data.historyDays/prune
+  // 显示层不传 historyDays:已同步历史全量可见,清理交给 data.historyDays/prune;
+  // dsh 由 effectiveUsageDaily 合并本地 usageDaily 与 push 聚合。
   assert.match(
     ipcSource,
-    /const usageDaily = filterUsageDaily\(deps\.store\.get\('usageDaily'\) \|\| \{\}\);/
+    /const usageDaily = effectiveUsageDaily\(deps\.store\);/
   );
 });

@@ -5,6 +5,7 @@
 // 与 telemetrylog.MATCH 一致的日期形态校验:拒绝 usage-2026-13-99 之类非法日期键。
 const DAY_KEY = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const DSH_PREFIX = 'dsh:';
+const { mergeDshKeys, mergeDshCosts } = require('./dsh-usage-merge');
 
 // 从聚合对象提取 dsh: 前缀日行 → [{ date, total }],按 date 升序。
 // 非 dsh 前缀、畸形日期键、非有限或 <= 0 的数值一律忽略。
@@ -22,9 +23,9 @@ function dshDailyList(aggregate, pickTotal) {
   return out;
 }
 
-function buildDshDashboard(usageDaily, usageDailyCost) {
-  const tokenDaily = dshDailyList(usageDaily, (v) => Number(v && v.total));
-  const costDaily = dshDailyList(usageDailyCost, (v) => Number(v));
+function buildDshDashboard(usageDaily, usageDailyCost, usageDailyPush = {}, usageDailyCostPush = {}) {
+  const tokenDaily = dshDailyList(mergeDshKeys(usageDaily, usageDailyPush), (v) => Number(v && v.total));
+  const costDaily = dshDailyList(mergeDshCosts(usageDailyCost, usageDailyCostPush), (v) => Number(v));
   let token = 0;
   let cost = 0;
   tokenDaily.forEach((d) => { token += d.total; });

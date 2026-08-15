@@ -58,3 +58,10 @@ test('buildDshDashboard drops zero and non-finite totals', () => {
   assert.deepEqual(out.tokenDaily.map((d) => d.date), ['2026-08-15']);
   assert.deepEqual(out.costDaily.map((d) => d.date), ['2026-08-15']);
 });
+
+test('buildDshDashboard merges push aggregates into the dsh curve totals', () => {
+  const local = { 'dsh:2026-08-14': { input: 10, cached: 0, output: 20, total: 30 } };
+  const push = { 'dsh:2026-08-14': { input: 5, cached: 0, output: 10, total: 15 } };
+  const d = buildDshDashboard(local, {}, push, {});
+  assert.equal(d.tokenDaily[0].total, 45);
+});

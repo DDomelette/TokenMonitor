@@ -1,4 +1,5 @@
 const { localDayStr } = require('./beijing-calendar');
+const { effectiveDshDayTotal } = require('./dsh-usage-merge');
 const { normalizeTokenSpeedSettings } = require('./token-speed-settings');
 const {
   createTokenSpeedTracker,
@@ -12,12 +13,18 @@ const STORAGE_KEY = 'tokenSpeedRuntime';
 
 function readObservation(store, providerId, at) {
   const dayKey = localDayStr(at);
-  const daily = store.get('usageDaily') || {};
-  const row = daily[providerId + ':' + dayKey];
+  let totalTokens;
+  if (providerId === 'dsh') {
+    totalTokens = effectiveDshDayTotal(store, dayKey);
+  } else {
+    const daily = store.get('usageDaily') || {};
+    const row = daily[providerId + ':' + dayKey];
+    totalTokens = Number(row && row.total) || 0;
+  }
   return {
     providerId,
     dayKey,
-    totalTokens: Number(row && row.total) || 0,
+    totalTokens,
     observedAt: at
   };
 }
