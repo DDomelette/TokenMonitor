@@ -2,6 +2,7 @@
 const { ensureMcpToken, rotateMcpToken } = require('./token');
 const { buildToolHandlers } = require('./tools');
 const { startMcpServer } = require('./server');
+const { effectiveUsageDaily } = require('../core/dsh-usage-merge');
 
 const BASE_PORT = 29350;
 const MAX_PORT = 29359;
@@ -17,7 +18,7 @@ function startMCP(deps) {
   const handlers = buildToolHandlers({
     getSnapshot: () => scheduler.getSnapshot(),
     getState: (id) => scheduler.getState(id),
-    getUsageDaily: () => store.get('usageDaily'),
+    getUsageDaily: () => effectiveUsageDaily(store),
     now: () => Date.now()
   });
 

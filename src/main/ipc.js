@@ -6,7 +6,7 @@ const { sanitizeSettings, isWritableSettingKey, resolveWritableSettingKey } = re
 const { resetSettingsStore } = require('./core/settings-reset');
 const { saveSetting } = require('./core/settings-write');
 const { replaceDeepseekApiKey } = require('./core/api-key-replacement');
-const { filterUsageDaily, retentionStartDay } = require('./core/usage-retention');
+const { retentionStartDay } = require('./core/usage-retention');
 const { getSessionSnapshot } = require('./core/session-state');
 const { skipDeepseekLogin } = require('./core/startup-windows');
 const { syncDeepSeekHistory, rescanLocalLogs } = require('./core/history-sync');
@@ -16,6 +16,11 @@ const { SYSTEM_PROXY_VALUE, resolveElectronSystemProxy } = require('./core/proxy
 const { registerDiagnosticsIpc } = require('./core/diagnostics/ipc-registration');
 const { detectProxyPort } = require('./core/proxy-detect');
 const { buildDshDashboard } = require('./core/dsh-dashboard');
+const {
+  PUSH_USAGE_KEY,
+  PUSH_COST_KEY,
+  effectiveUsageDaily
+} = require('./core/dsh-usage-merge');
 
 function deepseekApiKeyCtx(deps, apiKey) {
   return {
@@ -66,11 +71,13 @@ module.exports = function setupIPC(deps) {
       payload.curveCost = curves.cost;
     }
     if (pid === 'dsh') {
-      // DSH 平台数据源是本地遥测文件聚合(usageDaily/usageDailyCost 的 dsh: 前缀日行),
+      // DSH 平台数据源是本地遥测文件聚合 + push 聚合(dsh: 前缀日行),
       // 与 deepseek stats 同构后复用同一套 buildCurvePoints 生成曲线。
       const stats = buildDshDashboard(
         deps.store.get('usageDaily') || {},
-        deps.store.get('usageDailyCost') || {}
+        deps.store.get('usageDailyCost') || {},
+        deps.store.get(PUSH_USAGE_KEY) || {},
+        deps.store.get(PUSH_COST_KEY) || {}
       );
       payload.stats = stats;
       const curves = deps.buildCurvePoints(stats);
@@ -131,7 +138,8 @@ module.exports = function setupIPC(deps) {
     // codex/kimi 由本地日志增量聚合;deepseek 由 fetchUsage 按月抓取时持久化(含历史回填)。
     // 显示层不套用保留窗口:已同步的历史应全部可见,清理交给 data.historyDays/prune。
     // 不传 historyDays 时 filterUsageDaily 只做畸形键过滤(无限保留)。
-    const usageDaily = filterUsageDaily(deps.store.get('usageDaily') || {});
+    // dsh 使用有效聚合(本地 usageDaily + usageDailyPush),其余 provider 行为不变。
+    const usageDaily = effectiveUsageDaily(deps.store);
     const byProvider = {};
     const cachedByProvider = {};
     const deepseekModels = {};
