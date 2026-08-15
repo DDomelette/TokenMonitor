@@ -379,6 +379,12 @@ test('main creates, reuses, broadcasts to, and disposes the diagnostics window b
     getConnectionInfo: () => ({ enabled: false, url: null, token: null }),
     rotateToken: () => ({ enabled: false, url: null, token: null })
   };
+  const fakeIngestRuntime = {
+    start() { sequence.push('ingest'); },
+    stop() {},
+    getConnectionInfo: () => ({ enabled: false, url: null, token: null, diagnostics: {} }),
+    rotateToken: () => ({ enabled: false, url: null, token: null, diagnostics: {} })
+  };
 
   Module._load = function (request, parent, isMain) {
     const parentFile = parent && parent.filename || '';
@@ -413,6 +419,9 @@ test('main creates, reuses, broadcasts to, and disposes the diagnostics window b
       };
       if (request === './mcp') return {
         startMCP: () => fakeMcpRuntime
+      };
+      if (request === './providers/dsh/ingest') return {
+        startIngest: () => fakeIngestRuntime
       };
       if (request === './core/proxy-settings') return Object.assign({}, realProxySettings, {
         resolveElectronSystemProxy: injectedSystemResolver
@@ -449,10 +458,11 @@ test('main creates, reuses, broadcasts to, and disposes the diagnostics window b
 
   require(mainPath);
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(sequence.slice(0, 5), ['scheduler', 'token-speed', 'diagnostics', 'mcp', 'ipc']);
+  assert.deepEqual(sequence.slice(0, 6), ['scheduler', 'token-speed', 'diagnostics', 'mcp', 'ingest', 'ipc']);
   assert.equal(setupDependencies.diagnostics, fakeDiagnostics);
   assert.equal(setupDependencies.tokenSpeedRuntime, fakeTokenSpeedRuntime);
   assert.equal(setupDependencies.getMcpRuntime(), fakeMcpRuntime);
+  assert.equal(setupDependencies.getIngestRuntime(), fakeIngestRuntime);
   assert.equal(typeof setupDependencies.createDiagnosticsWindow, 'function');
   assert.equal(typeof setupDependencies.getDiagnosticsWindow, 'function');
   assert.deepEqual(setupDependencies.getDiagnosticsTheme(), {

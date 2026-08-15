@@ -286,6 +286,26 @@ module.exports = function setupIPC(deps) {
     return rt.getConnectionInfo();
   });
 
+  ipcMain.handle('ingest:getConnectionInfo', () => {
+    const rt = typeof deps.getIngestRuntime === 'function' ? deps.getIngestRuntime() : null;
+    return rt ? rt.getConnectionInfo() : {
+      enabled: false,
+      running: false,
+      listenHost: null,
+      port: null,
+      url: null,
+      token: null,
+      diagnostics: {}
+    };
+  });
+
+  ipcMain.handle('ingest:rotateToken', async () => {
+    const rt = typeof deps.getIngestRuntime === 'function' ? deps.getIngestRuntime() : null;
+    if (!rt) throw new Error('DSH ingest 服务未初始化');
+    await rt.rotateToken();
+    return rt.getConnectionInfo();
+  });
+
   /* ======== Settings ======== */
 
   ipcMain.on('settings:update', (event, { key: rawKey, value }) => {

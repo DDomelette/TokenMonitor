@@ -40,6 +40,7 @@ const {
   restoreSession
 } = require('./core/session-state');
 const { startMCP } = require('./mcp');
+const { startIngest } = require('./providers/dsh/ingest');
 
 let mainWindow = null;
 let loginWindow = null;
@@ -52,6 +53,7 @@ let diagnostics = null;
 let getProxyInput = null;
 let tokenSpeedRuntime = null;
 let mcpRuntime = null;
+let ingestRuntime = null;
 let codexUsageRuntime = null;
 let moveDebounce = null;
 // 贴边自动隐藏状态机(issue #170),随主窗口创建
@@ -611,6 +613,10 @@ function applySetting(key, value) {
     else mcpRuntime.stop();
     return;
   }
+  if (key === 'providers.dsh.collectionMode') {
+    if (scheduler) scheduler.poll('dsh', 'localLog');
+    return;
+  }
   if (!mainWindow) return;
   switch (key) {
     // window.opacity 不再应用:setOpacity 的分层窗口机制会导致缩放露黑边,
@@ -882,6 +888,16 @@ app.whenReady().then(() => {
   mcpRuntime = startMCP({ store, scheduler, logger: console });
   mcpRuntime.start();
 
+  ingestRuntime = startIngest({
+    store,
+    scheduler,
+    broadcast: (channel, payload) => broadcastToWindows(channel, payload),
+    onUsageObservation: (providerId, detail) => {
+      if (tokenSpeedRuntime) tokenSpeedRuntime.observeProvider(providerId, detail.observedAt);
+    }
+  });
+  ingestRuntime.start();
+
   setupIPC({
     store,
     registry,
@@ -891,6 +907,7 @@ app.whenReady().then(() => {
     runtime,
     resizeState,
     getMcpRuntime: () => mcpRuntime,
+    getIngestRuntime: () => ingestRuntime,
     getMainWindow: () => mainWindow,
     getSettingsWindow: () => settingsWindow,
     getLoginWindow: () => loginWindow,
@@ -951,6 +968,7 @@ app.on('before-quit', () => {
   if (codexUsageRuntime) { codexUsageRuntime.stop(); codexUsageRuntime = null; }
   if (tray) { tray.destroy(); tray = null; }
   if (mcpRuntime) { mcpRuntime.stop(); mcpRuntime = null; }
+  if (ingestRuntime) { ingestRuntime.stop(); ingestRuntime = null; }
 });
 
 app.on('activate', () => {

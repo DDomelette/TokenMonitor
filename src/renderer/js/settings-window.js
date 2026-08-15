@@ -329,6 +329,57 @@
     });
   }
 
+  function renderIngestConnectionInfo(info) {
+    var urlInput = document.getElementById('ingestServerUrl');
+    var tokenInput = document.getElementById('ingestServerToken');
+    var copyBtn = document.getElementById('ingestCopyBtn');
+    var rotateBtn = document.getElementById('ingestRotateBtn');
+    var statusEl = document.getElementById('ingestStatus');
+    if (!urlInput || !tokenInput) return;
+    urlInput.value = info.running ? info.url : (info.enabled ? '启动中/未运行' : '已关闭');
+    tokenInput.value = info.token || '';
+    if (copyBtn) copyBtn.disabled = !info.running;
+    if (rotateBtn) rotateBtn.disabled = !info.enabled;
+    if (statusEl) {
+      var diag = info.diagnostics || {};
+      var parts = [];
+      if (diag['batch-conflict']) parts.push('冲突 ' + diag['batch-conflict']);
+      if (diag['invalid-row']) parts.push('非法行 ' + diag['invalid-row']);
+      if (diag['unauthorized']) parts.push('未授权 ' + diag['unauthorized']);
+      if (diag['registry-full']) parts.push('注册表满 ' + diag['registry-full']);
+      statusEl.textContent = parts.length ? ('拒绝计数:' + parts.join(' / ')) : '';
+      statusEl.hidden = !parts.length;
+    }
+  }
+
+  function loadIngestConnectionInfo() {
+    if (!document.getElementById('ingestServerUrl')) return;
+    window.api.invoke('ingest:getConnectionInfo').then(renderIngestConnectionInfo).catch(function () {
+      var urlInput = document.getElementById('ingestServerUrl');
+      if (urlInput) urlInput.value = '不可用';
+    });
+  }
+
+  function copyIngestConnectionInfo() {
+    var urlInput = document.getElementById('ingestServerUrl');
+    var tokenInput = document.getElementById('ingestServerToken');
+    var copyBtn = document.getElementById('ingestCopyBtn');
+    if (!urlInput || !tokenInput) return;
+    navigator.clipboard.writeText(urlInput.value + '\nAuthorization: Bearer ' + tokenInput.value);
+    if (copyBtn) {
+      copyBtn.textContent = '已复制';
+      setTimeout(function () { copyBtn.textContent = '复制接收地址'; }, 1200);
+    }
+  }
+
+  function rotateIngestToken() {
+    var rotateBtn = document.getElementById('ingestRotateBtn');
+    if (rotateBtn) rotateBtn.disabled = true;
+    window.api.invoke('ingest:rotateToken').then(renderIngestConnectionInfo).catch(function () {}).then(function () {
+      if (rotateBtn) rotateBtn.disabled = false;
+    });
+  }
+
   function render(def, val, placeholder) {
     var v = val !== undefined ? val : def.default;
     switch (def.type) {
@@ -391,6 +442,16 @@
             '<button type="button" class="btn" id="mcpRotateBtn">重新生成 token</button>' +
           '</div>' +
         '</div>';
+      case 'ingestServer':
+        return '<div style="display:flex;flex-direction:column;gap:6px;width:100%;">' +
+          '<input type="text" class="text-input" id="ingestServerUrl" readonly value="加载中…" autocomplete="off" spellcheck="false">' +
+          '<input type="text" class="text-input" id="ingestServerToken" readonly value="" autocomplete="off" spellcheck="false">' +
+          '<span id="ingestStatus" role="status" hidden style="font-size:12px;line-height:1.3;"></span>' +
+          '<div style="display:flex;gap:6px;">' +
+            '<button type="button" class="btn btn-primary" id="ingestCopyBtn" disabled>复制接收地址</button>' +
+            '<button type="button" class="btn" id="ingestRotateBtn">重新生成 token</button>' +
+          '</div>' +
+        '</div>';
       case 'password':
         return '<input type="password" class="text-input" data-key="' + def.key + '" value="' + v + '"' + (placeholder ? ' placeholder="' + placeholder + '"' : '') + '>';
       default:
@@ -416,7 +477,7 @@
           if (d.key === 'apiKey' && settings.providers && settings.providers.deepseek && settings.providers.deepseek.apiKeySet) {
             placeholder = '已保存,输入新 Key 以更换';
           }
-          var vertical = d.type === 'slider' || d.type === 'credential' || d.type === 'proxy' || d.type === 'historySync' || d.type === 'diagnostics' || d.type === 'mcpServer';
+          var vertical = d.type === 'slider' || d.type === 'credential' || d.type === 'proxy' || d.type === 'historySync' || d.type === 'diagnostics' || d.type === 'mcpServer' || d.type === 'ingestServer';
           var value = d.key ? getNested(settings, d.key) : undefined;
           return '<div class="setting-row' + (vertical ? ' vertical' : '') + '"><div><span class="setting-label">' + d.label + '</span></div>' + render(d, value, placeholder) + '</div>';
         }).join('') + '</div>';
@@ -476,6 +537,11 @@
     if (mcpRotateBtn) {
       mcpRotateBtn.addEventListener('click', rotateMcpToken);
     }
+
+    var ingestCopyBtn = document.getElementById('ingestCopyBtn');
+    if (ingestCopyBtn) ingestCopyBtn.addEventListener('click', copyIngestConnectionInfo);
+    var ingestRotateBtn = document.getElementById('ingestRotateBtn');
+    if (ingestRotateBtn) ingestRotateBtn.addEventListener('click', rotateIngestToken);
 
     document.querySelectorAll('input[data-key]').forEach(function (el) {
       el.addEventListener('input', function () { handleChange(el); });
@@ -550,6 +616,7 @@
     bindEvents();
     syncProxyControls();
     loadMcpConnectionInfo();
+    loadIngestConnectionInfo();
     updateSessionSection();
     applyInitialTheme(settings);
   }

@@ -36,3 +36,21 @@ test('tray menu offers copying MCP connection info', () => {
   assert.match(index, /复制 MCP 连接信息/);
   assert.match(index, /clipboard/);
 });
+
+test('ingest IPC channels are whitelisted in preload and handled in ipc', () => {
+  const preload = read('src/preload/preload.js');
+  const ipc = read('src/main/ipc.js');
+  assert.match(preload, /'ingest:getConnectionInfo'/);
+  assert.match(preload, /'ingest:rotateToken'/);
+  assert.match(ipc, /ipcMain\.handle\('ingest:getConnectionInfo'/);
+  assert.match(ipc, /ipcMain\.handle\('ingest:rotateToken'/);
+});
+
+test('settings page declares DSH collection mode and ingest connection info', () => {
+  const defs = read('src/renderer/js/settings-definitions.js');
+  const win = read('src/renderer/js/settings-window.js');
+  assert.match(defs, /key: 'providers\.dsh\.collectionMode', type: 'select'/);
+  assert.match(defs, /type: 'ingestServer'/);
+  assert.match(win, /ingest:getConnectionInfo/);
+  assert.match(win, /ingest:rotateToken/);
+});

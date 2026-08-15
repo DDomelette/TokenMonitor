@@ -68,7 +68,9 @@ contextBridge.exposeInMainWorld('api', {
       'diagnostics:open-guide',
       'detect:proxy-port',
       'mcp:getConnectionInfo',
-      'mcp:rotateToken'
+      'mcp:rotateToken',
+      'ingest:getConnectionInfo',
+      'ingest:rotateToken'
     ];
     if (validChannels.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args);
