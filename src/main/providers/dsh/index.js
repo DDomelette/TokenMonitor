@@ -1,5 +1,6 @@
 // DSH Provider 适配器(localLog 通道:DSH usage 遥测文件)。
 const { readLocalLog, resolveTelemetryRoot } = require('./telemetrylog');
+const { shouldPollDshLocalLog } = require('../../core/dsh-collection-mode');
 
 module.exports = {
   id: 'dsh',
@@ -13,6 +14,10 @@ module.exports = {
 
   localLogRoot(ctx) {
     return resolveTelemetryRoot(ctx && ctx.store, process.env);
+  },
+
+  shouldPollLocalLog(ctx) {
+    return shouldPollDshLocalLog(ctx && ctx.store, this.localLogRoot(ctx));
   },
 
   readLocalLog

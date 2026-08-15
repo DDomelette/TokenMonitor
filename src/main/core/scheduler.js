@@ -268,9 +268,14 @@ function startScheduler({
 
   async function pollLocalLog(provider) {
     try {
+      const ctx = ctxFor(provider);
+      if (provider.id === 'dsh' && typeof provider.shouldPollLocalLog === 'function'
+          && !provider.shouldPollLocalLog(ctx)) {
+        // push 模式/活跃 source:跳过本轮文件扫描,不产生错误状态。
+        return;
+      }
       // Provider 先把增量合并进 usageDaily,随后按真实新增记录决定是否刷新界面。
       // Codex 经由运行时 FIFO 协调器串行化所有写操作;其它 provider 直接读取。
-      const ctx = ctxFor(provider);
       // dsh 的 readLocalLog 接受 opts.diagnostics(行解析/截断尾行等计数);
       // 其余 provider 保持原调用形态不变。
       const diagnostics = {};
