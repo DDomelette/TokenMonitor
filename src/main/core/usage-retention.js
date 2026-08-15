@@ -76,11 +76,34 @@ function pruneUsageDaily(store, nowMs) {
   return removed;
 }
 
+const PUSH_USAGE_KEY = 'usageDailyPush';
+const PUSH_COST_KEY = 'usageDailyCostPush';
+
+function pruneDshPushUsage(store, nowMs) {
+  if (!store || typeof store.get !== 'function' || typeof store.set !== 'function') {
+    throw new TypeError('pruneDshPushUsage requires a store with get/set methods');
+  }
+
+  const historyDays = normalizeHistoryDays(store.get('data.historyDays'));
+  if (!historyDays) return 0;
+
+  let removed = 0;
+  [PUSH_USAGE_KEY, PUSH_COST_KEY].forEach((key) => {
+    const current = store.get(key) || {};
+    const filtered = filterUsageDaily(current, historyDays, nowMs);
+    const n = Math.max(0, Object.keys(current).length - Object.keys(filtered).length);
+    if (n > 0) store.set(key, filtered);
+    removed += n;
+  });
+  return removed;
+}
+
 module.exports = {
   filterUsageDaily,
   isRetainedDay,
   localDayString,
   normalizeHistoryDays,
   pruneUsageDaily,
+  pruneDshPushUsage,
   retentionStartDay
 };

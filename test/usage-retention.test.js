@@ -99,6 +99,27 @@ test('physical cleanup mutates only retained daily usage and cost stores while p
   assert.strictEqual(data['providers.deepseek.fetchedMonths'], fetchedMonths);
 });
 
+test('pruneDshPushUsage cleans push usage and cost stores without touching local usageDaily', () => {
+  const { pruneDshPushUsage } = loadRetention();
+  const data = {
+    'data.historyDays': 3,
+    usageDaily: { 'dsh:2026-08-02': { total: 1 }, 'dsh:2026-08-05': { total: 2 } },
+    usageDailyPush: { 'dsh:2026-08-02': { total: 10 }, 'dsh:2026-08-05': { total: 20 } },
+    usageDailyCostPush: { 'dsh:2026-08-02': 0.1, 'dsh:2026-08-05': 0.2 }
+  };
+  const writes = [];
+  const store = {
+    get(key) { return data[key]; },
+    set(key, value) { writes.push([key, value]); data[key] = value; }
+  };
+  const removed = pruneDshPushUsage(store, NOW);
+  assert.equal(removed, 2);
+  assert.deepEqual(data.usageDailyPush, { 'dsh:2026-08-05': { total: 20 } });
+  assert.deepEqual(data.usageDailyCostPush, { 'dsh:2026-08-05': 0.2 });
+  assert.deepEqual(data.usageDaily, { 'dsh:2026-08-02': { total: 1 }, 'dsh:2026-08-05': { total: 2 } });
+  assert.deepEqual(writes.map((entry) => entry[0]), ['usageDailyPush', 'usageDailyCostPush']);
+});
+
 test('expired records remain filtered when a collector replays them after cleanup', () => {
   const { filterUsageDaily } = loadRetention();
   const replayed = {
@@ -153,16 +174,16 @@ test('retention setting changes and startup cleanup use the same physical bounda
     'utf8'
   );
 
-  assert.match(bootstrapSource, /const \{ pruneUsageDaily \} = require\('\.\/core\/usage-retention'\);/);
+  assert.match(bootstrapSource, /const \{ pruneUsageDaily, pruneDshPushUsage \} = require\('\.\/core\/usage-retention'\);/);
   assert.match(
     bootstrapSource,
-    /afterInitialize:\s*\(\)\s*=>\s*pruneUsageDaily\(storeModule\)/
+    /afterInitialize:\s*\(\)\s*=>\s*\{\s*pruneUsageDaily\(storeModule\);\s*pruneDshPushUsage\(storeModule\);\s*\}/
   );
   assert.match(bootstrapSource, /loadMain:\s*\(\)\s*=>\s*require\('\.\/index'\)/);
-  assert.match(writerSource, /const \{ pruneUsageDaily, normalizeHistoryDays \} = require\('\.\/usage-retention'\);/);
+  assert.match(writerSource, /const \{ pruneUsageDaily, pruneDshPushUsage, normalizeHistoryDays \} = require\('\.\/usage-retention'\);/);
   assert.match(
     writerSource,
-    /if \(targetKey === 'data\.historyDays'\) \{\s*pruneUsageDaily\(deps\.store\);\s*\}/
+    /if \(targetKey === 'data\.historyDays'\) \{\s*pruneUsageDaily\(deps\.store\);\s*pruneDshPushUsage\(deps\.store\);\s*\}/
   );
 });
 

@@ -1,6 +1,7 @@
 const { isWritableSettingKey, resolveWritableSettingKey } = require('./settings-security');
 const { normalizeStoredProxyValue, SYSTEM_PROXY_VALUE } = require('./proxy-settings');
-const { pruneUsageDaily, normalizeHistoryDays } = require('./usage-retention');
+const { pruneUsageDaily, pruneDshPushUsage, normalizeHistoryDays } = require('./usage-retention');
+const { normalizeDshCollectionMode } = require('./dsh-collection-mode');
 const {
   normalizeIntervalSeconds,
   normalizeProviderFilter
@@ -22,6 +23,9 @@ function normalizeSettingValue(targetKey, value) {
   }
   if (targetKey === 'data.tokenSpeed.providerFilter') {
     return normalizeProviderFilter(value);
+  }
+  if (targetKey === 'providers.dsh.collectionMode') {
+    return normalizeDshCollectionMode(value);
   }
   return value;
 }
@@ -47,6 +51,7 @@ function saveSetting(deps, payload) {
   }
   if (targetKey === 'data.historyDays') {
     pruneUsageDaily(deps.store);
+    pruneDshPushUsage(deps.store);
   }
 
   if (typeof deps.applySetting === 'function') {
