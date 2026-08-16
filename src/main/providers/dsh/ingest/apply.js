@@ -26,6 +26,11 @@ function normalizeSources(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+function readBatchTtlMs(store) {
+  const days = Number(readStore(store, 'ingest.dsh.batchTtlDays'));
+  return Number.isFinite(days) && days > 0 ? days * 24 * 60 * 60 * 1000 : DEFAULT_BATCH_TTL_MS;
+}
+
 function markSourceActive(sources, sourceId, rootId, nowMs, hasBatch) {
   const next = JSON.parse(JSON.stringify(sources));
   const prev = next[sourceId] || {};
@@ -80,7 +85,7 @@ function createIngestApply(options = {}) {
           batchId: env.batchId,
           rowCount: records.length,
           bodyHash
-        }, nowMs, DEFAULT_BATCH_TTL_MS);
+        }, nowMs, readBatchTtlMs(store));
 
         if (classified.status === 'conflict') {
           onRejected({ sourceId: env.sourceId, code: 'batch-conflict' });
@@ -121,7 +126,7 @@ function createIngestApply(options = {}) {
     pruneStoredRegistry() {
       if (!store) return;
       const registry = normalizeSources(readStore(store, REGISTRY_KEY));
-      const { registry: pruned } = pruneRegistry(registry, now(), DEFAULT_BATCH_TTL_MS);
+      const { registry: pruned } = pruneRegistry(registry, now(), readBatchTtlMs(store));
       if (typeof store.store === 'object') {
         const copy = JSON.parse(JSON.stringify(store.store));
         setNested(copy, REGISTRY_KEY, pruned);

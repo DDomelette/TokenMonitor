@@ -64,3 +64,39 @@ test('heartbeat updates source lease without touching ledger or registry', async
   assert.equal(store.get('usageDailyPush'), undefined);
   assert.equal(store.get(REGISTRY_KEY), undefined);
 });
+
+test('configured batchTtlDays drives classification instead of the fixed default', async () => {
+  const store = makeStore({
+    usageDailyPush: {},
+    usageDailyCostPush: {},
+    data: { historyDays: 30 },
+    ingest: { dsh: { batchTtlDays: 1 } }
+  });
+  let current = TS;
+  const apply = createIngestApply({ store, now: () => current });
+  await apply.handle(envelope());
+
+  current = TS + 2 * 24 * 60 * 60 * 1000;
+  const later = await apply.handle(envelope({
+    rows: [{ v: 1, time: current, sessionId: 's1', model: 'deepseek-v4-pro', inputTokens: 100, outputTokens: 200, cacheReadTokens: 0, cacheWriteTokens: 0 }]
+  }));
+  assert.deepEqual(later, { ok: true, accepted: 1, duplicates: 0 });
+  assert.equal(store.get('usageDailyPush')['dsh:2026-08-16'].total, 300);
+});
+
+test('pruneStoredRegistry uses the configured batchTtlDays', () => {
+  const old = TS - 2 * 24 * 60 * 60 * 1000;
+  const store = makeStore({
+    ingest: {
+      dsh: {
+        batchTtlDays: 1,
+        batchRegistry: {
+          src: { b: { acceptedAt: old, rowCount: 1, bodyHash: 'h' } }
+        }
+      }
+    }
+  });
+  const apply = createIngestApply({ store, now: () => TS });
+  apply.pruneStoredRegistry();
+  assert.deepEqual(store.get(REGISTRY_KEY), {});
+});
