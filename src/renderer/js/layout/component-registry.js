@@ -186,7 +186,7 @@
     },
     {
       id: 'token-line',
-      label: 'Token 消耗趋势',
+      label: 'DeepSeek Token 消耗趋势',
       settingsKey: 'components.tokenLine',
       defaultVisible: true,
       presets: {
@@ -210,7 +210,7 @@
     },
     {
       id: 'cost-line',
-      label: '费用增长趋势',
+      label: 'DeepSeek 费用增长趋势',
       settingsKey: 'components.costLine',
       defaultVisible: true,
       presets: {

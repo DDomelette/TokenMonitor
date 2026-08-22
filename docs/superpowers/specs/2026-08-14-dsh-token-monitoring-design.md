@@ -170,10 +170,10 @@ src/main/providers/dsh/
 | DSH 遥测 | 设置关闭 | 不订阅、不写文件 |
 | Monitor | 行损坏 / v≠1 / 字段非法 | 跳过该行,诊断计数 +1 |
 | Monitor | 遥测目录/单个文件不存在或暂时不可读 | 视为本轮无新数据,不报错且保留既有游标;恢复后从原 offset 续扫 |
-| Monitor | 游标提交失败 | 快照路径整体替换 store(原子);回退路径单次多键 `set(object)` 一次落盘、失败单次还原三键(usageDaily/usageDailyCost/游标)——不存在三次独立写之间的崩溃窗口;游标边界处被重读的最后一行由 `lastEventFingerprint` 指纹兜底去重 |
+| Monitor | 游标提交失败 | 快照路径整体替换 store(原子);回退路径单次多键 `set(object)` 一次落盘、失败单次还原三键(usageDaily/usageDailyCost/游标)——不存在三次独立写之间的崩溃窗口;数据与游标同单元落盘,重放态不可达,增量路径不做内容指纹去重 |
 | Monitor | 模型单价缺失 | cost 记 0,诊断计数 +1,不阻塞聚合 |
 
-事件指纹:规范化 time + sessionId + model + 四桶数值做 SHA-256,重扫去重(含会话与模型身份,避免不同会话同毫秒同桶的行被误去重)。
+事件指纹:规范化 time + sessionId + model + 四桶数值做 SHA-256,作为行元数据保留,仅供显式重建路径(`seenFingerprints` 全量去重)使用。**增量扫描不按内容去重**:attempt 级行可能字节完全相同(同毫秒、同会话、同模型、同四桶的双 attempt),内容去重会误杀真实的第二行导致漏计;原子提交已消除重放态,内容去重只有坏处。
 
 ## 6. 测试策略(TDD,先写测试)
 
@@ -191,7 +191,7 @@ src/main/providers/dsh/
 
 1. 遥测行解析:正常行、v 不匹配、坏 JSON、缺 model、缺/空 sessionId、字符串/null/布尔 token、缺失可选 cache 桶、负数或超安全整数 token。
 2. 字段映射:inputTokens 含 cacheWrite、cachedTokens=cacheRead、cost 按单价表。
-3. 游标续扫:跨轮次增量、文件追加只读新行;目录和文件临时移走再恢复不清游标、不重复累计;重扫去重(指纹)。
+3. 游标续扫:跨轮次增量、文件追加只读新行;目录和文件临时移走再恢复不清游标、不重复累计(数据与游标原子提交,无重放态;字节相同的连续 attempt 行全部计数)。
 4. 根目录解析:默认 ~/.dsh/telemetry、DSH_HOME 环境变量、settings 覆盖优先级;测试只用宿主平台原生路径构造,并在 Windows/POSIX 分别通过。
 5. 费用:2026-08-17 生效边界前后、09:00/12:00/14:00/18:00 峰谷边界、Flash/Pro 四桶费用均精确;未知模型 cost=0 + 诊断;历史重扫按事件时间而非扫描时间计价。
 6. 保留期:`pruneUsageDaily` 用同一窗口清理 `usageDaily` / `usageDailyCost`,且不触碰游标和其他设置。
@@ -211,12 +211,12 @@ src/main/providers/dsh/
 2. **时钟前跳**:`normalizeTimestampMs` 拒绝 `time > Monitor 当前时间 + 24h` 的行(计 `invalidTimestamp` 诊断)。DSH 与 Monitor 异机且 DSH 时钟超前超过一天时,该行被丢弃。
 3. **单实例写入假设**:DSH writer 每次 `appendFile` 重开文件,Windows 跨进程追加不保证单行原子;假定 `$DSH_HOME` 由单个 DSH 实例独占写入(多实例共享目录可能产生行交错,消费端按坏行丢弃并计诊断)。
 4. **整数安全**:消费端用 `Number.isSafeInteger` 校验 token 四桶(≥2^53 整行丢弃);DSH 生产端 schema 与消费端对齐(超安全整数范围的行生产端即拒绝,不产生"生产放行、消费拒绝"的不一致)。
-5. **指纹格式含 sessionId**:`eventFingerprint = sha256(ISO(time) \0 sessionId \0 model \0 四桶)`。指纹格式变更会使旧游标的 `lastEventFingerprint` 失效一次(升级瞬间若发生回放,衔接处每文件重发一行);本分支未发布、无既有数据,实际影响为零。
+5. **attempt 级同内容行**:`eventFingerprint = sha256(ISO(time) \0 sessionId \0 model \0 四桶)`。两条同毫秒、同会话、同模型、同四桶的 attempt 行指纹相同,但都是真实计费行,增量扫描全部计数(不做内容去重);指纹仅作为行元数据并供显式重建路径(`seenFingerprints`)全量去重。
 6. **曲线日键**:`renderer/src/lib/curve-merge.js` 复用渲染端 `beijingDayKey`,输出点使用 `Date.UTC(year, month-1, day)`;不得使用宿主本地 `getFullYear/getMonth/getDate` 或本地午夜构造,避免 UTC-时区把 UTC 午夜点归入前一天。
 
 ## 8. 验收标准
 
-1. DSH 实例重启后,每完成一次模型请求,`$DSH_HOME/telemetry/usage-YYYY-MM-DD.jsonl` 新增一行,字段与 3.3 表一致;跨天自动切换新文件;settings 关闭后不再写入。
+1. DSH 实例重启后,每次会话归属(sessionId)且产生 provider usage 的 `llm/stream` 调用追加一行(含失败/重试/中止的计费调用;无 sessionId 或无 usage 的调用不产生行),字段与 3.3 表一致;跨天自动切换新文件;settings 关闭后不再写入。
 2. Monitor 启动后(后端验收):store 的 usageDaily 出现 provider `dsh` 记录;日聚合 / 热力图 / 跨平台堆叠的 IPC 数据包含 dsh;token-speed-tracker 快照含 `dsh` 序列且窗口计算正常;费用趋势数据含 dsh 费用。渲染层平台下拉与卡片(验收标准属 Kimi 前端工作,不在本 spec 范围)。
 3. `npm test`(Monitor)与 DSH 新包 vitest 全绿;既有测试无回归。
 4. 遥测文件不含任何 prompt/工具文本(隐私验收)。

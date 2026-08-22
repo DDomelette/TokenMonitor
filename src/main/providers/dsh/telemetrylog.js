@@ -82,8 +82,11 @@ function commitTelemetryScanState(store, usageDaily, usageDailyCost, cursors) {
   }
 }
 
-// 扫描单根目录下的 usage-*.jsonl:稳定身份 = 完整路径;onRecord 内做事件指纹去重
-// (游标提交失败重扫时,已提交行之前的最后一条会被重读,指纹相同即跳过)。
+// 扫描单根目录下的 usage-*.jsonl:稳定身份 = 完整路径。
+// 增量路径不做内容指纹去重:usageDaily/usageDailyCost 与游标随单次原子提交
+// 同单元落盘,"游标落后于数据"的重放态不可达;而 attempt 级行可能字节完全相同
+// (同毫秒、同会话、同模型、同四桶的双 attempt),按 lastEventFingerprint 去重会
+// 误杀真实的第二行导致漏计。seenFingerprints 分支仅供显式重建(全量去重)使用。
 async function scanTelemetryBatch({ store, root, parseLine, diagnostics, nowMs, chunkBytes, maxBytesPerScan, yieldToLoop, seenFingerprints }) {
   const cursors = cloneStoreValue((store && store.get(CURSOR_KEY)) || {});
   const files = await walkFiles(root, MATCH);
@@ -98,26 +101,21 @@ async function scanTelemetryBatch({ store, root, parseLine, diagnostics, nowMs, 
     parseLine,
     onRecord({ record, cursor, records }) {
       if (record && record.eventFingerprint) {
-        const fingerprint = record.eventFingerprint;
         let emit = true;
         if (seenFingerprints) {
-          if (seenFingerprints.has(fingerprint)) {
+          if (seenFingerprints.has(record.eventFingerprint)) {
             incrementDiagnostic(diagnostics, 'duplicateEvent');
             emit = false;
           } else {
-            seenFingerprints.add(fingerprint);
+            seenFingerprints.add(record.eventFingerprint);
           }
-        } else if (cursor.lastEventFingerprint === fingerprint) {
-          incrementDiagnostic(diagnostics, 'duplicateEvent');
-          emit = false;
         }
         if (emit) records.push(Object.assign({ provider: 'dsh' }, record));
-        cursor.lastEventFingerprint = fingerprint;
       }
       return cursor;
     },
     resetCursor(cursor, stat) {
-      return { offset: 0, mtimeMs: stat.mtimeMs, lastEventFingerprint: null };
+      return { offset: 0, mtimeMs: stat.mtimeMs };
     },
     setCursor(candidate, cursor) {
       cursors[candidate.identity] = cursor;

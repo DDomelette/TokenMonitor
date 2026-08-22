@@ -748,3 +748,17 @@ Check every requirement in `docs/superpowers/specs/2026-08-14-dsh-token-monitori
 - [ ] **Step 8: Hand off without remote Git mutation**
 
 Report the exact test/build counts, any skipped checks, remaining warnings, and the local commits created. Do not push, rewrite history, or open a PR.
+
+---
+
+## 后续修订(2026-08-14 追加):移除 dsh 增量扫描的内容指纹去重
+
+上游 DSH 改为 attempt 级记录后,同毫秒、同会话、同模型、同四桶的双 attempt 会产生**字节完全相同**的两行;原 lastEventFingerprint 内容去重会误杀第二条导致漏计。又因 M3 已把 usageDaily/usageDailyCost/游标改为单次原子提交,数据与游标同单元落盘,"游标落后于数据"的重放态不可达,内容去重只有坏处。
+
+修改:
+- src/main/providers/dsh/telemetrylog.js:增量路径移除 lastEventFingerprint 边界去重与游标字段写回;eventFingerprint 保留为行元数据,seenFingerprints 显式重建去重分支不变。
+- 	est/dsh-telemetrylog.test.js:原"skips a re-read line"用例改写为"stale cursor re-emits the line";新增"两条字节相同的连续 attempt 行全部计数"回归用例(TDD 红→绿)。
+- docs/superpowers/specs/2026-08-14-dsh-token-monitoring-design.md:§5 游标行、事件指纹说明、§6 Monitor 测试 3、§7.5(5)、§8 验收 1 同步更新。
+
+验证:
+ode --test(全量)与 dsh 相关测试全绿;无提交,改动留工作区。
