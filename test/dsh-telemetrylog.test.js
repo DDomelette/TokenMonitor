@@ -518,13 +518,16 @@ test('parseTelemetryLine counts an unknownModel diagnostic and zeroes cost for u
   assert.equal(diagnostics.unknownModel, 2);
 });
 
-test('scanTelemetryBatch skips a re-read line via cursor.lastEventFingerprint', async () => {
+test('scanTelemetryBatch re-emits a line re-read under a stale cursor (no content-based dedup)', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-telemetry-'));
   const dayFile = 'usage-2026-08-14.jsonl';
   const row = { v: 1, time: Date.UTC(2026, 7, 14, 2, 0, 0), sessionId: 's1', model: 'deepseek-v4-pro', inputTokens: 100, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 };
   writeRows(root, dayFile, [row]);
   const filePath = path.join(root, dayFile);
-  // 模拟"行已发射但游标未前进"的崩溃残留:offset 0 + 该行指纹。
+  // 模拟"行已发射但游标未前进"的旧式崩溃残留:offset 0 + 该行指纹。
+  // 原子提交(M3)后数据与游标同单元落盘,该状态不可达;若历史游标确实滞后,
+  // 行会被再次发射——内容指纹去重已被移除,因为它会把"两条字节相同的真实
+  // 计费行"误杀(见下一个用例)。
   const { parseTelemetryLine } = require('../src/main/providers/dsh/telemetrylog');
   const fingerprint = parseTelemetryLine(JSON.stringify(row), {}, Date.now()).eventFingerprint;
   const store = makeStore({
@@ -535,6 +538,25 @@ test('scanTelemetryBatch skips a re-read line via cursor.lastEventFingerprint', 
   const diagnostics = {};
   const { readLocalLog } = require('../src/main/providers/dsh/telemetrylog');
   const batch = await readLocalLog({ store }, { nowMs: Date.UTC(2026, 7, 14, 4, 0, 0), diagnostics });
-  assert.equal(batch.records.length, 0);
-  assert.equal(diagnostics.duplicateEvent, 1);
+  assert.equal(batch.records.length, 1, 'a stale cursor re-reads and re-emits the line');
+  assert.equal(diagnostics.duplicateEvent, undefined, 'no content-based duplicate suppression');
+});
+
+test('scanTelemetryBatch emits both rows when two consecutive attempts are byte-identical', async () => {
+  // 双 attempt 同毫秒、同会话、同模型、同四桶 → 内容指纹完全相同,但它们是两条
+  // 真实的计费行;内容去重会误杀第二条导致漏计。原子提交下重放态不可达,
+  // 增量路径不再按 lastEventFingerprint 去重。
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-telemetry-'));
+  const dayFile = 'usage-2026-08-14.jsonl';
+  const row = { v: 1, time: Date.UTC(2026, 7, 14, 2, 0, 0), sessionId: 's1', model: 'deepseek-v4-pro', inputTokens: 100, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  writeRows(root, dayFile, [row, row]);
+  const store = makeStore({
+    providers: { dsh: { telemetryRoot: root } },
+    data: { historyDays: 30 }
+  });
+  const diagnostics = {};
+  const { readLocalLog } = require('../src/main/providers/dsh/telemetrylog');
+  const batch = await readLocalLog({ store }, { nowMs: Date.UTC(2026, 7, 14, 4, 0, 0), diagnostics });
+  assert.equal(batch.records.length, 2, 'both byte-identical attempt rows must be counted');
+  assert.equal(diagnostics.duplicateEvent, undefined);
 });

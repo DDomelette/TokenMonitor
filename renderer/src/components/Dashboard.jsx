@@ -28,8 +28,8 @@ const LABELS = {
   'cache-rate-card': '缓存命中率',
   'model-bar': 'DeepSeek 每日 Token 消耗',
   'provider-bar': '每日 Token 消耗',
-  'token-line': 'Token 消耗',
-  'cost-line': '费用增长趋势'
+  'token-line': 'DeepSeek Token 消耗',
+  'cost-line': 'DeepSeek 费用增长趋势'
 };
 
 const FEE_IDS = ['balance-card', 'today-cost-card', 'cache-rate-card'];
@@ -182,26 +182,36 @@ export default function Dashboard({ editing }) {
     }, host);
     gridRef.current = grid;
 
-    /* ---- 内容溢出时自动撑高模块(只增不减),替代内部滚动条 ----
-       测量 .grid-stack-item-content 的 scrollHeight,超出即按格高增加 h。
-       增长不写入预设布局(validateLayout 会按预设吸附,属预期),每次运行期重新撑高。 */
+    /* ---- 内容溢出时自动撑高模块,替代内部滚动条 ----
+       测量 .grid-stack-item-content 的 scrollHeight,按格高调整到合身。
+       撑高以布局记录的预设高度为基准浮动:内容回落后缩回基准,避免瞬时溢出
+       (凭证过期横幅、空态长文案、窄窗口文本换行)被"只增不减"棘轮永久累积。 */
     let fitRaf = 0;
     const fitItems = () => {
       fitRaf = 0;
       if (editingRef.current) return; // 编辑模式下由用户手动定尺寸,绝不介入
       const cell = grid.getCellHeight(true);
       if (!cell) return;
+      const baseItems = (layoutRef.current[bp] && layoutRef.current[bp].items) || [];
       host.querySelectorAll('.grid-stack-item').forEach((itemEl) => {
         const id = itemEl.getAttribute('gs-id');
         if (CHART_IDS.includes(id)) return;
         const content = itemEl.querySelector('.grid-stack-item-content');
         if (!content) return;
-        if (content.scrollHeight - content.clientHeight <= 1) return;
         const node = itemEl.gridstackNode;
         const cur = node && node.h ? node.h : parseInt(itemEl.getAttribute('gs-h'), 10);
         const pad = itemEl.clientHeight - content.clientHeight;
         const need = Math.ceil((content.scrollHeight + pad) / cell);
-        if (Number.isFinite(need) && need > cur) grid.update(itemEl, { h: need });
+        if (!Number.isFinite(need)) return;
+        const baseItem = baseItems.find((it) => it.id === id);
+        const base = Math.max(
+          baseItem && baseItem.h ? baseItem.h : 1,
+          MIN_SIZES[id] ? MIN_SIZES[id].h : 1
+        );
+        const target = Math.max(need, base);
+        if (target === cur) return;
+        console.debug('[fit]', id, 'h', cur, '->', target, { need: need, base: base, scrollHeight: content.scrollHeight, clientHeight: content.clientHeight });
+        grid.update(itemEl, { h: target });
       });
     };
     const scheduleFit = () => {
@@ -218,6 +228,10 @@ export default function Dashboard({ editing }) {
     const onChange = () => {
       if (!grid) return;
       scheduleFit();
+      // 非编辑模式 staticGrid 下用户无法拖动/缩放,change 只可能来自自动撑高;
+      // 运行期撑高不落盘(原设计意图),否则瞬时溢出会被 nearestPreset 吸附进
+      // 持久布局,跨会话永久累积抬高模块高度。
+      if (!editingRef.current) return;
       const saved = grid.save(false);
       const items = (saved || []).map((item) => {
         const preset = item.preset

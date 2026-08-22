@@ -539,3 +539,28 @@ test('日边界:rollupDaily 聚合键为北京结算日', () => {
     assert.ok(daily[pid + ':2026-06-18'], pid + ' 应按北京日历日聚合,实际键:' + Object.keys(daily).join(','));
   });
 });
+
+test('sync 进行中其他 provider 提交的新键不被整体写覆盖(逐键合并写)', async () => {
+  // 回归:syncDeepSeekHistory 曾持有 usageDaily 快照跨多月 await,末尾整体覆盖写,
+  // 会把期间 dsh ingest/localLog 提交的 dsh: 键静默抹掉。现在改为末尾重读最新对象、
+  // 只覆盖 deepseek: 前缀的键。
+  const store = makeStore({ usageDaily: {} });
+  const fetchMonth = async (year, month) => {
+    if (year === 2026 && month === 8) {
+      // 模拟同步进行中 dsh 通道提交了当日的 dsh: 键( ingest push 任意时刻到达)
+      store.set('usageDaily', {
+        'dsh:2026-08-07': { input: 3, cached: 1, output: 2, total: 6 }
+      });
+      return [{ date: '2026-08-01', total: 100, cacheHit: 40, models: [] }];
+    }
+    return [];
+  };
+  await syncDeepSeekHistory({
+    fetchMonth, readStore: store.get, writeStore: store.set,
+    now: '2026-08-07T12:00:00', sleep: noopSleep
+  });
+  assert.deepEqual(store.data.usageDaily['dsh:2026-08-07'], {
+    input: 3, cached: 1, output: 2, total: 6
+  });
+  assert.equal(store.data.usageDaily['deepseek:2026-08-01'].total, 100);
+});

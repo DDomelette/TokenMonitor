@@ -143,7 +143,24 @@ async function syncDeepSeekHistory(options) {
     }
   }
 
-  writeStore('usageDaily', usageDaily);
+  // 逐键合并写:本地 usageDaily 是同步开始时的快照,跨多月 await 期间 dsh 等
+  // 其他 provider 可能已提交新键(如 ingest push),整体覆盖会把它们静默抹掉。
+  // 先收集本地 deepseek 行,再重新读最新对象做浅拷贝,只以本地结果覆盖
+  // deepseek: 前缀的键(含删除本函数视角下已被清理的 deepseek 键),
+  // 其他 provider 的键保留最新值。浅拷贝而非原地改,兼容 readStore 返回
+  // 活引用的 store 实现(避免写入前的中间态对其他读者可见)。
+  const deepseekRows = {};
+  Object.keys(usageDaily).forEach((k) => {
+    if (k.indexOf('deepseek:') === 0) deepseekRows[k] = usageDaily[k];
+  });
+  const mergedDaily = Object.assign({}, readStore('usageDaily') || {});
+  Object.keys(mergedDaily).forEach((k) => {
+    if (k.indexOf('deepseek:') === 0) delete mergedDaily[k];
+  });
+  Object.keys(deepseekRows).forEach((k) => {
+    mergedDaily[k] = deepseekRows[k];
+  });
+  writeStore('usageDaily', mergedDaily);
   writeStore(SYNCED_MONTHS_KEY, Array.from(syncedMonths));
   writeStore(EMPTY_MONTHS_KEY, Array.from(emptyMonths));
   writeStore(COVERAGE_KEY, coverage);
