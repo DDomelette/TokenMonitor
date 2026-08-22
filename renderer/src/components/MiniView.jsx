@@ -76,17 +76,19 @@ function RowInfo({ pid, rate }) {
   );
 }
 
-// 贴边收起后的竖条:每个平台一条全程轨道(灰白色,与背景区分),
-// 底部彩色填充高度 ∝ 当前速度(三者相对最大值归一,1K/min 地板),速度为 0 时轨道全空。
-// 顶边吸附时可见区是横条,速度映射为横向长度
+// 贴边收起后的竖条:每个平台一条胶囊形轨道(上下半圆端,透明底透出亚克力),
+// 底部彩色填充高度 ∝ 当前速度;固定刻度 1000.0K/min = 100%,超出按满格计。
+// 注意可见区在窗口的"靠屏内侧":右缘停靠时窗口向右滑出,屏上露出的是窗口的
+// 左 12px,竖条必须画在窗口左侧;左缘停靠反之;顶缘收起露出窗口底部。
 function SpeedStrip({ edge, rates, onRestore }) {
+  const FULL_SCALE = 1000000; // 1000.0K/min = 100%
   const values = ['deepseek', 'codex', 'kimi'].map((pid) => Number(rates[pid]) || 0);
-  const max = Math.max(1000, ...values);
   const horizontal = edge === 'top';
+  const side = edge === 'right' ? 'left' : edge === 'left' ? 'right' : 'top';
   return (
-    <div className={'mini-strip mini-strip-' + (edge === 'left' || edge === 'top' ? edge : 'right')} onClick={onRestore}>
+    <div className={'mini-strip mini-strip-' + side} onClick={onRestore}>
       {['deepseek', 'codex', 'kimi'].map((pid, i) => {
-        const pct = Math.round((values[i] / max) * 100) + '%';
+        const pct = Math.min(100, Math.round((values[i] / FULL_SCALE) * 100)) + '%';
         return (
           <div key={pid} className="mini-strip-bar">
             <div

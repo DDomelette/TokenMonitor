@@ -1097,24 +1097,19 @@ body,
   white-space: nowrap;
 }
 
-/* 贴边吸附收起后的竖条速度柱(停靠右缘时可见区在窗口右侧 12px) */
+/* 贴边吸附收起后的竖条速度柱:三条轨道纵向堆叠,更粗更易读。
+   背景透明,直接透出窗口的亚克力材质,与主题一致。
+   注意可见区在窗口"靠屏内侧":右缘停靠时窗口向右滑出,屏上露出窗口左 12px。 */
 .mini-strip {
   position: fixed;
   display: flex;
+  flex-direction: column;
   align-items: stretch;
   justify-content: center;
-  gap: 2px;
-  padding: 5px 2px;
-  background: rgba(10, 12, 18, 0.88);
+  gap: 3px;
+  padding: 6px 2px;
+  background: transparent;
   user-select: none;
-}
-
-.mini-strip-right {
-  top: 0;
-  bottom: 0;
-  right: 0;
-  width: 12px;
-  border-radius: 6px 0 0 6px;
 }
 
 .mini-strip-left {
@@ -1122,27 +1117,36 @@ body,
   bottom: 0;
   left: 0;
   width: 12px;
-  border-radius: 0 6px 6px 0;
 }
 
-/* 顶边吸附:可见区是窗口底部 12px,轨道躺平成横条 */
+.mini-strip-right {
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+}
+
+/* 顶边吸附:可见区是窗口底部 12px,轨道横排 */
 .mini-strip-top {
   left: 0;
   right: 0;
   bottom: 0;
   height: 12px;
-  padding: 2px 5px;
-  border-radius: 0 0 6px 6px;
+  flex-direction: row;
+  padding: 2px 6px;
 }
 
-/* 每个平台一条全程轨道(灰白色,与深色底区分),底部彩色填充 ∝ 速度 */
+/* 每个平台一条胶囊形轨道(上下半圆端;跟随主题的空态色),彩色填充 ∝ 速度 */
 .mini-strip-bar {
   position: relative;
-  width: 3px;
   flex: 1;
-  background: rgba(255, 255, 255, 0.55);
-  border-radius: 1px;
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 999px;
   overflow: hidden;
+}
+
+:root[data-theme$='dark'] .mini-strip-bar {
+  background: rgba(255, 255, 255, 0.45);
 }
 
 .mini-strip-fill {
@@ -1151,13 +1155,8 @@ body,
   right: 0;
   bottom: 0;
   min-height: 0;
-  border-radius: 1px;
+  border-radius: 999px;
   transition: height 0.4s ease-out;
-}
-
-.mini-strip-top .mini-strip-bar {
-  width: auto;
-  height: 2.5px;
 }
 
 .mini-strip-top .mini-strip-fill {
