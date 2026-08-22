@@ -8,6 +8,7 @@ const registry = require('./providers/registry');
 const deepseekProvider = require('./providers/deepseek');
 const codexProvider = require('./providers/codex');
 const kimiProvider = require('./providers/kimi');
+const { detectWslKimiRoots } = require('./providers/kimi/wsl-roots');
 const dshProvider = require('./providers/dsh');
 const { startScheduler } = require('./core/scheduler');
 const { rebuildCodexUsage } = require('./providers/codex/rebuild');
@@ -21,6 +22,7 @@ const {
   resolveElectronSystemProxy
 } = require('./core/proxy-settings');
 const { createTokenSpeedRuntime } = require('./core/token-speed-runtime');
+const { createMiniMode, MINI_WIDTH, MINI_HEIGHT } = require('./core/mini-mode');
 const { wakeMostRelevantWindow } = require('./core/startup-windows');
 const { createEdgeDock } = require('./core/edge-dock');
 const setupIPC = require('./ipc');
@@ -52,6 +54,7 @@ let scheduler = null;
 let diagnostics = null;
 let getProxyInput = null;
 let tokenSpeedRuntime = null;
+let miniMode = null;
 let mcpRuntime = null;
 let ingestRuntime = null;
 let codexUsageRuntime = null;
@@ -143,13 +146,19 @@ function createEdgeDockRuntime() {
     onPersistDock: function (meta) {
       store.set('window.edgeDock', meta);
     },
+    // 停靠状态广播给渲染层:迷你模式在 collapsed 时切换成竖条速度柱
+    onStateChange: function (state) {
+      var meta = edgeDock && edgeDock.getDockMeta();
+      broadcastToWindows('edge-dock:state', { state: state, edge: meta ? meta.edge : null });
+    },
     // 收起前的最终裁决依据:光标真实位置(enter/leave 事件在边界会丢失/乱序)
     getCursorPoint: function () {
       try { return screen.getCursorScreenPoint(); } catch (_) { return null; }
     }
   });
   // 重启恢复逻辑停靠:重新匹配当前显示器,落不进现存 workArea 的由状态机修正
-  if (store.get('window.edgeAutoHide')) {
+  // 迷你模式始终可吸附(不受 edgeAutoHide 开关限制)
+  if (store.get('window.edgeAutoHide') || store.get('window.miniMode')) {
     var meta = store.get('window.edgeDock');
     if (meta) edgeDock.restoreDock(meta, screen.getAllDisplays());
   }
@@ -179,6 +188,8 @@ function createMainWindow() {
     alwaysOnTop: store.get('window.alwaysOnTop'),
     // 原生缩放:Chromium 在系统缩放循环中拉伸旧帧,不会露出黑色欠采样区(同 VSCode)
     resizable: true,
+    // 禁最大化:拖拽区双击留给迷你模式"双击恢复完整窗口",不与系统最大化抢手势
+    maximizable: false,
     minWidth: 380,
     minHeight: 200,
     maxWidth: 2400,
@@ -194,6 +205,8 @@ function createMainWindow() {
   // 整窗透明度已由 backgroundMaterial:'acrylic' 的 DWM 磨砂取代。
   // 禁用 setOpacity:它会加 WS_EX_LAYERED,分层窗口缩放时新区域被清成透明黑,
   // 整窗统一 alpha 混合后显示为黑边。
+  // 持久化的迷你模式:首帧前把窗口调整成迷你尺寸/位置
+  if (miniMode) miniMode.applyOnCreate(mainWindow);
   loadRenderer(mainWindow);
   createEdgeDockRuntime();
 
@@ -227,13 +240,15 @@ function createMainWindow() {
     // 非动画的程序性 setBounds(吸附落定/恢复)的回声:不广播、不落盘、不重新评估停靠
     if (edgeDock && edgeDock.matchesCurrent(mainWindow.getBounds())) return;
     // 非回声 move = 用户在拖动:立即解除停靠,窗口才不会被吸附拽住
-    if (edgeDock && store.get('window.edgeAutoHide')) edgeDock.userMoveStarted();
+    // 迷你模式始终可吸附(微缩窗口支持贴边成竖条)
+    var dockEnabled = store.get('window.edgeAutoHide') || (miniMode && miniMode.isActive());
+    if (edgeDock && dockEnabled) edgeDock.userMoveStarted();
     sendMainWindowBounds();
     clearTimeout(moveDebounce);
     moveDebounce = setTimeout(function () {
       if (!mainWindow || mainWindow.isDestroyed()) return;
       if (edgeDock && (edgeDock.isProgrammatic() || edgeDock.matchesCurrent(mainWindow.getBounds()))) return;
-      if (edgeDock && store.get('window.edgeAutoHide')) {
+      if (edgeDock && dockEnabled) {
         edgeDock.userMoveSettled(mainWindow.getBounds(), screen.getAllDisplays());
       }
       persistMainWindowBounds();
@@ -386,6 +401,14 @@ function updateTrayMenu() {
         else if (mainWindow) revealMainWindow();
       }
     },
+    // 迷你模式下提供恢复完整窗口的入口(微缩窗口没有标题栏按钮)
+    ...(miniMode && miniMode.isActive() ? [{
+      label: '恢复完整窗口',
+      click: () => {
+        if (miniMode) miniMode.exit();
+        revealMainWindow();
+      }
+    }] : []),
     {
       label: getTraySessionLabel(getSessionSnapshot(runtime)),
       click: () => createSessionWindow()
@@ -454,9 +477,24 @@ function buildCurvePoints(stats) {
 function persistMainWindowBounds() {
   if (!mainWindow || mainWindow.isDestroyed()) return null;
 
+  // 迷你模式:位置尺寸单独记忆到 miniBounds,正常模式 bounds 不被迷你窗口覆盖
+  if (miniMode && miniMode.isActive()) {
+    var mini = mainWindow.getBounds();
+    // 进入迷你的过渡期内,setBounds 是异步的:回声 move 可能在 miniMode 已置真时
+    // 读到尚未缩小的正常尺寸,这种写入要丢弃(只接受迷你量级的尺寸)
+    if (mini.width <= MINI_WIDTH + 40 && mini.height <= MINI_HEIGHT + 40) {
+      store.set('window.miniBounds', mini);
+    }
+    return null;
+  }
+
   // 停靠中(含已收起)持久化展开可见 bounds,隐藏坐标永不落盘(issue #170)
   var meta = edgeDock && edgeDock.getDockMeta();
   var bounds = meta ? { x: meta.expandedBounds.x, y: meta.expandedBounds.y, width: meta.expandedBounds.width, height: meta.expandedBounds.height } : mainWindow.getBounds();
+
+  // 退出迷你的过渡期回声:miniMode 已置假但窗口还没恢复,迷你尺寸不得写入正常档
+  // (正常窗口最小 380×200,不可能合法地小于迷你尺寸)
+  if (!meta && bounds.width <= MINI_WIDTH + 2 && bounds.height <= MINI_HEIGHT + 2) return null;
 
   store.set('window.width', bounds.width);
   store.set('window.height', bounds.height);
@@ -849,6 +887,20 @@ function createRuntimeProxyInputGetter() {
   };
 }
 
+// 系统扫描:探测运行中的 WSL 发行版里的 Kimi 日志目录,合并进 autoLogRoots。
+// 与历史值做并集(不清除):distro 当前停止时探测不到,但旧路径在下次运行
+// 该 distro 时仍有效;不可达目录由扫描端跳过并保留游标。
+function refreshKimiAutoRoots() {
+  return detectWslKimiRoots()
+    .then((roots) => {
+      if (!roots.length) return;
+      const prev = store.get('providers.kimi.autoLogRoots') || [];
+      const merged = Array.from(new Set((Array.isArray(prev) ? prev : []).concat(roots)));
+      store.set('providers.kimi.autoLogRoots', merged);
+    })
+    .catch(() => {});
+}
+
 app.whenReady().then(() => {
   migrateLegacyKeys(store);
   registry.register(deepseekProvider);
@@ -856,6 +908,9 @@ app.whenReady().then(() => {
   registry.register(kimiProvider);
   registry.register(dshProvider);
   getProxyInput = createRuntimeProxyInputGetter();
+
+  // 启动时做一次系统扫描:自动发现 WSL 环境里的 Kimi 日志目录
+  refreshKimiAutoRoots();
 
   // Codex 归档迁移:先创建运行时并立即启动影子迁移(不等待),再构造调度器,
   // 使调度器对 Codex 的首次 localLog 轮询排队在迁移 Promise 之后。旧用量保持可见。
@@ -898,6 +953,20 @@ app.whenReady().then(() => {
   });
   ingestRuntime.start();
 
+  miniMode = createMiniMode({
+    store,
+    getMainWindow: () => mainWindow,
+    getEdgeDock: () => edgeDock,
+    tokenSpeedRuntime: {
+      applySettings: () => {
+        if (tokenSpeedRuntime) tokenSpeedRuntime.applySettings();
+      }
+    },
+    broadcastSettings,
+    persistBounds: persistMainWindowBounds,
+    onToggled: updateTrayMenu
+  });
+
   setupIPC({
     store,
     registry,
@@ -906,6 +975,8 @@ app.whenReady().then(() => {
     codexUsageRuntime,
     runtime,
     resizeState,
+    miniMode,
+    refreshKimiAutoRoots,
     getMcpRuntime: () => mcpRuntime,
     getIngestRuntime: () => ingestRuntime,
     getMainWindow: () => mainWindow,
@@ -937,6 +1008,16 @@ app.whenReady().then(() => {
     createMainWindow();
     mainWindow.webContents.on('did-finish-load', () => {
       mainWindow.webContents.send('settings:loaded', store.sanitizeSettings(store.store));
+      // 迷你模式:Chromium 会在导航时恢复站点持久化的 zoom,加载完成后重新压回 1
+      if (miniMode && miniMode.isActive()) miniMode.applyMiniZoom(mainWindow);
+      // 同步当前停靠状态:渲染层加载晚于收起动画时,竖条视图也能正确出现
+      if (edgeDock) {
+        const dockMeta = edgeDock.getDockMeta();
+        mainWindow.webContents.send('edge-dock:state', {
+          state: edgeDock.getState(),
+          edge: dockMeta ? dockMeta.edge : null
+        });
+      }
       scheduler.poll('deepseek', 'balance');
 
       const storedSessionToken = store.get('providers.deepseek.sessionToken') || null;

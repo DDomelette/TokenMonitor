@@ -1,6 +1,7 @@
 node_modules/
 build/
 dist/
+tmp/
 *.log
 config.json
 history.json

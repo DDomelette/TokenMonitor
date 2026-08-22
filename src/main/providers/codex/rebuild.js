@@ -115,7 +115,7 @@ async function buildCodexShadow({
 
     complete = !!(batch && batch.complete);
     if (typeof onProgress === 'function') {
-      onProgress({ passes, records, bytesRead, complete });
+      onProgress({ stage: 'codex', detail: 'pass ' + passes + ', +' + batchRecords.length, passes, records, bytesRead, complete });
     }
     if (complete) break;
   }
