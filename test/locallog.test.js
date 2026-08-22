@@ -201,6 +201,51 @@ test('readLocalLog merges incremental daily rollup into store usageDaily', async
   }
 });
 
+test('kimi readLocalLog scans extraLogRoots and preserves cursors of unreachable roots', async () => {
+  const { readLocalLog, resolveKimiLogRoots } = require('../src/main/providers/kimi/locallog');
+  const { localDayStr } = require('../src/main/core/locallog');
+  const dirA = makeTempDir();
+  const dirB = makeTempDir();
+  const data = {};
+  const store = {
+    get(k) { return data[k]; },
+    set(k, v) { data[k] = v; }
+  };
+  const now = Date.now();
+  const day = localDayStr(now);
+  const line = (n) => '{"type":"usage.record","model":"kimi-code/k3-256k","usage":{"inputOther":' + n + ',"output":10,"inputCacheRead":0,"inputCacheCreation":0},"time":' + now + '}\n';
+  try {
+    const fileA = path.join(dirA, 'wire.jsonl');
+    const fileB = path.join(dirB, 'nested', 'wire.jsonl');
+    fs.mkdirSync(path.dirname(fileB), { recursive: true });
+    fs.writeFileSync(fileA, line(100));
+    fs.writeFileSync(fileB, line(200));
+    store.set('providers.kimi.localLogRoot', dirA);
+    store.set('providers.kimi.extraLogRoots', [dirB]);
+
+    assert.deepEqual(resolveKimiLogRoots(store), [dirA, dirB]);
+
+    const first = await readLocalLog({ store });
+    assert.equal(first.records.length, 2);
+    assert.deepEqual(store.get('usageDaily')['kimi:' + day], { input: 300, cached: 0, output: 20, total: 320 });
+    assert.equal((await readLocalLog({ store })).records.length, 0);
+
+    // 模拟附加目录不可达(如 WSL 关机):游标必须保留,恢复后不得重扫旧内容
+    const goneRoot = path.join(dirB, 'not-mounted');
+    store.set('providers.kimi.extraLogRoots', [goneRoot]);
+    store.set('localLogCursors.kimi', Object.assign({}, store.get('localLogCursors.kimi'), {
+      [path.join(goneRoot, 'wire.jsonl')]: { offset: 1234, mtimeMs: now }
+    }));
+    await readLocalLog({ store });
+    const cursors = store.get('localLogCursors.kimi');
+    assert.deepEqual(cursors[path.join(goneRoot, 'wire.jsonl')], { offset: 1234, mtimeMs: now });
+    assert.equal(store.get('usageDaily')['kimi:' + day].total, 320);
+  } finally {
+    fs.rmSync(dirA, { recursive: true, force: true });
+    fs.rmSync(dirB, { recursive: true, force: true });
+  }
+});
+
 test('kimi readLocalLog rebuilds stale totals with cached included exactly once', async () => {
   const dir = makeTempDir();
   const file = path.join(dir, 'wire.jsonl');

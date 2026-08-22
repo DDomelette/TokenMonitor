@@ -24,7 +24,11 @@ const defaults = {
     // 贴边自动隐藏(issue #170):edgeDock 只存逻辑停靠信息(边 + 展开可见 bounds),
     // 隐藏坐标永不落盘
     edgeAutoHide: false,
-    edgeDock: null
+    edgeDock: null,
+    // 迷你模式:只显示额度圆环/余额 + Token 速度的小窗状态;
+    // miniBounds 单独记忆迷你窗口的位置尺寸,正常 bounds 不被覆盖
+    miniMode: false,
+    miniBounds: null
   },
   components: {
     balanceCard: true,

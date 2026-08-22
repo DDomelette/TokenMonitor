@@ -789,6 +789,13 @@ body,
   color: var(--text-secondary);
 }
 
+.heatmap-total {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warning, #F59E0B);
+}
+
 .heatmap-providers,
 .heatmap-modes {
   display: flex;
@@ -942,3 +949,220 @@ body,
 
 
 
+
+/* ======== 迷你模式 ======== */
+
+/* 内容区切换(迷你 <-> 完整)淡入,遮住窗口缩放与重排之间的一帧闪烁 */
+.app-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  animation: app-content-in 180ms ease-out;
+}
+
+@keyframes app-content-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.mini-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+/* 迷你顶部栏:整窗(含内容区)都是系统原生拖拽区,按钮除外 */
+.mini-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 24px;
+  padding: 0 4px 0 10px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+.mini-titlebar-text {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.mini-titlebar-actions {
+  display: flex;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.mini-title-btn {
+  width: 24px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0;
+}
+
+.mini-title-btn:hover {
+  background: rgba(116, 184, 252, 0.16);
+  color: var(--text-primary);
+}
+
+.mini-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 2px 6px 6px;
+  -webkit-app-region: drag;
+}
+
+.mini-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mini-ring-wrap {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+
+.mini-ring-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mini-balance {
+  width: 44px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  word-break: break-all;
+  line-height: 1.2;
+  /* 白色 + 深色细描边:亚克力亮底上也能看清轮廓 */
+  color: #FFFFFF;
+  text-shadow:
+    -0.6px 0 0 rgba(15, 23, 42, 0.55),
+    0.6px 0 0 rgba(15, 23, 42, 0.55),
+    0 -0.6px 0 rgba(15, 23, 42, 0.55),
+    0 0.6px 0 rgba(15, 23, 42, 0.55);
+}
+
+.mini-row-info {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mini-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.mini-name {
+  font-size: 9px;
+  color: var(--text-secondary);
+}
+
+.mini-speed {
+  margin-left: auto;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+/* 贴边吸附收起后的竖条速度柱(停靠右缘时可见区在窗口右侧 12px) */
+.mini-strip {
+  position: fixed;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 2px;
+  padding: 5px 2px;
+  background: rgba(10, 12, 18, 0.88);
+  user-select: none;
+}
+
+.mini-strip-right {
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  border-radius: 6px 0 0 6px;
+}
+
+.mini-strip-left {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 12px;
+  border-radius: 0 6px 6px 0;
+}
+
+/* 顶边吸附:可见区是窗口底部 12px,轨道躺平成横条 */
+.mini-strip-top {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 12px;
+  padding: 2px 5px;
+  border-radius: 0 0 6px 6px;
+}
+
+/* 每个平台一条全程轨道(灰白色,与深色底区分),底部彩色填充 ∝ 速度 */
+.mini-strip-bar {
+  position: relative;
+  width: 3px;
+  flex: 1;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.mini-strip-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: 0;
+  border-radius: 1px;
+  transition: height 0.4s ease-out;
+}
+
+.mini-strip-top .mini-strip-bar {
+  width: auto;
+  height: 2.5px;
+}
+
+.mini-strip-top .mini-strip-fill {
+  top: 0;
+  bottom: 0;
+  right: auto;
+  transition: width 0.4s ease-out;
+}

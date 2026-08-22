@@ -17,6 +17,10 @@ export function getTokenSpeed() {
   return api.invoke('get:token-speed');
 }
 
+export function getEdgeDockState() {
+  return api.invoke('get:edge-dock-state');
+}
+
 export function getBounds() {
   return api.invoke('get:bounds');
 }
@@ -47,6 +51,10 @@ export function on(channel, cb) {
 
 export function send(channel, data) {
   return api.send(channel, data);
+}
+
+export function toggleMini() {
+  return api.send('window:toggle-mini');
 }
 
 export default api;

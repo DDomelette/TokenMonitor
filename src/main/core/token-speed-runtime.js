@@ -146,7 +146,9 @@ function createTokenSpeedRuntime(options = {}) {
   }
 
   function applySettings() {
-    const shouldEnable = store.get('components.tokenSpeed') === true;
+    // 迷你模式也需要速度数据:窗口迷你化期间强制启用采样
+    const shouldEnable = store.get('components.tokenSpeed') === true
+      || store.get('window.miniMode') === true;
     settings = normalizeTokenSpeedSettings(store.get('data.tokenSpeed'));
     if (shouldEnable && !enabled) {
       enable();

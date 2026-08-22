@@ -45,6 +45,7 @@
 
 :root[data-theme$='dark'] .titlebar-title,
 :root[data-theme$='dark'] .component-title,
+:root[data-theme$='dark'] .heatmap-title,
 :root[data-theme$='dark'] .quota-card-title,
 :root[data-theme$='dark'] .stat-value {
   color: var(--text-primary);

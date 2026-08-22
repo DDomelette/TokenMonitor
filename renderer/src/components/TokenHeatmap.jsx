@@ -118,6 +118,23 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
   }, [days, year]);
   const maxCum = Math.max(0, ...Object.values(cumByDate));
 
+  // 头部总量:当前可视视图的总消耗。
+  // 每日/每周=可视列内每日用量之和;累计=可视范围最后一列的年初累计(与视图口径一致)。
+  const viewTotal = useMemo(() => {
+    let sum = 0;
+    visibleWeeks.forEach((col) =>
+      col.forEach((cell) => {
+        if (cell && cell.inYear) sum += Number(days[cell.date]) || 0;
+      })
+    );
+    return sum;
+  }, [visibleWeeks, days]);
+  const lastVisibleDate = end > start ? lastInYearDate(end - 1) : null;
+  const headTotal =
+    mode === 'cumulative' && lastVisibleDate && cumByDate[lastVisibleDate]
+      ? cumByDate[lastVisibleDate]
+      : viewTotal;
+
   // 取某列用于每周/累计的日期(该列最后一个 inYear 格)
   function lastInYearDate(col) {
     for (let r = 6; r >= 0; r--) {
@@ -371,6 +388,7 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
           </button>
         ))}
         {selProvider !== 'all' && selProvider !== 'deepseek' ? <span className="heatmap-local-only">仅本机</span> : null}
+        <span className="heatmap-total" title="当前视图总消耗">共 {formatToken(headTotal)} Token</span>
       </div>
       {mode === 'daily' ? renderDaily() : null}
       {mode === 'weekly' ? renderWeekly() : null}

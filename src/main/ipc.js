@@ -16,6 +16,7 @@ const { SYSTEM_PROXY_VALUE, resolveElectronSystemProxy } = require('./core/proxy
 const { registerDiagnosticsIpc } = require('./core/diagnostics/ipc-registration');
 const { detectProxyPort } = require('./core/proxy-detect');
 const { buildDshDashboard } = require('./core/dsh-dashboard');
+const { MINI_WIDTH, MINI_HEIGHT } = require('./core/mini-mode');
 const {
   PUSH_USAGE_KEY,
   PUSH_COST_KEY,
@@ -221,6 +222,10 @@ module.exports = function setupIPC(deps) {
 
     const kimiProvider = deps.registry.get('kimi');
     if (kimiProvider && typeof kimiProvider.readLocalLog === 'function') {
+      // 手动同步前刷新一次系统扫描,新出现的 WSL 发行版也能纳入
+      if (typeof deps.refreshKimiAutoRoots === 'function') {
+        await deps.refreshKimiAutoRoots();
+      }
       summary.kimi = await runLocalLogExclusive('kimi', () => rescanLocalLogs({
         providerId: 'kimi',
         readLocalLog: () => kimiProvider.readLocalLog({ store: deps.store }, { retainAll: true }),
@@ -375,8 +380,23 @@ module.exports = function setupIPC(deps) {
   ipcMain.on('window:set-bounds', (event, bounds) => {
     var win = BrowserWindow.fromWebContents(event.sender);
     if (!win || win !== getMain() || win.isDestroyed()) return;
-    var next = deps.normalizeMainBounds(bounds);
     var current = win.getBounds();
+    var next;
+    if (deps.miniMode && deps.miniMode.isActive()) {
+      // 迷你模式:只移动位置。尺寸强制回迷你规格——这台机器(250% DPI)上
+      // setBounds/getBounds 每往返一次 DWM 会给窗口加 1px 隐形边框,沿用
+      // current 尺寸会每帧涨 1px,拖一圈窗口就肉眼可见地变大
+      var mx = Number(bounds && bounds.x);
+      var my = Number(bounds && bounds.y);
+      next = {
+        x: Number.isFinite(mx) ? Math.round(mx) : current.x,
+        y: Number.isFinite(my) ? Math.round(my) : current.y,
+        width: MINI_WIDTH,
+        height: MINI_HEIGHT
+      };
+    } else {
+      next = deps.normalizeMainBounds(bounds);
+    }
     if (current.x === next.x && current.y === next.y
         && current.width === next.width && current.height === next.height) {
       return;
@@ -388,8 +408,15 @@ module.exports = function setupIPC(deps) {
     if (getMain()) getMain().hide();
   });
 
+  // 迷你模式切换:窗口几何/采样开关/广播都在 miniMode 模块内完成
+  ipcMain.on('window:toggle-mini', () => {
+    if (deps.miniMode) deps.miniMode.toggle();
+  });
+
   ipcMain.on('zoom:change', (event, { delta }) => {
     if (!getMain() || getMain().isDestroyed()) return;
+    // 迷你模式锁定 zoom=1,禁止 Ctrl+滚轮缩放(窗口始终以最小尺寸展示)
+    if (deps.miniMode && deps.miniMode.isActive()) return;
     var current = getMain().webContents.getZoomFactor();
     var next = Math.min(1.6, Math.max(0.7, Math.round((current + delta) * 100) / 100));
     getMain().webContents.setZoomFactor(next);
@@ -562,5 +589,13 @@ module.exports = function setupIPC(deps) {
     if (BrowserWindow.fromWebContents(event.sender) !== getMain()) return;
     var dock = deps.getEdgeDock && deps.getEdgeDock();
     if (dock) dock.pointerLeave();
+  });
+
+  // 渲染层主动拉取当前停靠状态(广播只覆盖状态变化,挂载时需要一次快照)
+  ipcMain.handle('get:edge-dock-state', () => {
+    var dock = deps.getEdgeDock && deps.getEdgeDock();
+    if (!dock) return null;
+    var meta = dock.getDockMeta();
+    return { state: dock.getState(), edge: meta ? meta.edge : null };
   });
 };
