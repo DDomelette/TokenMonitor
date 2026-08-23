@@ -6,7 +6,7 @@ const MINI_HEIGHT = 156;
 const NORMAL_MIN_WIDTH = 380;
 const NORMAL_MIN_HEIGHT = 200;
 
-// 小深酱主题的迷你窗更高:气泡框顶部要留出趴趴小深酱的位置。
+// 小深酱主题的迷你窗更高:磨砂框内要给趴在卡片上沿的小深酱留头顶空间。
 // 与 resolveEffectiveTheme 同语义:跟随系统开启时忽略手动模式。
 function miniSizeFor(store) {
   var follow = true;
@@ -16,7 +16,7 @@ function miniSizeFor(store) {
     follow = f === undefined ? true : !!f;
     mode = store.get('window.darkMode') || 'system';
   } catch (_) { /* store 不可用时用默认尺寸 */ }
-  if (!follow && mode === 'shen-chan') return { width: 235, height: 212 };
+  if (!follow && mode === 'shen-chan') return { width: 240, height: 228 };
   return { width: MINI_WIDTH, height: MINI_HEIGHT };
 }
 

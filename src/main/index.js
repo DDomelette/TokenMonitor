@@ -754,12 +754,13 @@ function applyBackdropTo(win) {
       try { win.setBackgroundMaterial('acrylic'); } catch (_) {}
     }
   } else if (theme === 'shen-chan' && win === mainWindow) {
-    // 小深酱主题:主窗口挂"无模糊全透" Accent(TRANSPARENTGRADIENT alpha 0)。
-    // 正常模式下 #app 实底奶油白盖住整窗,Accent 不可见;迷你模式下卡片以外
-    // 的页面区域是透明的,Accent 让窗口背景彻底透出桌面,而不是显示
-    // 非透明窗口 backgroundColor(#00000000)渲染出的纯黑。
-    if (applyAccent(win, { argb: 0, transparent: true })) {
+    // 小深酱主题:主窗口挂水蓝亚克力 Accent(带模糊,与亚克力主题同一机制)。
+    // 正常模式下 #app 实底奶油白盖住整窗不可见;迷你模式下卡片以外的页面区域
+    // 透明,Accent 磨砂取代非透明窗口 backgroundColor(#00000000)渲染出的纯黑。
+    if (applyAccent(win, { argb: tintForTheme('shen-chan') })) {
       accentAppliedWindows.add(win);
+    } else {
+      try { win.setBackgroundMaterial('acrylic'); } catch (_) {}
     }
   } else if (accentAppliedWindows.has(win)) {
     if (clearAccent(win)) accentAppliedWindows.delete(win);

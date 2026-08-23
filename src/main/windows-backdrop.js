@@ -21,7 +21,9 @@ const DWM_BB_TRANSITIONONMAXIMIZED = 0x4;
 // 不是 ARGB——灰色无所谓,彩色写反会蓝红颠倒
 const ACCENT_TINTS = {
   'acrylic-light': 0x14ffffff, // 白,alpha 0.08
-  'acrylic-dark': 0x261c1614 // rgba(20,22,28,0.15) 的 ABGR
+  'acrylic-dark': 0x261c1614, // rgba(20,22,28,0.15) 的 ABGR
+  // 小深酱:水蓝 #d8edfa,alpha 0x2e(~18%),迷你窗框区呈浅蓝磨砂
+  'shen-chan': 0x2efaedd8
 };
 
 let accentApi;

@@ -226,16 +226,16 @@
 }
 :root[data-theme='shen-chan'] .statusbar { color: var(--text-secondary); }
 
-/* -------- 迷你窗:整窗彻底透明,只留气泡卡片浮在桌面上,小深酱趴在上沿 -------- */
+/* -------- 迷你窗:页面透明,框区由主进程挂水蓝亚克力磨砂,小深酱趴在卡片上沿 -------- */
 :root[data-theme='shen-chan'] #app.app-mini {
-  background: transparent;      /* 卡片以外的区域彻底透明,透出桌面 */
+  background: transparent;      /* 卡片以外的区域由 Accent 磨砂透出桌面 */
   overflow: visible;
 }
 :root[data-theme='shen-chan'] .app-mini .app-content { overflow: visible; }
 
 :root[data-theme='shen-chan'] .mini-view {
   position: relative;
-  margin: 48px 8px 8px;
+  margin: 58px 8px 8px;         /* 顶部多留 10px,配合加高窗口给小深酱头顶空间 */
   background: #fffdf8;
   border: 2px solid var(--shen-aqua-300);
   border-radius: 14px;
