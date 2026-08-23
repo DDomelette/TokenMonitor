@@ -241,16 +241,21 @@
   border-radius: 14px;
   box-shadow: none;             /* 去掉边框阴影 */
 }
-/* 趴在气泡卡片上沿(PNG 上缘自带透明留白,头顶完整显示在窗口内) */
+/* 趴在气泡卡片上沿。呆毛是 PNG 内容最高点:1024px 图里内容从第 99 行开始,
+   宽 80px 时呆毛距图片上缘 7.7px;top:-52 时图片上缘距窗口顶 6px,
+   呆毛静止时距窗口顶 13.7px,呼吸浮动最高点(translateY -3px)也有 10.7px 余量,
+   任何时刻都不会被窗口上沿裁切。 */
 .mini-shen {
   position: absolute;
-  top: -72px; left: 14px;
-  width: 88px;
+  top: -52px; left: 14px;
+  width: 80px;
   z-index: 6;
   pointer-events: none;
   filter: drop-shadow(0 3px 4px rgba(28, 42, 82, 0.18));
   animation: shen-breathe 3s ease-in-out infinite;
 }
+/* 小深酱下移后身体探进卡片约 15px,标题行整体下移避开她 */
+:root[data-theme='shen-chan'] .mini-titlebar { margin-top: 20px; }
 :root[data-theme='shen-chan'] .mini-titlebar-text { color: var(--text-secondary); }
 :root[data-theme='shen-chan'] .mini-title-btn { color: var(--text-secondary); }
 :root[data-theme='shen-chan'] .mini-title-btn:hover {
