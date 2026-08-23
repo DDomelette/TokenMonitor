@@ -22,7 +22,7 @@
 
   // 与 renderer/src/theme-sync.js 的 resolveTheme 同一套语义:
   // followSystemTheme 是主开关,为 true 时忽略 darkMode 手动值,跟随系统。
-  var VALID_MODES = { system: true, dark: true, light: true, 'acrylic-light': true, 'acrylic-dark': true };
+  var VALID_MODES = { system: true, dark: true, light: true, 'acrylic-light': true, 'acrylic-dark': true, 'shen-chan': true };
 
   function resolveTheme(windowValues, systemDark) {
     var values = windowValues && typeof windowValues === 'object' ? windowValues : {};

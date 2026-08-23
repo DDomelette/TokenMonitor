@@ -3,6 +3,7 @@
 // 刷新/设置点击有短暂图标动画;布局编辑按钮切换激活外观表示"编排中"。
 import React, { useState } from 'react';
 import { send, toggleMini } from '../api.js';
+import { SHEN } from '../shen-assets.js';
 
 export default function TitleBar({ editing, layoutLocked, onToggleLayoutEdit }) {
   const [spinning, setSpinning] = useState(false);
@@ -31,6 +32,7 @@ export default function TitleBar({ editing, layoutLocked, onToggleLayoutEdit }) 
         </span>
         <span className="titlebar-text">Token Monitor</span>
       </div>
+      <img className="shen-deco shen-heart" src={SHEN.heart} alt="" aria-hidden="true" />
       <div className="titlebar-actions">
         <button
           className={'titlebar-btn' + (spinning ? ' spin-refresh' : '')}

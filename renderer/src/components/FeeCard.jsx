@@ -2,6 +2,7 @@
 import React from 'react';
 import { getYesterdayCost } from '../fee-card-date.mjs';
 import { formatCurrencyAmount } from '../fee-card-money.mjs';
+import { SHEN } from '../shen-assets.js';
 
 function formatTokens(n) {
   const value = Number(n) || 0;
@@ -59,6 +60,12 @@ export default function FeeCard({ id, balance, stats }) {
           <div className="fee-card-sub">
             {formatTokens(stats.token.todayTokens)} tokens<br />昨日:¥{yesterdayCost.toFixed(2)}
           </div>
+          <span className="shen-deco shen-bite b1" />
+          <span className="shen-deco shen-bite b2" />
+          <span className="shen-deco shen-bite b3" />
+          <span className="shen-deco shen-crumb c1" />
+          <span className="shen-deco shen-crumb c2" />
+          <img className="shen-deco shen-eat" src={SHEN.hungry} alt="" aria-hidden="true" />
         </div>
       );
     }

@@ -4,6 +4,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getHeatmap, onProvidersChanged } from '../api.js';
+import { SHEN } from '../shen-assets.js';
 import { buildSundayWeekTotals, buildWeeks, blockCount, colorLevel, formatToken, sundayWeekKey } from '../lib/heatmap.js';
 import { clampToWindow, resolveVerticalFlip } from '../lib/floating-layer.js';
 import {
@@ -367,6 +368,8 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
 
   return (
     <div className="heatmap-widget" ref={rootRef}>
+      <img className="shen-deco shen-sleep" src={SHEN.sleepy} alt="" aria-hidden="true" />
+      <span className="shen-deco shen-zzz">Z z z…</span>
       <div className="heatmap-head">
         <span className="heatmap-title">Token 活动</span>
         <div className="heatmap-providers">

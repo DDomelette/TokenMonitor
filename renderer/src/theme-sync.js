@@ -1,5 +1,5 @@
-const VALID_MODES = new Set(['system', 'dark', 'light', 'acrylic-light', 'acrylic-dark']);
-const VALID_THEMES = new Set(['light', 'dark', 'acrylic-light', 'acrylic-dark']);
+const VALID_MODES = new Set(['system', 'dark', 'light', 'acrylic-light', 'acrylic-dark', 'shen-chan']);
+const VALID_THEMES = new Set(['light', 'dark', 'acrylic-light', 'acrylic-dark', 'shen-chan']);
 
 function windowSettings(settings) {
   return settings && settings.window && typeof settings.window === 'object'

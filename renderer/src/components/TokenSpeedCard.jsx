@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import { SHEN } from '../shen-assets.js';
 import useECharts from '../hooks/useECharts.js';
 import useTokenSpeed from '../hooks/useTokenSpeed.js';
 import { saveSetting } from '../api.js';
@@ -69,6 +70,8 @@ export default function TokenSpeedCard() {
 
   return (
     <section className="token-speed-card" aria-label="Token 消耗速度">
+      <img className="shen-deco shen-lying" src={SHEN.lying} alt="" aria-hidden="true" />
+      <div className="shen-deco shen-caption">主人今天用了好多 Token 呀…</div>
       <div className="token-speed-header">
         <div className="token-speed-title"><SpeedIcon /><span>Token 消耗速度</span></div>
         <div className="token-speed-controls">

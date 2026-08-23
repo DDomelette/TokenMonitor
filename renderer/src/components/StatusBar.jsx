@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useProviders } from '../hooks/useProviders.js';
 import { summarizeProviderHealth } from '../provider-health.mjs';
+import { SHEN } from '../shen-assets.js';
 
 function formatRefresh(lastFetchedAt, now) {
   if (!Number.isFinite(lastFetchedAt)) return '--';
@@ -29,6 +30,7 @@ export default function StatusBar() {
       </div>
       <span>平台用量</span>
       <span>{refreshText}</span>
+      <img className="shen-deco shen-status" src={SHEN.coding} alt="" aria-hidden="true" />
     </div>
   );
 }
