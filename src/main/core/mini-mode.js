@@ -6,6 +6,20 @@ const MINI_HEIGHT = 156;
 const NORMAL_MIN_WIDTH = 380;
 const NORMAL_MIN_HEIGHT = 200;
 
+// 小深酱主题的迷你窗更高:气泡框顶部要留出趴趴小深酱的位置。
+// 与 resolveEffectiveTheme 同语义:跟随系统开启时忽略手动模式。
+function miniSizeFor(store) {
+  var follow = true;
+  var mode = 'system';
+  try {
+    var f = store.get('window.followSystemTheme');
+    follow = f === undefined ? true : !!f;
+    mode = store.get('window.darkMode') || 'system';
+  } catch (_) { /* store 不可用时用默认尺寸 */ }
+  if (!follow && mode === 'shen-chan') return { width: 235, height: 212 };
+  return { width: MINI_WIDTH, height: MINI_HEIGHT };
+}
+
 function finiteInt(value) {
   const n = Number(value);
   return Number.isFinite(n) ? Math.round(n) : null;
@@ -82,10 +96,11 @@ function createMiniMode(options) {
     // 正常模式 bounds 先落盘,退出时原样恢复
     persistBounds();
     store.set('window.miniMode', true);
-    win.setMinimumSize(MINI_WIDTH, MINI_HEIGHT);
+    const size = miniSizeFor(store);
+    win.setMinimumSize(size.width, size.height);
     // 窗口太小,原生缩放的边缘热区很容易被抓到:迷你模式禁用缩放,防止误拖把窗口撑大;
     // 最大尺寸一并锁定,任何路径都撑不大(始终以最小尺寸展示)
-    win.setMaximumSize(MINI_WIDTH, MINI_HEIGHT);
+    win.setMaximumSize(size.width, size.height);
     win.setResizable(false);
     // 禁最大化只在迷你模式生效:防止双击拖拽区把微缩窗最大化;退出时恢复,
     // 正常模式保留系统最大化(拖顶部边缘放大全屏/标题栏双击)
@@ -96,8 +111,8 @@ function createMiniMode(options) {
     win.setBounds({
       x: remembered ? remembered.x : current.x,
       y: remembered ? remembered.y : current.y,
-      width: MINI_WIDTH,
-      height: MINI_HEIGHT
+      width: size.width,
+      height: size.height
     });
     applyMiniZoom(win);
     afterChange();
@@ -142,8 +157,9 @@ function createMiniMode(options) {
   // 启动时迷你模式被持久化:窗口按迷你尺寸/位置创建
   function applyOnCreate(win) {
     if (!win || !isActive()) return false;
-    win.setMinimumSize(MINI_WIDTH, MINI_HEIGHT);
-    win.setMaximumSize(MINI_WIDTH, MINI_HEIGHT);
+    const size = miniSizeFor(store);
+    win.setMinimumSize(size.width, size.height);
+    win.setMaximumSize(size.width, size.height);
     win.setResizable(false);
     win.setMaximizable(false);
     const remembered = sanitizeBounds(store.get('window.miniBounds'));
@@ -151,8 +167,8 @@ function createMiniMode(options) {
     win.setBounds({
       x: remembered ? remembered.x : current.x,
       y: remembered ? remembered.y : current.y,
-      width: MINI_WIDTH,
-      height: MINI_HEIGHT
+      width: size.width,
+      height: size.height
     });
     return true;
   }

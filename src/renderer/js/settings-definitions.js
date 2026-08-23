@@ -7,7 +7,8 @@ var windowDefinitions = [
   { group: '窗口', key: 'window.followSystemTheme', type: 'toggle', label: '跟随系统主题', default: true },
   { group: '窗口', key: 'window.darkMode', type: 'select', label: '主题模式', options: [
     { value: 'system', label: '跟随系统' }, { value: 'dark', label: '夜间模式' }, { value: 'light', label: '日间模式' },
-    { value: 'acrylic-light', label: '亚克力(亮)' }, { value: 'acrylic-dark', label: '亚克力(暗)' }
+    { value: 'acrylic-light', label: '亚克力(亮)' }, { value: 'acrylic-dark', label: '亚克力(暗)' },
+    { value: 'shen-chan', label: '小深酱' }
   ], default: 'system' },
   { group: '窗口', key: 'window.layoutLocked', type: 'toggle', label: '锁定布局', default: true },
   { group: '窗口', key: 'window.edgeAutoHide', type: 'toggle', label: '贴边自动隐藏', default: false }

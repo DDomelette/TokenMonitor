@@ -1,0 +1,10 @@
+{
+  "name": "shen-chan-theme",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Token Monitor 小深酱主题 mockup 预览",
+  "scripts": {
+    "dev": "node server.mjs"
+  }
+}

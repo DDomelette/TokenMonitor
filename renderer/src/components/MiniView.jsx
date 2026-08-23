@@ -8,6 +8,7 @@ import useTokenSpeed from '../hooks/useTokenSpeed.js';
 import { on, send, toggleMini, getEdgeDockState } from '../api.js';
 import { PROVIDER_META, formatTokenRate } from '../lib/token-speed-chart.js';
 import { formatCurrencyAmount } from '../fee-card-money.mjs';
+import { SHEN } from '../shen-assets.js';
 
 const RING_R = 17;
 const RING_C = 2 * Math.PI * RING_R;
@@ -158,6 +159,7 @@ export default function MiniView() {
 
   return (
     <div className="mini-view">
+      <img className="shen-deco mini-shen" src={SHEN.lying} alt="" aria-hidden="true" />
       <div className="mini-titlebar">
         <span className="mini-titlebar-text">Token Monitor</span>
         <div className="mini-titlebar-actions">
