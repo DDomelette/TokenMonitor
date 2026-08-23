@@ -235,7 +235,7 @@
 
 :root[data-theme='shen-chan'] .mini-view {
   position: relative;
-  margin: 58px 8px 8px;         /* 顶部多留 10px,配合加高窗口给小深酱头顶空间 */
+  margin: 49px 8px 8px;         /* 顶部留白:小深酱呆毛在浮动最高点距窗口顶约 2px */
   background: #fffdf8;
   border: 2px solid var(--shen-aqua-300);
   border-radius: 14px;

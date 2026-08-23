@@ -16,7 +16,7 @@ function miniSizeFor(store) {
     follow = f === undefined ? true : !!f;
     mode = store.get('window.darkMode') || 'system';
   } catch (_) { /* store 不可用时用默认尺寸 */ }
-  if (!follow && mode === 'shen-chan') return { width: 240, height: 228 };
+  if (!follow && mode === 'shen-chan') return { width: 240, height: 219 };
   return { width: MINI_WIDTH, height: MINI_HEIGHT };
 }
 
