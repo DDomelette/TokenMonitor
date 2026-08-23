@@ -32,17 +32,15 @@
   box-shadow: var(--shadow-window);
 }
 
+/* 注意:.component-surface 同时是 gridstack 的 .grid-stack-item-content,
+   其 position:absolute(top/bottom 撑满格位)不可覆盖,否则卡片会塌缩。
+   absolute 本身就是定位上下文,装饰元素照样相对卡片定位,无需额外声明。 */
 :root[data-theme='shen-chan'] .component-surface,
 :root[data-theme='shen-chan'] .fee-card-surface {
   background: var(--bg-card);
   border-color: var(--border);
   box-shadow: var(--shadow-card);
   /* 小深酱装饰要探出卡片边缘 */
-  overflow: visible;
-  position: relative;
-}
-
-:root[data-theme='shen-chan'] .grid-stack-item-content {
   overflow: visible;
 }
 
@@ -73,10 +71,11 @@
 :root[data-theme='shen-chan'] .titlebar-btn { color: #cfe9f8; }
 :root[data-theme='shen-chan'] .titlebar-btn:hover { background: rgba(143, 212, 242, 0.18); color: #ffffff; }
 
+/* 比心小深酱在标题栏中部空白处,远离右侧按钮区 */
 .shen-heart {
   position: absolute;
-  right: 168px; top: 3px;
-  width: 34px;
+  right: 210px; top: 4px;
+  width: 30px;
   pointer-events: none;
   animation: shen-sway 3.4s ease-in-out infinite;
   transform-origin: bottom center;
@@ -84,11 +83,11 @@
 }
 @keyframes shen-sway { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
 
-/* -------- Token 速度卡:趴趴小深酱 + 气泡 -------- */
+/* -------- Token 速度卡:趴在卡片右下角内侧(避开右上角下拉框) -------- */
 .shen-lying {
   position: absolute;
-  top: -58px; right: 12px;
-  width: 112px;
+  bottom: -4px; right: 10px;
+  width: 86px;
   z-index: 6;
   pointer-events: none;
   filter: drop-shadow(0 3px 4px rgba(28, 42, 82, 0.18));
@@ -96,13 +95,13 @@
 }
 .shen-caption {
   position: absolute;
-  top: -34px; right: 116px;
+  bottom: 66px; right: 82px;
   background: #fffdf8;
   border: 1.5px solid var(--shen-aqua-300);
   color: var(--text-secondary);
   font-size: 11px;
   padding: 4px 9px;
-  border-radius: 12px 12px 2px 12px;
+  border-radius: 12px 12px 12px 2px;
   box-shadow: var(--shadow-card);
   white-space: nowrap;
   z-index: 6;
@@ -156,8 +155,8 @@
 /* -------- DeepSeek 今日消耗卡:被小深酱啃了一角 -------- */
 .shen-eat {
   position: absolute;
-  right: -10px; bottom: -16px;
-  width: 76px;
+  right: -8px; bottom: -12px;
+  width: 64px;
   z-index: 7;
   pointer-events: none;
   filter: drop-shadow(0 3px 4px rgba(28, 42, 82, 0.18));
@@ -176,9 +175,9 @@
   z-index: 6;
   pointer-events: none;
 }
-.shen-bite.b1 { width: 22px; height: 22px; right: -11px; bottom: -11px; }
-.shen-bite.b2 { width: 15px; height: 15px; right: 4px; bottom: -8px; }
-.shen-bite.b3 { width: 12px; height: 12px; right: -6px; bottom: 8px; }
+.shen-bite.b1 { width: 18px; height: 18px; right: -9px; bottom: -9px; }
+.shen-bite.b2 { width: 12px; height: 12px; right: 3px; bottom: -7px; }
+.shen-bite.b3 { width: 10px; height: 10px; right: -5px; bottom: 7px; }
 .shen-crumb {
   position: absolute;
   background: #fffdf8;
@@ -187,23 +186,23 @@
   z-index: 6;
   pointer-events: none;
 }
-.shen-crumb.c1 { width: 6px; height: 6px; right: 62px; bottom: -8px; }
-.shen-crumb.c2 { width: 4px; height: 4px; right: 52px; bottom: -14px; }
+.shen-crumb.c1 { width: 5px; height: 5px; right: 52px; bottom: -7px; }
+.shen-crumb.c2 { width: 4px; height: 4px; right: 44px; bottom: -12px; }
 
-/* -------- 热力图:瞌睡小深酱 -------- */
+/* -------- 热力图:瞌睡小深酱(右下角内侧,避开顶部平台页签) -------- */
 :root[data-theme='shen-chan'] .heatmap-widget { position: relative; }
 .shen-sleep {
   position: absolute;
-  top: -46px; right: 6px;
-  width: 84px;
+  bottom: -2px; right: 4px;
+  width: 62px;
   z-index: 6;
   pointer-events: none;
   filter: drop-shadow(0 3px 4px rgba(28, 42, 82, 0.16));
 }
 .shen-zzz {
   position: absolute;
-  top: -60px; right: 84px;
-  font-size: 13px;
+  bottom: 52px; right: 56px;
+  font-size: 12px;
   font-weight: 800;
   font-style: italic;
   color: var(--text-secondary);
@@ -227,31 +226,36 @@
 }
 :root[data-theme='shen-chan'] .statusbar { color: var(--text-secondary); }
 
-/* -------- 迷你窗:气泡框 + 趴在窗口上沿的小深酱 -------- */
+/* -------- 迷你窗:整窗实底,气泡面板无边框无阴影,小深酱完整趴在顶部 -------- */
 :root[data-theme='shen-chan'] #app.app-mini {
-  background: transparent;
+  /* 实底奶油白:不再透出桌面,气泡面板与窗口融为一体 */
+  background-color: #faf6ee;
+  background-image:
+    radial-gradient(circle 2px at 8px 8px, rgba(77, 179, 230, 0.10) 2px, transparent 2.5px);
+  background-size: 40px 40px;
   overflow: visible;
 }
 :root[data-theme='shen-chan'] .app-mini .app-content { overflow: visible; }
 
 :root[data-theme='shen-chan'] .mini-view {
   position: relative;
-  margin: 48px 8px 8px;
-  background: #fffdf8;
-  border: 2px solid var(--shen-aqua-300);
-  border-radius: 14px;
-  box-shadow: var(--shadow-card);
+  margin: 48px 8px 6px;
+  background: transparent;      /* 与窗口实底同色:去掉割裂感的边框与阴影 */
+  border: none;
+  box-shadow: none;
 }
+/* 趴在顶部偏左,完整显示在窗口内(top 不再为负到窗口外) */
 .mini-shen {
   position: absolute;
-  top: -72px; left: 14px;
-  width: 88px;
+  top: -50px; left: 12px;
+  width: 84px;
   z-index: 6;
   pointer-events: none;
-  filter: drop-shadow(0 3px 4px rgba(28, 42, 82, 0.18));
+  filter: drop-shadow(0 3px 4px rgba(28, 42, 82, 0.14));
   animation: shen-breathe 3s ease-in-out infinite;
 }
-:root[data-theme='shen-chan'] .mini-titlebar-text { color: var(--text-secondary); }
+/* 顶部文字让小深酱,只留右侧按钮 */
+:root[data-theme='shen-chan'] .mini-titlebar-text { visibility: hidden; }
 :root[data-theme='shen-chan'] .mini-title-btn { color: var(--text-secondary); }
 :root[data-theme='shen-chan'] .mini-title-btn:hover {
   background: var(--shen-aqua-100);
@@ -263,6 +267,7 @@
   text-shadow: none;
 }
 /* 迷你窗高度有限,主题下圆环略缩小给趴趴小深酱让位 */
-:root[data-theme='shen-chan'] .mini-ring-wrap { width: 34px; height: 34px; }
+:root[data-theme='shen-chan'] .mini-ring-wrap { width: 30px; height: 30px; }
 :root[data-theme='shen-chan'] .mini-ring-wrap svg { width: 100%; height: 100%; }
 :root[data-theme='shen-chan'] .mini-ring-label { font-size: 8px; }
+:root[data-theme='shen-chan'] .mini-body { gap: 4px; padding: 0 6px 4px; }
