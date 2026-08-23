@@ -305,15 +305,15 @@
   .shen-coding { width: 46px; margin-left: auto; filter: drop-shadow(0 2px 2px rgba(28,42,82,.18)); }
 
   /* ================= 微缩窗口 · 气泡框模式 ================= */
-  .mini-demo { margin-top: 26px; width: 640px; max-width: 94vw; }
+  .mini-demo { margin-top: 26px; width: 640px; max-width: 94vw; overflow: visible; }
   .mini-stage {
     position: relative;
     background: var(--cream);
     border: 1.5px dashed var(--aqua-300);
     border-radius: 16px;
-    height: 330px;
-    margin-top: 12px;
-    overflow: hidden;
+    height: 212px;
+    margin-top: 128px;                /* 舞台上方留白：小深酱趴在这里 */
+    overflow: visible;
   }
   /* 贴边收起的触发条 */
   .mini-strip {
@@ -321,28 +321,21 @@
     background: repeating-linear-gradient(0deg, var(--aqua-300) 0 10px, var(--aqua-500) 10px 20px);
     border-radius: 0 14px 14px 0;
   }
+  /* 趴在微缩窗口上沿的小深酱：身体探入窗口顶部留白 */
   .mini-shen {
-    position: absolute; right: 10px; bottom: -10px; width: 245px;
+    position: absolute; top: -136px; right: 110px; width: 200px; z-index: 6;
     filter: drop-shadow(0 4px 5px rgba(28,42,82,.16));
     animation: breathe 3s ease-in-out infinite;
+    pointer-events: none;
   }
   .bubble {
-    position: absolute; left: 18px; top: 18px; width: 268px;
+    position: absolute; left: 20px; top: 12px; width: 380px; z-index: 5;
     background: var(--paper);
     border: 2px solid var(--aqua-300);
     border-radius: 16px;
     box-shadow: var(--shadow);
-    padding: 10px 14px 12px;
+    padding: 52px 14px 12px;          /* 顶部加高成"窗台"，供小深酱趴卧侵入 */
     animation: breathe 3s ease-in-out infinite;
-  }
-  /* 气泡尾巴（指向小深酱） */
-  .bubble::before {
-    content: ""; position: absolute; right: -20px; bottom: 26px;
-    border: 11px solid transparent; border-left: 15px solid var(--aqua-300); border-right: 0;
-  }
-  .bubble::after {
-    content: ""; position: absolute; right: -13px; bottom: 29.5px;
-    border: 8px solid transparent; border-left: 11.5px solid var(--paper); border-right: 0;
   }
   .bhead {
     display: flex; align-items: center; gap: 6px;
@@ -517,13 +510,13 @@
       <div class="mrow"><div class="ring" style="--p:38;--rc:#d9a441"><span>38%</span></div><span class="mdot" style="background:#d9a441"></span>Codex<span class="mspd">7.2K/min</span></div>
       <div class="mrow"><div class="ring" style="--p:86;--rc:#5fce9b"><span>86%</span></div><span class="mdot" style="background:#5fce9b"></span>Kimi<span class="mspd">2.8K/min</span></div>
     </div>
-    <img class="mini-shen" src="assets/cut/shen_lying.png" alt="小深酱趴着报数据" />
+    <img class="mini-shen" src="assets/cut/shen_lying.png" alt="小深酱趴在微缩窗口上" />
     <div class="mini-strip" title="贴边触发条"></div>
   </div>
   <div class="mini-note">
-    迷你窗收起时不再是窄条小窗：小深酱趴在屏幕角落，用气泡框播报核心数据 ——
-    DeepSeek 余额与实时速度、Codex / Kimi 的额度环（周额度百分比）与消耗速度，内容与原迷你窗一致；
-    右侧保留贴边触发条，悬停气泡可展开回完整窗口。
+    迷你窗收起后，小深酱直接趴在气泡窗口的上沿，头部和前爪探进窗口顶部的留白"窗台"，
+    与窗口连成一体、不再割裂；气泡内保留原迷你窗的全部核心数据 ——
+    DeepSeek 余额与实时速度、Codex / Kimi 额度环（周额度百分比）与消耗速度；右侧保留贴边触发条，悬停可展开回完整窗口。
   </div>
 </div>
 
