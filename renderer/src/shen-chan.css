@@ -226,36 +226,32 @@
 }
 :root[data-theme='shen-chan'] .statusbar { color: var(--text-secondary); }
 
-/* -------- 迷你窗:整窗实底,气泡面板无边框无阴影,小深酱完整趴在顶部 -------- */
+/* -------- 迷你窗:整窗彻底透明,只留气泡卡片浮在桌面上,小深酱趴在上沿 -------- */
 :root[data-theme='shen-chan'] #app.app-mini {
-  /* 实底奶油白:不再透出桌面,气泡面板与窗口融为一体 */
-  background-color: #faf6ee;
-  background-image:
-    radial-gradient(circle 2px at 8px 8px, rgba(77, 179, 230, 0.10) 2px, transparent 2.5px);
-  background-size: 40px 40px;
+  background: transparent;      /* 卡片以外的区域彻底透明,透出桌面 */
   overflow: visible;
 }
 :root[data-theme='shen-chan'] .app-mini .app-content { overflow: visible; }
 
 :root[data-theme='shen-chan'] .mini-view {
   position: relative;
-  margin: 48px 8px 6px;
-  background: transparent;      /* 与窗口实底同色:去掉割裂感的边框与阴影 */
-  border: none;
-  box-shadow: none;
+  margin: 48px 8px 8px;
+  background: #fffdf8;
+  border: 2px solid var(--shen-aqua-300);
+  border-radius: 14px;
+  box-shadow: none;             /* 去掉边框阴影 */
 }
-/* 趴在顶部偏左,完整显示在窗口内(top 不再为负到窗口外) */
+/* 趴在气泡卡片上沿(PNG 上缘自带透明留白,头顶完整显示在窗口内) */
 .mini-shen {
   position: absolute;
-  top: -50px; left: 12px;
-  width: 84px;
+  top: -72px; left: 14px;
+  width: 88px;
   z-index: 6;
   pointer-events: none;
-  filter: drop-shadow(0 3px 4px rgba(28, 42, 82, 0.14));
+  filter: drop-shadow(0 3px 4px rgba(28, 42, 82, 0.18));
   animation: shen-breathe 3s ease-in-out infinite;
 }
-/* 顶部文字让小深酱,只留右侧按钮 */
-:root[data-theme='shen-chan'] .mini-titlebar-text { visibility: hidden; }
+:root[data-theme='shen-chan'] .mini-titlebar-text { color: var(--text-secondary); }
 :root[data-theme='shen-chan'] .mini-title-btn { color: var(--text-secondary); }
 :root[data-theme='shen-chan'] .mini-title-btn:hover {
   background: var(--shen-aqua-100);
@@ -267,7 +263,76 @@
   text-shadow: none;
 }
 /* 迷你窗高度有限,主题下圆环略缩小给趴趴小深酱让位 */
-:root[data-theme='shen-chan'] .mini-ring-wrap { width: 30px; height: 30px; }
+:root[data-theme='shen-chan'] .mini-ring-wrap { width: 34px; height: 34px; }
 :root[data-theme='shen-chan'] .mini-ring-wrap svg { width: 100%; height: 100%; }
 :root[data-theme='shen-chan'] .mini-ring-label { font-size: 8px; }
-:root[data-theme='shen-chan'] .mini-body { gap: 4px; padding: 0 6px 4px; }
+
+/* -------- 模块水印:每张卡片背景铺一张高透明度小深酱,隐约可见又不妨碍读数 --------
+   做法:奶油白半透明渐变盖在 PNG 之上,水印只剩淡淡轮廓;图表 canvas 透明底,水印可透出。
+   路径用 ../shen/(相对 dist/assets 的 CSS 文件解析到 dist/shen,dev 下解析到 public/shen)。 */
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='balance-card'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.90), rgba(255, 253, 248, 0.90)),
+    url('../shen/deepseek_chan_09_heart.png') no-repeat right 2px bottom 0 / 64px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='today-cost-card'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.92), rgba(255, 253, 248, 0.92)),
+    url('../shen/deepseek_chan_02_salute.png') no-repeat center / 58px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='cache-rate-card'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.90), rgba(255, 253, 248, 0.90)),
+    url('../shen/deepseek_chan_10_coding.png') no-repeat right 2px bottom 0 / 64px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='quota-codex'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.91), rgba(255, 253, 248, 0.91)),
+    url('../shen/shen_walk_b.png') no-repeat right 8px center / 84px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='quota-kimi'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.91), rgba(255, 253, 248, 0.91)),
+    url('../shen/shen_run_c.png') no-repeat right 8px center / 84px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='token-heatmap'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
+    url('../shen/deepseek_chan_06_sleepy.png') no-repeat center / 110px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='token-speed'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
+    url('../shen/shen_run_b.png') no-repeat left 10px center / 96px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='model-bar'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
+    url('../shen/shen_walk_a.png') no-repeat center / 100px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='provider-bar'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
+    url('../shen/shen_run_a.png') no-repeat center / 100px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='token-line'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
+    url('../shen/deepseek_chan_01_hungry.png') no-repeat center / 100px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='cost-line'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
+    url('../shen/deepseek_chan_02_salute.png') no-repeat center / 100px,
+    var(--bg-card);
+}
