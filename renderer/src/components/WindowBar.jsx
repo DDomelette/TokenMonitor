@@ -42,7 +42,7 @@ export default function WindowBar({ kind, name, used, limit, remaining, resetsAt
           src={gait.src}
           alt=""
           aria-hidden="true"
-          style={{ left: (empty ? 100 : percent) + '%' }}
+          style={{ left: Math.max(5, Math.min(95, empty ? 100 : percent)) + '%' }}
         />
       </div>
       <div className="quota-window-reset">{formatReset(resetsAt, Date.now())}</div>
