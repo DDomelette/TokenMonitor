@@ -11,6 +11,7 @@
 
 const WCA_ACCENT_POLICY = 19;
 const ACCENT_DISABLED = 0;
+const ACCENT_ENABLE_TRANSPARENTGRADIENT = 2;
 const ACCENT_ENABLE_ACRYLICBLURBEHIND = 4;
 const DWM_BB_ENABLE = 0x1;
 const DWM_BB_BLURREGION = 0x2;
@@ -95,7 +96,19 @@ function createAccentApi(koffi) {
   }
 
   return {
-    enable(hwnd, argb) {
+    // opts.transparent: 无模糊全透(TRANSPARENTGRADIENT + alpha 0),
+    // 页面透明处彻底透出桌面;不需要 BlurBehind 与玻璃帧延伸。
+    enable(hwnd, argb, opts) {
+      if (opts && opts.transparent === true) {
+        // 从亚克力主题切换过来时 BlurBehind 可能仍在生效,显式关掉,否则桌面会带磨砂而不是全透
+        DwmEnableBlurBehindWindow(hwnd, {
+          dwFlags: DWM_BB_ENABLE,
+          fEnable: 0,
+          hRgnBlur: null,
+          fTransitionOnMaximized: 0
+        });
+        return setAccentState(hwnd, ACCENT_ENABLE_TRANSPARENTGRADIENT, 0);
+      }
       const region = CreateRectRgn(0, 0, -1, -1);
       if (!region) return false;
       try {
@@ -157,13 +170,14 @@ function canTouch(win, options) {
 }
 
 // 为窗口启用/更新 Accent 亚克力;argb 省略时用暗调 tint
+// options.transparent: 改用 TRANSPARENTGRADIENT(alpha 0)无模糊全透
 function applyAccent(win, options = {}) {
   if (!canTouch(win, options)) return false;
   const api = resolveApi(options);
   if (!api) return false;
   const argb = options.argb === undefined ? ACCENT_TINTS['acrylic-dark'] : options.argb;
   try {
-    return api.enable(hwndOf(win), argb >>> 0) === true;
+    return api.enable(hwndOf(win), argb >>> 0, { transparent: options.transparent === true }) === true;
   } catch (_) {
     return false;
   }
