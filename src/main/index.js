@@ -188,8 +188,8 @@ function createMainWindow() {
     alwaysOnTop: store.get('window.alwaysOnTop'),
     // 原生缩放:Chromium 在系统缩放循环中拉伸旧帧,不会露出黑色欠采样区(同 VSCode)
     resizable: true,
-    // 禁最大化:拖拽区双击留给迷你模式"双击恢复完整窗口",不与系统最大化抢手势
-    maximizable: false,
+    // 保持可最大化:拖顶部边缘放大全屏(Aero Snap)依赖 WS_MAXIMIZEBOX;
+    // 迷你模式怕双击误最大化,由 mini-mode enter/applyOnCreate 动态禁用、exit 恢复
     minWidth: 380,
     minHeight: 200,
     maxWidth: 2400,

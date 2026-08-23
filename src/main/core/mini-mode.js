@@ -87,6 +87,9 @@ function createMiniMode(options) {
     // 最大尺寸一并锁定,任何路径都撑不大(始终以最小尺寸展示)
     win.setMaximumSize(MINI_WIDTH, MINI_HEIGHT);
     win.setResizable(false);
+    // 禁最大化只在迷你模式生效:防止双击拖拽区把微缩窗最大化;退出时恢复,
+    // 正常模式保留系统最大化(拖顶部边缘放大全屏/标题栏双击)
+    win.setMaximizable(false);
     const current = win.getBounds();
     // 位置记忆、尺寸始终取当前 MINI 规格(旧版本留下的大尺寸记忆不再沿用)
     const remembered = sanitizeBounds(store.get('window.miniBounds'));
@@ -113,6 +116,7 @@ function createMiniMode(options) {
     // 先恢复可缩放,再解除尺寸限制;Windows 上紧接着的 setBounds 若仍按旧上限
     // 钳制(约束生效与 setBounds 存在竞态),推迟一拍再恢复正常尺寸
     win.setResizable(true);
+    win.setMaximizable(true);
     win.setMinimumSize(NORMAL_MIN_WIDTH, NORMAL_MIN_HEIGHT);
     win.setMaximumSize(2400, 1600);
     const current = win.getBounds();
@@ -141,6 +145,7 @@ function createMiniMode(options) {
     win.setMinimumSize(MINI_WIDTH, MINI_HEIGHT);
     win.setMaximumSize(MINI_WIDTH, MINI_HEIGHT);
     win.setResizable(false);
+    win.setMaximizable(false);
     const remembered = sanitizeBounds(store.get('window.miniBounds'));
     const current = win.getBounds();
     win.setBounds({
