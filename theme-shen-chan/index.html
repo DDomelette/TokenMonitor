@@ -25,7 +25,7 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    /* 不透明实底 + 极浅的小鲸鱼水点纹（CSS 绘制，无图片、无透明叠加） */
+    /* 不透明实底 + 极浅的水点纹（CSS 绘制，无图片、无透明叠加） */
     background-color: #eef3fa;
     background-image:
       radial-gradient(circle 3px at 12px 12px, var(--aqua-100) 3px, transparent 3.5px),
@@ -166,7 +166,7 @@
   /* ---- 假图表（速度曲线） ---- */
   .speed-chart { width: 100%; height: 90px; display: block; }
 
-  /* ================= 进度条 + 跑姿小深酱 ================= */
+  /* ================= 进度条 + 步态小深酱 ================= */
   .quota { margin: 12px 0 4px; }
   .quota .q-row {
     display: flex; justify-content: space-between; align-items: baseline;
@@ -212,6 +212,15 @@
     from { transform: translateX(-50%) translateY(0) rotate(-2deg); }
     to   { transform: translateX(-50%) translateY(-5px) rotate(3deg); }
   }
+  /* 步态：进度越满，颠簸频率越快 */
+  .runner.g-walk   { animation-duration: 1s; }
+  .runner.g-hike   { animation-duration: .75s; }
+  .runner.g-jog    { animation-duration: .58s; }
+  .runner.g-run    { animation-duration: .45s; }
+  .runner.g-sprint { animation-duration: .28s; }
+  .gait-legend { font-size: 11px; color: var(--navy-500); margin-top: 10px; }
+  .gait-legend img { width: 30px; vertical-align: middle; margin: 0 2px; }
+
   .reset-note { font-size: 11px; color: var(--navy-500); margin-top: 6px; opacity: .8; }
 
   /* ================= 被咬的 DeepSeek 卡片 ================= */
@@ -295,6 +304,77 @@
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--mint); }
   .shen-coding { width: 46px; margin-left: auto; filter: drop-shadow(0 2px 2px rgba(28,42,82,.18)); }
 
+  /* ================= 微缩窗口 · 气泡框模式 ================= */
+  .mini-demo { margin-top: 26px; width: 640px; max-width: 94vw; }
+  .mini-stage {
+    position: relative;
+    background: var(--cream);
+    border: 1.5px dashed var(--aqua-300);
+    border-radius: 16px;
+    height: 330px;
+    margin-top: 12px;
+    overflow: hidden;
+  }
+  /* 贴边收起的触发条 */
+  .mini-strip {
+    position: absolute; right: 0; top: 0; bottom: 0; width: 7px;
+    background: repeating-linear-gradient(0deg, var(--aqua-300) 0 10px, var(--aqua-500) 10px 20px);
+    border-radius: 0 14px 14px 0;
+  }
+  .mini-shen {
+    position: absolute; right: 10px; bottom: -10px; width: 245px;
+    filter: drop-shadow(0 4px 5px rgba(28,42,82,.16));
+    animation: breathe 3s ease-in-out infinite;
+  }
+  .bubble {
+    position: absolute; left: 18px; top: 18px; width: 268px;
+    background: var(--paper);
+    border: 2px solid var(--aqua-300);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    padding: 10px 14px 12px;
+    animation: breathe 3s ease-in-out infinite;
+  }
+  /* 气泡尾巴（指向小深酱） */
+  .bubble::before {
+    content: ""; position: absolute; right: -20px; bottom: 26px;
+    border: 11px solid transparent; border-left: 15px solid var(--aqua-300); border-right: 0;
+  }
+  .bubble::after {
+    content: ""; position: absolute; right: -13px; bottom: 29.5px;
+    border: 8px solid transparent; border-left: 11.5px solid var(--paper); border-right: 0;
+  }
+  .bhead {
+    display: flex; align-items: center; gap: 6px;
+    font-weight: 700; font-size: 13px; color: var(--navy-900);
+    padding-bottom: 6px; margin-bottom: 4px;
+    border-bottom: 1.5px dashed var(--line);
+  }
+  .bhead .blogo {
+    width: 18px; height: 18px; font-size: 10px;
+    background: var(--aqua-500); color: #fff;
+    border-radius: 50% 50% 50% 4px;
+    display: grid; place-items: center;
+  }
+  .bhead .bicons { margin-left: auto; display: flex; gap: 10px; color: var(--navy-500); font-size: 11px; }
+  .mrow { display: flex; align-items: center; gap: 8px; padding: 5.5px 0; font-size: 12.5px; color: var(--navy-500); }
+  .mdot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .mbal { font-weight: 800; color: var(--navy-900); font-size: 15px; min-width: 58px; }
+  .mspd { margin-left: auto; font-weight: 700; color: var(--navy-900); font-size: 13px; }
+  /* 环形额度圈（conic-gradient + mask 甜甜圈） */
+  .ring {
+    position: relative; width: 32px; height: 32px; border-radius: 50%;
+    flex: none; display: grid; place-items: center;
+  }
+  .ring::before {
+    content: ""; position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(var(--rc) calc(var(--p) * 1%), #e3e8f5 0);
+    -webkit-mask: radial-gradient(circle, transparent 9.5px, black 10.5px);
+    mask: radial-gradient(circle, transparent 9.5px, black 10.5px);
+  }
+  .ring span { position: relative; font-size: 8.5px; font-weight: 800; color: var(--navy-700); }
+  .mini-note { font-size: 12px; color: var(--navy-500); line-height: 1.8; margin-top: 10px; }
+
   /* ================= 主题设定卡 ================= */
   .tokens { margin-top: 26px; width: 640px; max-width: 94vw; }
   .tokens .swatches { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
@@ -342,14 +422,14 @@
       </div>
     </div>
 
-    <!-- 卡片 2：Codex 额度（跑姿小深酱在进度条上奔跑） -->
+    <!-- 卡片 2：Codex 额度（步态小深酱在进度条上领跑） -->
     <div class="card">
       <div class="card-head">⚡ Codex <span class="pill">5x Pro</span></div>
       <div class="quota">
         <div class="q-row"><b>本周额度</b><span class="pct">37%</span></div>
         <div class="track">
           <div class="fill" data-w="37"></div>
-          <img class="runner" data-w="37" src="assets/cut/shen_run_a.png" alt="小深酱·奔跑" />
+          <img class="runner" data-w="37" src="assets/cut/shen_run_a.png" alt="小深酱领跑" />
         </div>
         <div class="reset-note">8月16日 04:34 重置</div>
       </div>
@@ -357,7 +437,7 @@
         <div class="q-row"><b>GPT-5.3-Codex-Spark</b><span class="pct">96%</span></div>
         <div class="track">
           <div class="fill full" data-w="96"></div>
-          <img class="runner small" data-w="96" src="assets/cut/shen_run_b.png" alt="小深酱·冲刺" />
+          <img class="runner small" data-w="96" src="assets/cut/shen_run_a.png" alt="小深酱领跑" />
         </div>
         <div class="reset-note">快跑完啦！8月17日 19:23 重置</div>
       </div>
@@ -370,7 +450,7 @@
         <div class="q-row"><b>本周额度</b><span class="pct">86%</span></div>
         <div class="track">
           <div class="fill" data-w="86"></div>
-          <img class="runner small" data-w="86" src="assets/cut/shen_run_c.png" alt="小深酱·慢跑" />
+          <img class="runner small" data-w="86" src="assets/cut/shen_run_a.png" alt="小深酱领跑" />
         </div>
         <div class="reset-note">8月17日 01:20 重置</div>
       </div>
@@ -378,9 +458,17 @@
         <div class="q-row"><b>5 小时窗口</b><span class="pct">54%</span></div>
         <div class="track">
           <div class="fill" data-w="54"></div>
-          <img class="runner" data-w="54" src="assets/cut/shen_run_a.png" alt="小深酱·奔跑" />
+          <img class="runner" data-w="54" src="assets/cut/shen_run_a.png" alt="小深酱领跑" />
         </div>
         <div class="reset-note">3小时56分后重置</div>
+      </div>
+      <div class="gait-legend">
+        步态随进度变化：
+        <img src="assets/cut/shen_walk_a.png" title="散步 <40%" />散步 &lt;40% →
+        <img src="assets/cut/shen_walk_b.png" title="快走 40~60%" />快走 →
+        <img src="assets/cut/shen_run_c.png" title="慢跑 60~80%" />慢跑 →
+        <img src="assets/cut/shen_run_a.png" title="奔跑 80~95%" />奔跑 →
+        <img src="assets/cut/shen_run_b.png" title="冲刺 ≥95%" />冲刺 ≥95%
       </div>
     </div>
 
@@ -416,13 +504,37 @@
   </div>
 </div>
 
+<!-- ================= 微缩窗口 · 气泡框模式 ================= -->
+<div class="card mini-demo">
+  <div class="card-head">🫧 微缩窗口 · 气泡框模式 <span class="pill">贴边收起态</span></div>
+  <div class="mini-stage">
+    <div class="bubble">
+      <div class="bhead">
+        <span class="blogo">🐳</span> Token Monitor
+        <span class="bicons"><span>↗</span><span>—</span><span>✕</span></span>
+      </div>
+      <div class="mrow"><span class="mbal">¥25.88</span><span class="mdot" style="background:#4db3e6"></span>DeepSeek<span class="mspd">0/min</span></div>
+      <div class="mrow"><div class="ring" style="--p:38;--rc:#d9a441"><span>38%</span></div><span class="mdot" style="background:#d9a441"></span>Codex<span class="mspd">7.2K/min</span></div>
+      <div class="mrow"><div class="ring" style="--p:86;--rc:#5fce9b"><span>86%</span></div><span class="mdot" style="background:#5fce9b"></span>Kimi<span class="mspd">2.8K/min</span></div>
+    </div>
+    <img class="mini-shen" src="assets/cut/shen_lying.png" alt="小深酱趴着报数据" />
+    <div class="mini-strip" title="贴边触发条"></div>
+  </div>
+  <div class="mini-note">
+    迷你窗收起时不再是窄条小窗：小深酱趴在屏幕角落，用气泡框播报核心数据 ——
+    DeepSeek 余额与实时速度、Codex / Kimi 的额度环（周额度百分比）与消耗速度，内容与原迷你窗一致；
+    右侧保留贴边触发条，悬停气泡可展开回完整窗口。
+  </div>
+</div>
+
 <!-- ================= 主题设定卡 ================= -->
 <div class="card tokens">
   <img class="salute-shen" src="assets/cut/deepseek_chan_02_salute.png" alt="小深酱敬礼" />
   <div class="card-head" style="margin-left:64px;">🎨 主题设定 · Theme Tokens</div>
   <div style="font-size:12.5px;color:var(--navy-500);line-height:1.9;margin-left:64px;">
     实底不透明（奶油白 #faf6ee），无亚克力/毛玻璃；卡片纸白 + 深蓝描边；
-    荷叶边、糖果斜纹、鲸鱼元素取自女仆装造型；进度条由不同跑姿的小深酱领跑。
+    荷叶边、糖果斜纹、鲸鱼元素取自女仆装造型；进度条由小深酱领跑，
+    步态映射：&lt;40% 散步 / 40~60% 快走 / 60~80% 慢跑 / 80~95% 奔跑 / ≥95% 冲刺。
   </div>
   <div class="swatches" style="margin-left:64px;">
     <div class="swatch"><i style="background:#1c2a52"></i>深海军蓝</div>
@@ -435,9 +547,11 @@
   </div>
   <div class="gallery" style="margin-left:64px;">
     <img src="assets/cut/shen_lying.png" title="趴趴" />
+    <img src="assets/cut/shen_walk_a.png" title="散步" />
+    <img src="assets/cut/shen_walk_b.png" title="快走" />
+    <img src="assets/cut/shen_run_c.png" title="慢跑" />
     <img src="assets/cut/shen_run_a.png" title="奔跑" />
     <img src="assets/cut/shen_run_b.png" title="冲刺" />
-    <img src="assets/cut/shen_run_c.png" title="慢跑" />
     <img src="assets/cut/deepseek_chan_01_hungry.png" title="啃卡片" />
     <img src="assets/cut/deepseek_chan_06_sleepy.png" title="瞌睡" />
     <img src="assets/cut/deepseek_chan_09_heart.png" title="比心" />
@@ -449,7 +563,23 @@
 <div class="footnote">小深酱主题 mockup · 素材由 AI 生成并抠图 · feat/shen-chan-theme</div>
 
 <script>
-  // 进度条动画：糖果条填充 + 小深酱跟着跑
+  // 步态映射：进度越满，小深酱移动越快
+  const GAITS = [
+    { max: 40,  src: 'assets/cut/shen_walk_a.png', cls: 'g-walk',   name: '散步' },
+    { max: 60,  src: 'assets/cut/shen_walk_b.png', cls: 'g-hike',   name: '快走' },
+    { max: 80,  src: 'assets/cut/shen_run_c.png',  cls: 'g-jog',    name: '慢跑' },
+    { max: 95,  src: 'assets/cut/shen_run_a.png',  cls: 'g-run',    name: '奔跑' },
+    { max: 101, src: 'assets/cut/shen_run_b.png',  cls: 'g-sprint', name: '冲刺' },
+  ];
+  document.querySelectorAll('.runner').forEach(el => {
+    const w = +el.dataset.w;
+    const g = GAITS.find(g => w < g.max);
+    el.src = g.src;
+    el.classList.add(g.cls);
+    el.title = '小深酱 · ' + g.name + '中';
+  });
+
+  // 进度条动画：糖果条填充 + 小深酱跟着移动
   window.addEventListener('load', () => {
     setTimeout(() => {
       document.querySelectorAll('.fill').forEach(el => { el.style.width = el.dataset.w + '%'; });
