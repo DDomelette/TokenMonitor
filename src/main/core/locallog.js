@@ -37,7 +37,9 @@ function defaultYieldToLoop() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-async function pathExists(targetPath) {
+async function pathExists(targetPath, canAccessPath) {
+  // null 表示主动跳过,不能作为文件已删除的证据。
+  if (canAccessPath && !(await canAccessPath(targetPath))) return null;
   try {
     await fsp.access(targetPath);
     return true;
@@ -46,10 +48,11 @@ async function pathExists(targetPath) {
   }
 }
 
-async function walkFiles(root, match) {
+async function walkFiles(root, match, canAccessPath) {
   const out = [];
 
   async function walk(dir) {
+    if (canAccessPath && !(await canAccessPath(dir))) return;
     let entries;
     try {
       entries = await fsp.readdir(dir, { withFileTypes: true });
@@ -87,6 +90,7 @@ async function scanCandidateBatch({
   isReplaced,
   computeHead,
   openCandidate,
+  canAccessPath,
   getCursor,
   diagnostics,
   nowMs,
@@ -115,6 +119,10 @@ async function scanCandidateBatch({
     if (!cursor) cursor = { offset: 0, mtimeMs: 0 };
 
     let stat;
+    if (canAccessPath && !(await canAccessPath(candidate.filePath))) {
+      complete = false;
+      continue;
+    }
     try {
       stat = await fsp.stat(candidate.filePath);
     } catch (_) {
@@ -154,6 +162,10 @@ async function scanCandidateBatch({
     let failure = null;
 
     try {
+      if (canAccessPath && !(await canAccessPath(candidate.filePath))) {
+        complete = false;
+        continue;
+      }
       handle = openCandidate
         ? await openCandidate(candidate)
         : await fsp.open(candidate.filePath, 'r');
@@ -299,6 +311,7 @@ async function scanCandidateBatch({
 // 兼容包装:单目录路径游标扫描(Kimi 与旧版 Codex 行为)。
 async function scanFileBatch({
   root,
+  canAccessPath,
   match,
   cursorStore,
   cursorKey,
@@ -311,12 +324,12 @@ async function scanFileBatch({
   maxLineBytes,
   yieldToLoop
 }) {
-  if (!root || !(await pathExists(root))) {
+  if (!root || !(await pathExists(root, canAccessPath))) {
     return { records: [], complete: true, bytesRead: 0 };
   }
 
   const cursors = cursorStore.get(cursorKey) || {};
-  const files = await walkFiles(root, match);
+  const files = await walkFiles(root, match, canAccessPath);
   const candidates = files.map((filePath) => ({
     identity: filePath,
     filePath: filePath,
@@ -327,6 +340,7 @@ async function scanFileBatch({
   try {
     result = await scanCandidateBatch({
       candidates,
+      canAccessPath,
       parseLine,
       onRecord({ record, cursor, records }) {
         if (record) {
@@ -358,7 +372,10 @@ async function scanFileBatch({
   }
 
   for (const cursorPath of Object.keys(cursors)) {
-    if (!(await pathExists(cursorPath))) delete cursors[cursorPath];
+    // 多个根共享游标表,只清理当前根,不能顺带访问其它(可能已停止的 WSL)根。
+    const relative = path.relative(root, cursorPath);
+    if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) continue;
+    if (await pathExists(cursorPath, canAccessPath) === false) delete cursors[cursorPath];
   }
   cursorStore.set(cursorKey, cursors);
   return result;
