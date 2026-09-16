@@ -9,6 +9,7 @@ const {
   incrementDiagnostic
 } = require('../../core/locallog');
 const { filterUsageDaily } = require('../../core/usage-retention');
+const { createWslPathGuard } = require('./wsl-roots');
 
 // ~/.kimi-code/sessions/**/wire.jsonl
 const DEFAULT_ROOT = () => path.join(os.homedir(), '.kimi-code', 'sessions');
@@ -88,6 +89,13 @@ async function readLocalLog(ctx, opts) {
     ? parsedNowMs
     : Date.now();
   const roots = resolveKimiLogRoots(store);
+  const guard = createWslPathGuard(opts);
+  let skippedWslPath = false;
+  const canAccessPath = async (target) => {
+    const allowed = await guard(target);
+    if (!allowed) skippedWslPath = true;
+    return allowed;
+  };
   if (store && !store.get(MIGRATION_KEY)) {
     const usageDaily = store.get('usageDaily') || {};
     Object.keys(usageDaily).forEach((key) => {
@@ -103,7 +111,7 @@ async function readLocalLog(ctx, opts) {
   const accessibleRoots = [];
   const inaccessibleRoots = [];
   for (const root of roots) {
-    (await pathAccessible(root) ? accessibleRoots : inaccessibleRoots).push(root);
+    (await canAccessPath(root) && await pathAccessible(root) ? accessibleRoots : inaccessibleRoots).push(root);
   }
   const cursorsSnapshot = (store && store.get(CURSOR_KEY)) || {};
   // 深拷贝:scanFileBatch 原地修改并回写同一对象,引用快照会被一起改掉
@@ -114,6 +122,7 @@ async function readLocalLog(ctx, opts) {
   for (const root of accessibleRoots) {
     const batch = await scanFileBatch({
       root: root,
+      canAccessPath,
       match: MATCH,
       cursorStore: store,
       cursorKey: CURSOR_KEY,
@@ -140,6 +149,12 @@ async function readLocalLog(ctx, opts) {
     store.set(CURSOR_KEY, cursorsAfter);
   }
   const batch = { records, complete, bytesRead };
+  // 全量重建会先清空旧聚合;缺少 WSL 数据时让 history-sync 回滚,避免覆盖历史。
+  if (opts && opts.retainAll && skippedWslPath) {
+    const error = new Error('WSL 日志目录暂未运行或状态查询失败,请启动对应发行版后重试历史同步。');
+    error.code = 'WSL_LOG_ROOT_UNAVAILABLE';
+    throw error;
+  }
   if (records.length && store) {
     // retainAll:全量重扫(历史同步)时绕过保留窗口过滤,否则旧日聚合在写入前即被丢弃
     const rolled = rollupDaily(records, diagnostics, nowMs);
