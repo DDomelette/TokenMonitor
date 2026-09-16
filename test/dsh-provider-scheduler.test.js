@@ -6,6 +6,7 @@ const path = require('node:path');
 
 const dshProvider = require('../src/main/providers/dsh');
 const { startScheduler } = require('../src/main/core/scheduler');
+const { localDayStr } = require('../src/main/core/beijing-calendar');
 
 function getPath(object, key) {
   return key.split('.').reduce((value, part) => (value == null ? undefined : value[part]), object);
@@ -50,8 +51,10 @@ test('dsh adapter exposes the localLog contract', () => {
 
 test('scheduler polls dsh localLog and the merged daily lands in the store', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-sched-'));
-  fs.writeFileSync(path.join(root, 'usage-2026-08-14.jsonl'),
-    JSON.stringify({ v: 1, time: Date.UTC(2026, 7, 14, 2, 0, 0), sessionId: 's1', model: 'deepseek-v4-pro', inputTokens: 100, outputTokens: 200, cacheReadTokens: 0, cacheWriteTokens: 0 }) + '\n');
+  const now = Date.now();
+  const day = localDayStr(now);
+  fs.writeFileSync(path.join(root, 'usage-' + day + '.jsonl'),
+    JSON.stringify({ v: 1, time: now, sessionId: 's1', model: 'deepseek-v4-pro', inputTokens: 100, outputTokens: 200, cacheReadTokens: 0, cacheWriteTokens: 0 }) + '\n');
 
   const store = makeStore({ usageDaily: {}, providers: { dsh: { telemetryRoot: root } }, data: { historyDays: 30 } });
   const broadcasts = [];
@@ -64,9 +67,9 @@ test('scheduler polls dsh localLog and the merged daily lands in the store', asy
   try {
     await scheduler.poll('dsh', 'localLog');
     const daily = store.get('usageDaily');
-    assert.equal(daily['dsh:2026-08-14'].input, 100);
-    assert.equal(daily['dsh:2026-08-14'].output, 200);
-    assert.ok(store.get('usageDailyCost')['dsh:2026-08-14'] > 0);
+    assert.equal(daily['dsh:' + day].input, 100);
+    assert.equal(daily['dsh:' + day].output, 200);
+    assert.ok(store.get('usageDailyCost')['dsh:' + day] > 0);
     assert.ok(broadcasts.some((b) => b.channel === 'providers:changed'));
   } finally {
     scheduler.stop();
