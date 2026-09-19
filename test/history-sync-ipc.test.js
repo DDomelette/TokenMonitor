@@ -232,3 +232,18 @@ test('preload 白名单放行 sync:history 与 sync:progress', () => {
   assert.match(preloadSource, /'sync:history'/);
   assert.match(preloadSource, /'sync:progress'/);
 });
+
+test('sync:history returns a retention hint for older history and broadcasts even with an empty poll', async () => {
+  freshHarness();
+  codexRuntime.rebuild = async () => ({ daysRebuilt: 1, earliestDate: '2020-01-01' });
+  const broadcasts = [];
+  setupIPC(buildDeps({
+    store: makeFakeStore({ data: { historyDays: 7 } }),
+    broadcast: (...args) => broadcasts.push(args)
+  }));
+  const result = await fakeIpc.handleMap.get('sync:history')({ sender: { send() {} } });
+  assert.equal(result.retentionHint.earliestDate, '2020-01-01');
+  assert.ok(result.retentionHint.suggestedDays > 7);
+  assert.deepEqual(broadcasts, [['providers:changed', [], { providerId: '__all__', channel: 'all' }]]);
+  assert.equal(pollAllCalls, 1);
+});

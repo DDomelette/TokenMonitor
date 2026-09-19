@@ -7,6 +7,7 @@ const { resetSettingsStore } = require('./core/settings-reset');
 const { saveSetting } = require('./core/settings-write');
 const { replaceDeepseekApiKey } = require('./core/api-key-replacement');
 const { retentionStartDay } = require('./core/usage-retention');
+const { inclusiveBeijingDayCount } = require('./core/beijing-calendar');
 const { getSessionSnapshot } = require('./core/session-state');
 const { skipDeepseekLogin } = require('./core/startup-windows');
 const { syncDeepSeekHistory, rescanLocalLogs } = require('./core/history-sync');
@@ -268,6 +269,11 @@ module.exports = function setupIPC(deps) {
 
     if (deps.tokenSpeedRuntime && typeof deps.tokenSpeedRuntime.rebaselineAll === 'function') {
       deps.tokenSpeedRuntime.rebaselineAll();
+    }
+
+    // 重建本身已修改历史,即使后续轮询无新增数据或网络失败也要刷新缓存。
+    if (typeof deps.broadcast === 'function') {
+      deps.broadcast('providers:changed', deps.scheduler.getSnapshot(), { providerId: '__all__', channel: 'all' });
     }
 
     // 广播 providers:changed,渲染端 TokenHeatmap/ProviderBar 已订阅,会自动重取 get:heatmap

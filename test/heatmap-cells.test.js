@@ -126,7 +126,7 @@ test('TokenHeatmap renders visual-week totals without ISO-week aggregation', () 
   assert.match(heatmapJsx, /每周/);
   assert.match(heatmapJsx, /累计/);
   assert.match(heatmapJsx, /heatmap-tooltip/);
-  assert.match(heatmapJsx, /getHeatmap/);
+  assert.match(heatmapJsx, /useHeatmap/);
 });
 
 test('TokenHeatmap portals the tooltip to document.body so it escapes the module card', () => {

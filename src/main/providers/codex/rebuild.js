@@ -2,6 +2,7 @@
 // 先在独立内存影子 store 中联合扫描活动/归档两个目录,得到完整 codex:* 日汇总与
 // UUID 游标,再通过一次 `store.store = nextStore` 提交,绝不分步写入。
 const { rollupDaily } = require('../../core/locallog');
+const { mergeDailyUsage } = require('../../core/daily-usage');
 const { scanCodexLogBatch } = require('./locallog');
 
 const CODEX_ARCHIVE_MIGRATION_KEY = 'localLogMigrations.codexArchiveUuidCursorV1';
@@ -24,21 +25,6 @@ function makeShadowStore(initial) {
     set(key, value) { data[key] = value; },
     data
   };
-}
-
-function mergeDaily(target, additions) {
-  const out = target || {};
-  Object.keys(additions || {}).forEach((key) => {
-    const prev = out[key] || { input: 0, cached: 0, output: 0, total: 0 };
-    const add = additions[key];
-    out[key] = {
-      input: prev.input + add.input,
-      cached: prev.cached + add.cached,
-      output: prev.output + add.output,
-      total: prev.total + add.total
-    };
-  });
-  return out;
 }
 
 function buildSummary(usageDaily, passes, records, diagnostics, bytesRead) {
@@ -110,7 +96,7 @@ async function buildCodexShadow({
 
     shadow.set(
       USAGE_DAILY_KEY,
-      mergeDaily(shadow.get(USAGE_DAILY_KEY), rollupDaily(batchRecords, diagnostics, nowMs))
+      mergeDailyUsage(shadow.get(USAGE_DAILY_KEY), rollupDaily(batchRecords, diagnostics, nowMs))
     );
 
     complete = !!(batch && batch.complete);

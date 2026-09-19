@@ -45,12 +45,8 @@ function startScheduler({
     };
   }
 
-  function broadcastAll() {
-    broadcast('providers:changed', getSnapshot());
-  }
-
-  function touch(providerId) {
-    broadcastAll();
+  function touch(providerId, channel = 'status') {
+    broadcast('providers:changed', getSnapshot(), { providerId, channel });
     if (onStateChange) onStateChange(providerId, states[providerId] || null);
   }
 
@@ -168,10 +164,10 @@ function startScheduler({
     if (failureSignature(st) !== before) touch(provider.id);
   }
 
-  function recordSuccess(provider, channel, field, value) {
+  function recordSuccess(provider, channel, value, fetchedAt = Date.now()) {
     const st = ensureState(provider);
-    st[field] = value;
-    st.lastFetchedAt = Date.now();
+    st[channel] = value;
+    st.lastFetchedAt = fetchedAt;
     delete st.channelErrors[channel];
 
     if (st.authStatus !== 'ok') {
@@ -180,7 +176,7 @@ function startScheduler({
     }
 
     refreshFailureSummary(st);
-    touch(provider.id);
+    touch(provider.id, channel);
   }
 
   function recordChannelRecovery(provider, channel, notify = true) {
@@ -223,7 +219,7 @@ function startScheduler({
     if (!canPollProtected(provider)) return;
     try {
       const balance = await provider.fetchBalance(ctxFor(provider));
-      recordSuccess(provider, 'balance', 'balance', balance);
+      recordSuccess(provider, 'balance', balance);
     } catch (error) {
       recordFailure(provider, 'balance', error);
     }
@@ -240,7 +236,7 @@ function startScheduler({
         month: now.getMonth() + 1,
         year: now.getFullYear()
       });
-      recordSuccess(provider, 'usage', 'usage', usage);
+      recordSuccess(provider, 'usage', usage);
       notifyUsageObservation(provider, 'usage');
     } catch (error) {
       recordFailure(provider, 'usage', error);
@@ -253,14 +249,14 @@ function startScheduler({
     try {
       const quota = await provider.fetchQuota(ctxFor(provider));
       const fetchedAt = Date.now();
-      recordSuccess(provider, 'quota', 'quota', quota);
+      ensureState(provider).quotaFetchedAt = quota ? fetchedAt : null;
       // 每次成功都持久化一份:下次失败(过期/断网)乃至重启后都能保持显示
       if (quota) {
-        ensureState(provider).quotaFetchedAt = fetchedAt;
         try {
           store.set('providers.' + provider.id + '.lastQuota', { quota: quota, fetchedAt: fetchedAt });
         } catch (_) { /* 持久化失败(磁盘/只读 store)不影响本轮结果 */ }
       }
+      recordSuccess(provider, 'quota', quota, fetchedAt);
     } catch (error) {
       recordFailure(provider, 'quota', error);
     }
@@ -289,7 +285,7 @@ function startScheduler({
       const records = Array.isArray(batch) ? batch : batch.records;
       const changed = Array.isArray(records) && records.length > 0;
       const recovered = recordChannelRecovery(provider, 'localLog', false);
-      if (changed || recovered) touch(provider.id);
+      if (changed || recovered) touch(provider.id, changed ? 'localLog' : 'status');
       notifyUsageObservation(provider, 'localLog');
       // 非零解析诊断打一行日志,便于观测遥测数据完整性(坏行/截断尾行/版本不符等)。
       const diagnosticKeys = Object.keys(diagnostics).filter((key) => diagnostics[key] > 0);
@@ -309,57 +305,52 @@ function startScheduler({
     timers.push(setInterval(() => runOnce(provider.id, channel, fn), intervalMs));
   }
 
+  const channels = {
+    balance: { capability: 'balance', method: 'fetchBalance', poll: pollBalance },
+    usage: { capability: 'webUsage', method: 'fetchUsage', poll: pollUsage },
+    quota: { capability: 'quota', method: 'fetchQuota', poll: pollQuota },
+    localLog: { capability: 'localLog', method: 'readLocalLog', poll: pollLocalLog }
+  };
+
+  function supportedChannels(provider) {
+    return Object.keys(channels).filter((channel) => {
+      const spec = channels[channel];
+      return provider.capabilities[spec.capability] && typeof provider[spec.method] === 'function';
+    });
+  }
+
   function start() {
     registry.list().forEach((provider) => {
       const st = ensureState(provider);
       st.authStatus = readAuthStatus(provider);
-      if (provider.capabilities.balance && typeof provider.fetchBalance === 'function') {
-        schedule(provider, 'balance', () => pollBalance(provider), enabled.balance);
-      }
-      if (provider.capabilities.webUsage && typeof provider.fetchUsage === 'function') {
-        schedule(provider, 'usage', () => pollUsage(provider), enabled.usage);
-      }
-      if (provider.capabilities.quota && typeof provider.fetchQuota === 'function') {
-        schedule(provider, 'quota', () => pollQuota(provider), enabled.quota);
-      }
-      if (provider.capabilities.localLog && typeof provider.readLocalLog === 'function') {
-        schedule(provider, 'localLog', () => pollLocalLog(provider), enabled.localLog);
-      }
+      supportedChannels(provider).forEach((channel) => {
+        schedule(provider, channel, () => channels[channel].poll(provider), enabled[channel]);
+      });
     });
-    touch('__all__');
+    touch('__all__', 'all');
   }
 
   // 手动触发(测试/立即刷新)。
   async function poll(providerId, channel) {
     const provider = registry.get(providerId);
-    if (!provider) return;
-    if (channel === 'balance' && typeof provider.fetchBalance === 'function') {
-      await runOnce(providerId, channel, () => pollBalance(provider));
-    } else if (channel === 'usage' && typeof provider.fetchUsage === 'function') {
-      await runOnce(providerId, channel, () => pollUsage(provider));
-    } else if (channel === 'quota' && typeof provider.fetchQuota === 'function') {
-      await runOnce(providerId, channel, () => pollQuota(provider));
-    } else if (channel === 'localLog' && typeof provider.readLocalLog === 'function') {
-      await runOnce(providerId, channel, () => pollLocalLog(provider));
-    }
+    const spec = Object.hasOwn(channels, channel) ? channels[channel] : null;
+    if (!provider || !spec || typeof provider[spec.method] !== 'function') return;
+    await runOnce(providerId, channel, () => spec.poll(provider));
   }
 
   async function pollAll() {
+    const network = [];
+    const localLogs = [];
     for (const provider of registry.list()) {
-      if (provider.capabilities.balance && typeof provider.fetchBalance === 'function') {
-        await runOnce(provider.id, 'balance', () => pollBalance(provider));
-      }
-      if (provider.capabilities.webUsage && typeof provider.fetchUsage === 'function') {
-        await runOnce(provider.id, 'usage', () => pollUsage(provider));
-      }
-      if (provider.capabilities.quota && typeof provider.fetchQuota === 'function') {
-        await runOnce(provider.id, 'quota', () => pollQuota(provider));
-      }
-      // 手动刷新也补一遍本地日志合并,热力图/全平台柱状图(usageDaily)立即拿到最新数据
-      if (provider.capabilities.localLog && typeof provider.readLocalLog === 'function') {
-        await runOnce(provider.id, 'localLog', () => pollLocalLog(provider));
-      }
+      supportedChannels(provider).forEach((channel) => {
+        (channel === 'localLog' ? localLogs : network).push(() => poll(provider.id, channel));
+      });
     }
+    // 网络最多两路并发;本地扫描保持顺序,无需等待网络超时才刷新本机用量。
+    const drain = async (queue) => {
+      while (queue.length) await queue.shift()();
+    };
+    await Promise.all([drain(network), drain(network), drain(localLogs)]);
   }
 
   function getState(providerId) {

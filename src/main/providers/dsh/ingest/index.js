@@ -38,7 +38,9 @@ function startIngest(options = {}) {
       onAccepted: ({ changed }) => {
         if (!changed) return;
         if (options.onUsageObservation) options.onUsageObservation('dsh', { observedAt: Date.now() });
-        if (options.broadcast) options.broadcast('providers:changed', scheduler ? scheduler.getSnapshot() : []);
+        if (options.broadcast) options.broadcast('providers:changed', scheduler ? scheduler.getSnapshot() : [], {
+          providerId: 'dsh', channel: 'localLog'
+        });
       },
       onRejected: ({ code }) => recordDiagnostic(code)
     });

@@ -9,18 +9,21 @@ const SECRET_SETTING_PATHS = [
 ];
 
 function sanitizeSettings(storeData) {
-  const clone = JSON.parse(JSON.stringify(storeData || {}));
+  const selected = { ...storeData };
   // 用量/费用聚合属于大数据键:渲染层经专用 IPC(get:heatmap / get:dashboard)获取,
   // 不进 settings 载荷(避免每 60s 整库深拷贝广播放大载荷体积)。
-  delete clone.usageDaily;
-  delete clone.usageDailyCost;
-  delete clone.usageDailyPush;
-  delete clone.usageDailyCostPush;
-  if (clone.ingest && clone.ingest.dsh) {
-    delete clone.ingest.dsh.batchRegistry;
-    delete clone.ingest.dsh.sources;
-    delete clone.ingest.dsh.diagnostics;
+  // 先排除大数据,再深拷贝;不遍历即将丢弃的历史记录。
+  delete selected.usageDaily;
+  delete selected.usageDailyCost;
+  delete selected.usageDailyPush;
+  delete selected.usageDailyCostPush;
+  if (selected.ingest && selected.ingest.dsh) {
+    selected.ingest = { ...selected.ingest, dsh: { ...selected.ingest.dsh } };
+    delete selected.ingest.dsh.batchRegistry;
+    delete selected.ingest.dsh.sources;
+    delete selected.ingest.dsh.diagnostics;
   }
+  const clone = JSON.parse(JSON.stringify(selected));
   SECRET_SETTING_PATHS.forEach(function (pathParts) {
     let node = clone;
     for (let i = 0; i < pathParts.length - 1; i++) {
