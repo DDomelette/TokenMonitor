@@ -53,28 +53,48 @@ const MIN_SIZES = {
   'token-heatmap': { w: 6, h: 10 }
 };
 
-function WidgetBody({ id, onContentChange }) {
+function UsageWidget({ id, onContentChange }) {
   const dashboard = useDashboard('deepseek');
-  const dshDashboard = useDashboard('dsh');
-  const providers = useProviders();
-  // 数据驱动的重渲染后通知 grid 重新检查内容是否溢出(无依赖 = 每次渲染后都跑)
-  useEffect(() => { if (onContentChange) onContentChange(); });
+  useEffect(() => { if (onContentChange) onContentChange(); }, [dashboard, onContentChange]);
   if (FEE_IDS.includes(id)) {
     return <FeeCard id={id} balance={dashboard ? dashboard.balance : null} stats={dashboard ? dashboard.stats : null} />;
   }
+  if (id === 'cost-line') {
+    return <CostWidget dashboard={dashboard} onContentChange={onContentChange} />;
+  }
+  return <ChartWidget id={id} dashboard={dashboard} />;
+}
+
+function CostWidget({ dashboard, onContentChange }) {
+  const dshDashboard = useDashboard('dsh');
+  useEffect(() => { if (onContentChange) onContentChange(); }, [dshDashboard, onContentChange]);
+  const curvePoints = mergeCurves([
+    dashboard && dashboard.curveCost,
+    dshDashboard && dshDashboard.curveCost
+  ].filter(Boolean));
+  return <ChartWidget id="cost-line" dashboard={dashboard} curvePoints={curvePoints} />;
+}
+
+function QuotaWidget({ id, onContentChange }) {
+  const providers = useProviders();
+  useEffect(() => { if (onContentChange) onContentChange(); }, [providers, onContentChange]);
+  const pid = id.slice('quota-'.length);
+  const provider = providers.find((p) => p.id === pid);
+  if (!provider) return <div className="embed-empty">未检测到 {pid} 数据源</div>;
+  return (
+    <QuotaCard
+      provider={provider}
+      quotaState={provider.quota}
+      authStatus={provider.authStatus}
+      quotaFetchedAt={provider.quotaFetchedAt}
+      onRetry={() => send('refresh:dashboard')}
+    />
+  );
+}
+
+function WidgetBody({ id, onContentChange }) {
   if (QUOTA_IDS.includes(id)) {
-    const pid = id.slice('quota-'.length);
-    const provider = providers.find((p) => p.id === pid);
-    if (!provider) return <div className="embed-empty">未检测到 {pid} 数据源</div>;
-    return (
-      <QuotaCard
-        provider={provider}
-        quotaState={provider.quota}
-        authStatus={provider.authStatus}
-        quotaFetchedAt={provider.quotaFetchedAt}
-        onRetry={() => send('refresh:dashboard')}
-      />
-    );
+    return <QuotaWidget id={id} onContentChange={onContentChange} />;
   }
   if (id === 'token-heatmap') {
     return <TokenHeatmap />;
@@ -85,16 +105,7 @@ function WidgetBody({ id, onContentChange }) {
   if (id === 'provider-bar') {
     return <ProviderBar />;
   }
-  if (id === 'cost-line') {
-    // 费用增长趋势 = deepseek 平台曲线 + DSH 本地费用曲线按日合并(同日增量求和、重算累计)。
-    // deepseek 未登录时只渲染 dsh 曲线;两者皆空时渲染空图。
-    const curvePoints = mergeCurves([
-      dashboard && dashboard.curveCost,
-      dshDashboard && dshDashboard.curveCost
-    ].filter(Boolean));
-    return <ChartWidget id={id} dashboard={dashboard} curvePoints={curvePoints} />;
-  }
-  return <ChartWidget id={id} dashboard={dashboard} />;
+  return <UsageWidget id={id} onContentChange={onContentChange} />;
 }
 
 export default function Dashboard({ editing }) {

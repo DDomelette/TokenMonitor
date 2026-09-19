@@ -289,96 +289,69 @@
     });
   }
 
-  function renderMcpConnectionInfo(info) {
-    var urlInput = document.getElementById('mcpServerUrl');
-    var tokenInput = document.getElementById('mcpServerToken');
-    var copyBtn = document.getElementById('mcpCopyBtn');
-    var rotateBtn = document.getElementById('mcpRotateBtn');
-    if (!urlInput || !tokenInput) return;
-    urlInput.value = info.running ? info.url : (info.enabled ? '启动中/未运行' : '已关闭');
-    tokenInput.value = info.token || '';
-    if (copyBtn) copyBtn.disabled = !info.running;
-    if (rotateBtn) rotateBtn.disabled = !info.enabled;
-  }
-
-  function loadMcpConnectionInfo() {
-    if (!document.getElementById('mcpServerUrl')) return;
-    window.api.invoke('mcp:getConnectionInfo').then(renderMcpConnectionInfo).catch(function () {
-      var urlInput = document.getElementById('mcpServerUrl');
-      if (urlInput) urlInput.value = '不可用';
-    });
-  }
-
-  function copyMcpConnectionInfo() {
-    var urlInput = document.getElementById('mcpServerUrl');
-    var tokenInput = document.getElementById('mcpServerToken');
-    var copyBtn = document.getElementById('mcpCopyBtn');
-    if (!urlInput || !tokenInput) return;
-    navigator.clipboard.writeText(urlInput.value + '\nAuthorization: Bearer ' + tokenInput.value);
-    if (copyBtn) {
-      copyBtn.textContent = '已复制';
-      setTimeout(function () { copyBtn.textContent = '复制连接信息'; }, 1200);
+  function createConnectionControls(config) {
+    function element(suffix) { return document.getElementById(config.prefix + suffix); }
+    function renderInfo(info) {
+      var urlInput = element('ServerUrl');
+      var tokenInput = element('ServerToken');
+      if (!urlInput || !tokenInput) return;
+      urlInput.value = info.running ? info.url : (info.enabled ? '启动中/未运行' : '已关闭');
+      tokenInput.value = info.token || '';
+      var copyBtn = element('CopyBtn');
+      var rotateBtn = element('RotateBtn');
+      if (copyBtn) copyBtn.disabled = !info.running;
+      if (rotateBtn) rotateBtn.disabled = !info.enabled;
+      if (config.renderExtra) config.renderExtra(info);
     }
+    return {
+      load: function () {
+        if (!element('ServerUrl')) return;
+        return window.api.invoke(config.readChannel).then(renderInfo).catch(function () {
+          var urlInput = element('ServerUrl');
+          if (urlInput) urlInput.value = '不可用';
+        });
+      },
+      copy: function () {
+        var urlInput = element('ServerUrl');
+        var tokenInput = element('ServerToken');
+        var copyBtn = element('CopyBtn');
+        if (!urlInput || !tokenInput) return;
+        return navigator.clipboard.writeText(urlInput.value + '\nAuthorization: Bearer ' + tokenInput.value).then(function () {
+          if (!copyBtn) return;
+          copyBtn.textContent = '已复制';
+          setTimeout(function () { copyBtn.textContent = config.copyLabel; }, 1200);
+        }).catch(function () { showSaveError('复制失败，请重试。'); });
+      },
+      rotate: function () {
+        var rotateBtn = element('RotateBtn');
+        if (rotateBtn) rotateBtn.disabled = true;
+        return window.api.invoke(config.rotateChannel).then(renderInfo).catch(function () {
+          showSaveError('令牌更新失败，请重试。');
+        }).finally(function () {
+          if (rotateBtn) rotateBtn.disabled = false;
+        });
+      }
+    };
   }
 
-  function rotateMcpToken() {
-    var rotateBtn = document.getElementById('mcpRotateBtn');
-    if (rotateBtn) rotateBtn.disabled = true;
-    window.api.invoke('mcp:rotateToken').then(renderMcpConnectionInfo).catch(function () {}).then(function () {
-      if (rotateBtn) rotateBtn.disabled = false;
-    });
-  }
-
-  function renderIngestConnectionInfo(info) {
-    var urlInput = document.getElementById('ingestServerUrl');
-    var tokenInput = document.getElementById('ingestServerToken');
-    var copyBtn = document.getElementById('ingestCopyBtn');
-    var rotateBtn = document.getElementById('ingestRotateBtn');
+  function renderIngestDiagnostics(info) {
     var statusEl = document.getElementById('ingestStatus');
-    if (!urlInput || !tokenInput) return;
-    urlInput.value = info.running ? info.url : (info.enabled ? '启动中/未运行' : '已关闭');
-    tokenInput.value = info.token || '';
-    if (copyBtn) copyBtn.disabled = !info.running;
-    if (rotateBtn) rotateBtn.disabled = !info.enabled;
-    if (statusEl) {
-      var diag = info.diagnostics || {};
-      var parts = [];
-      if (diag['batch-conflict']) parts.push('冲突 ' + diag['batch-conflict']);
-      if (diag['invalid-row']) parts.push('非法行 ' + diag['invalid-row']);
-      if (diag['unauthorized']) parts.push('未授权 ' + diag['unauthorized']);
-      if (diag['registry-full']) parts.push('注册表满 ' + diag['registry-full']);
-      statusEl.textContent = parts.length ? ('拒绝计数:' + parts.join(' / ')) : '';
-      statusEl.hidden = !parts.length;
-    }
+    if (!statusEl) return;
+    var diag = info.diagnostics || {};
+    var labels = { 'batch-conflict': '冲突', 'invalid-row': '非法行', unauthorized: '未授权', 'registry-full': '注册表满' };
+    var parts = Object.keys(labels).filter(function (key) { return diag[key]; })
+      .map(function (key) { return labels[key] + ' ' + diag[key]; });
+    statusEl.textContent = parts.length ? ('拒绝计数:' + parts.join(' / ')) : '';
+    statusEl.hidden = !parts.length;
   }
 
-  function loadIngestConnectionInfo() {
-    if (!document.getElementById('ingestServerUrl')) return;
-    window.api.invoke('ingest:getConnectionInfo').then(renderIngestConnectionInfo).catch(function () {
-      var urlInput = document.getElementById('ingestServerUrl');
-      if (urlInput) urlInput.value = '不可用';
-    });
-  }
-
-  function copyIngestConnectionInfo() {
-    var urlInput = document.getElementById('ingestServerUrl');
-    var tokenInput = document.getElementById('ingestServerToken');
-    var copyBtn = document.getElementById('ingestCopyBtn');
-    if (!urlInput || !tokenInput) return;
-    navigator.clipboard.writeText(urlInput.value + '\nAuthorization: Bearer ' + tokenInput.value);
-    if (copyBtn) {
-      copyBtn.textContent = '已复制';
-      setTimeout(function () { copyBtn.textContent = '复制接收地址'; }, 1200);
-    }
-  }
-
-  function rotateIngestToken() {
-    var rotateBtn = document.getElementById('ingestRotateBtn');
-    if (rotateBtn) rotateBtn.disabled = true;
-    window.api.invoke('ingest:rotateToken').then(renderIngestConnectionInfo).catch(function () {}).then(function () {
-      if (rotateBtn) rotateBtn.disabled = false;
-    });
-  }
+  var mcpConnection = createConnectionControls({
+    prefix: 'mcp', readChannel: 'mcp:getConnectionInfo', rotateChannel: 'mcp:rotateToken', copyLabel: '复制连接信息'
+  });
+  var ingestConnection = createConnectionControls({
+    prefix: 'ingest', readChannel: 'ingest:getConnectionInfo', rotateChannel: 'ingest:rotateToken', copyLabel: '复制接收地址',
+    renderExtra: renderIngestDiagnostics
+  });
 
   function render(def, val, placeholder) {
     var v = val !== undefined ? val : def.default;
@@ -485,14 +458,16 @@
     return html;
   }
 
-  function bindEvents() {
+  function bindWindowEvents() {
     document.getElementById('settingsCloseBtn').addEventListener('click', requestSettingsClose);
     document.getElementById('settingsDoneBtn').addEventListener('click', requestSettingsClose);
     document.getElementById('resetBtn').addEventListener('click', function () {
       if (!window.confirm('确定要重置外观与布局设置吗?\nAPI Key、平台登录与用量数据都会保留。')) return;
       window.api.send('settings:reset');
     });
+  }
 
+  function bindEvents() {
     var reloginBtn = document.getElementById('sessionReloginBtn');
     if (reloginBtn) {
       reloginBtn.addEventListener('click', function () { window.api.send('session:relogin'); });
@@ -531,17 +506,17 @@
 
     var mcpCopyBtn = document.getElementById('mcpCopyBtn');
     if (mcpCopyBtn) {
-      mcpCopyBtn.addEventListener('click', copyMcpConnectionInfo);
+      mcpCopyBtn.addEventListener('click', mcpConnection.copy);
     }
     var mcpRotateBtn = document.getElementById('mcpRotateBtn');
     if (mcpRotateBtn) {
-      mcpRotateBtn.addEventListener('click', rotateMcpToken);
+      mcpRotateBtn.addEventListener('click', mcpConnection.rotate);
     }
 
     var ingestCopyBtn = document.getElementById('ingestCopyBtn');
-    if (ingestCopyBtn) ingestCopyBtn.addEventListener('click', copyIngestConnectionInfo);
+    if (ingestCopyBtn) ingestCopyBtn.addEventListener('click', ingestConnection.copy);
     var ingestRotateBtn = document.getElementById('ingestRotateBtn');
-    if (ingestRotateBtn) ingestRotateBtn.addEventListener('click', rotateIngestToken);
+    if (ingestRotateBtn) ingestRotateBtn.addEventListener('click', ingestConnection.rotate);
 
     document.querySelectorAll('input[data-key]').forEach(function (el) {
       el.addEventListener('input', function () { handleChange(el); });
@@ -615,11 +590,13 @@
     document.getElementById('settingsBody').innerHTML = buildSessionSection() + buildPanel(settings);
     bindEvents();
     syncProxyControls();
-    loadMcpConnectionInfo();
-    loadIngestConnectionInfo();
+    mcpConnection.load();
+    ingestConnection.load();
     updateSessionSection();
     applyInitialTheme(settings);
   }
+
+  bindWindowEvents();
 
   window.api.on('settings:loaded', function (settings) {
     renderAll(settings);

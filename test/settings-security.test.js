@@ -8,6 +8,20 @@ const { sanitizeSettings, isWritableSettingKey, resolveWritableSettingKey } = re
 const ipcJs = fs.readFileSync(path.join(root, 'src/main/ipc.js'), 'utf8');
 const mainJs = fs.readFileSync(path.join(root, 'src/main/index.js'), 'utf8');
 
+test('sanitizeSettings never serializes excluded usage or ingest ledgers', () => {
+  const large = { toJSON() { throw new Error('excluded history was traversed'); } };
+  const raw = {
+    usageDaily: large, usageDailyCost: large, usageDailyPush: large, usageDailyCostPush: large,
+    ingest: { dsh: { batchRegistry: large, sources: large, diagnostics: large, enabled: true, token: 'secret' } },
+    window: { darkMode: 'dark' }
+  };
+  const clean = sanitizeSettings(raw);
+  assert.deepEqual(clean, { ingest: { dsh: { enabled: true } }, window: { darkMode: 'dark' } });
+  clean.window.darkMode = 'light';
+  assert.equal(raw.window.darkMode, 'dark');
+  assert.equal(raw.ingest.dsh.sources, large);
+});
+
 test('sanitizeSettings strips credentials but keeps proxy config and other settings', () => {
   const raw = {
     providers: { deepseek: { apiKey: 'sk-secret', sessionToken: 'tok-secret' }, proxyUrl: 'http://127.0.0.1:7890' },

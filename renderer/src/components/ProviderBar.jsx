@@ -1,8 +1,8 @@
 // 每日 Token 消耗(全平台堆叠柱):数据与热力图同源(get:heatmap 的 details.byProvider),
 // 最近 31 天零填充;堆叠自下而上 Codex → Kimi → DeepSeek;悬浮窗仿 model-bar(加粗日期 + 圆点行 + 缓存后缀 + 合计)。
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import useECharts from '../hooks/useECharts.js';
-import { getHeatmap, onProvidersChanged } from '../api.js';
+import { useHeatmap } from '../store.js';
 import { getBarTheme } from '../lib/chartTheme.js';
 import { formatToken as formatWan } from '../lib/heatmap.js';
 import { addBeijingDays, beijingDateParts, beijingDayKey } from '../lib/beijing-calendar.js';
@@ -80,25 +80,11 @@ function buildOption(dom, details, dates) {
 
 export default function ProviderBar() {
   const domRef = useRef(null);
-  const [details, setDetails] = useState(null);
   const nowParts = beijingDateParts();
   const year = nowParts ? nowParts.year : new Date().getFullYear();
   const dates = lastDays(DAYS);
-
-  useEffect(() => {
-    getHeatmap({ provider: 'all', year: year })
-      .then((data) => setDetails(data ? data.details : null))
-      .catch(() => {});
-  }, [year]);
-
-  // 手动刷新/定时轮询成功后重取,与热力图保持同源同步
-  useEffect(() => {
-    return onProvidersChanged(() => {
-      getHeatmap({ provider: 'all', year: year })
-        .then((data) => setDetails(data ? data.details : null))
-        .catch(() => {});
-    });
-  }, [year]);
+  const data = useHeatmap({ provider: 'all', year });
+  const details = data ? data.details : null;
 
   useECharts(domRef, () => buildOption(domRef.current, details, dates), [details]);
 
