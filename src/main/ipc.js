@@ -7,10 +7,12 @@ const { resetSettingsStore } = require('./core/settings-reset');
 const { saveSetting } = require('./core/settings-write');
 const { replaceDeepseekApiKey } = require('./core/api-key-replacement');
 const { retentionStartDay } = require('./core/usage-retention');
+const { inclusiveBeijingDayCount } = require('./core/beijing-calendar');
 const { getSessionSnapshot } = require('./core/session-state');
 const { skipDeepseekLogin } = require('./core/startup-windows');
 const { syncDeepSeekHistory, rescanLocalLogs } = require('./core/history-sync');
 const { UsageFetcher } = require('./providers/deepseek/usage');
+const { captureWebSession, writeWebTokens } = require('./providers/kimi/web-session');
 const { httpGet } = require('./core/http');
 const { SYSTEM_PROXY_VALUE, resolveElectronSystemProxy } = require('./core/proxy-settings');
 const { registerDiagnosticsIpc } = require('./core/diagnostics/ipc-registration');
@@ -148,6 +150,8 @@ module.exports = function setupIPC(deps) {
       const idx = key.indexOf(':');
       if (idx <= 0) return;
       const pid = key.slice(0, idx);
+      // 总览明细与合计使用同一口径；Harness 本地记录仅供单独查看。
+      if ((!provider || provider === 'all') && pid === 'dsh') return;
       const date = key.slice(idx + 1);
       const total = Number(usageDaily[key] && usageDaily[key].total) || 0;
       if (total <= 0) return;
@@ -268,6 +272,11 @@ module.exports = function setupIPC(deps) {
 
     if (deps.tokenSpeedRuntime && typeof deps.tokenSpeedRuntime.rebaselineAll === 'function') {
       deps.tokenSpeedRuntime.rebaselineAll();
+    }
+
+    // 重建本身已修改历史,即使后续轮询无新增数据或网络失败也要刷新缓存。
+    if (typeof deps.broadcast === 'function') {
+      deps.broadcast('providers:changed', deps.scheduler.getSnapshot(), { providerId: '__all__', channel: 'all' });
     }
 
     // 广播 providers:changed,渲染端 TokenHeatmap/ProviderBar 已订阅,会自动重取 get:heatmap
@@ -425,6 +434,22 @@ module.exports = function setupIPC(deps) {
 
   ipcMain.on('session:relogin', () => {
     deps.createSessionWindow();
+  });
+
+  // Kimi 网页登录(月额度):捕获 localStorage 的 access/refresh token 存入 store,
+  // 之后由 web-session.ensureFreshWebToken 自行刷新;成功后立刻重拉 Kimi 额度。
+  ipcMain.on('kimi:web-login', () => {
+    captureWebSession({ logger: console })
+      .then((tokens) => {
+        writeWebTokens(deps.store, tokens);
+        deps.broadcastSettings();
+        if (deps.scheduler && typeof deps.scheduler.poll === 'function') {
+          deps.scheduler.poll('kimi', 'quota');
+        }
+      })
+      .catch((err) => {
+        console.error('[kimi:web-login]', (err && err.message) || err);
+      });
   });
 
   ipcMain.handle('get:session-state', () => {

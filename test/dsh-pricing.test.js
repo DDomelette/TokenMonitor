@@ -44,6 +44,12 @@ test('calcDshCost prices all four raw buckets at the event-time rate', () => {
   );
 });
 
+test('DSH pricing maps the renamed deepseek-flash to the v4-flash schedule', () => {
+  const at = beijingMs(2026, 8, 17, 9, 0);
+  assert.deepEqual(getDshModelPrice('deepseek-flash', at), getDshModelPrice('deepseek-v4-flash', at));
+  assert.ok(calcDshCost('deepseek-flash', 1000, 2000, 3000, 100, at) > 0);
+});
+
 test('DSH pricing does not map unlisted reasoner or future models to pro', () => {
   const at = beijingMs(2026, 8, 17, 9, 0);
   assert.equal(getDshModelPrice('deepseek-reasoner', at), undefined);

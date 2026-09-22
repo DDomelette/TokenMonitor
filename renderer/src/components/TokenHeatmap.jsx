@@ -3,7 +3,7 @@
 // 颜色用主题 primary(#74B8FC)的 5 档透明度;hover tooltip 显示日期与用量。
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { getHeatmap, onProvidersChanged } from '../api.js';
+import { useHeatmap } from '../store.js';
 import { SHEN } from '../shen-assets.js';
 import { buildSundayWeekTotals, buildWeeks, blockCount, colorLevel, formatToken, sundayWeekKey } from '../lib/heatmap.js';
 import { clampToWindow, resolveVerticalFlip } from '../lib/floating-layer.js';
@@ -16,12 +16,14 @@ import {
 
 const CELL = 12;
 const GAP = 2;
+const EMPTY_HEATMAP = { days: {}, maxDaily: 0 };
 const LEVEL_ALPHA = [0.06, 0.18, 0.38, 0.62, 0.9];
 const PROVIDER_OPTS = [
   { id: 'all', label: '全部' },
   { id: 'deepseek', label: 'DeepSeek' },
   { id: 'codex', label: 'Codex' },
-  { id: 'kimi', label: 'Kimi' }
+  { id: 'kimi', label: 'Kimi' },
+  { id: 'dsh', label: 'Harness' }
 ];
 
 function dateLabel(date) {
@@ -35,7 +37,7 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
   const year = resolveHeatmapYear(requestedYear, clockDate);
   const [selProvider, setSelProvider] = useState(provider);
   const [mode, setMode] = useState('daily');
-  const [data, setData] = useState({ days: {}, maxDaily: 0 });
+  const data = useHeatmap({ provider: selProvider, year }) || EMPTY_HEATMAP;
   const [boxWidth, setBoxWidth] = useState(0);
   const [tip, setTip] = useState(null);
   const rootRef = useRef(null);
@@ -50,17 +52,6 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
     });
     return () => clock.stop();
   }, []);
-
-  useEffect(() => {
-    getHeatmap({ provider: selProvider, year: year }).then(setData).catch(() => {});
-  }, [selProvider, year]);
-
-  // 手动刷新/定时轮询成功后重取,保持与状态栏"刷新时间"同步
-  useEffect(() => {
-    return onProvidersChanged(() => {
-      getHeatmap({ provider: selProvider, year: year }).then(setData).catch(() => {});
-    });
-  }, [selProvider, year]);
 
   // 以容器宽度为准(grid 内板块可被拖窄),而不是窗口宽度
   useEffect(() => {
@@ -390,7 +381,8 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
             {{ daily: '每日', weekly: '每周', cumulative: '累计' }[m]}
           </button>
         ))}
-        {selProvider !== 'all' && selProvider !== 'deepseek' ? <span className="heatmap-local-only">仅本机</span> : null}
+        {selProvider === 'dsh' ? <span className="heatmap-local-only">本地记录 · 不计入总览</span>
+          : selProvider !== 'all' && selProvider !== 'deepseek' ? <span className="heatmap-local-only">仅本机</span> : null}
         <span className="heatmap-total" title="当前视图总消耗">共 {formatToken(headTotal)} Token</span>
       </div>
       {mode === 'daily' ? renderDaily() : null}

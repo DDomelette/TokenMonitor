@@ -60,12 +60,20 @@ test('valid token initializes the MCP session and names server tokenmonitor', as
   assert.match(res.body, /tokenmonitor/);
 });
 
-test('occupied base port falls back to basePort + 1', async (t) => {
+test('occupied base port falls back to an available subsequent port', async (t) => {
   const blocker = net.createServer();
-  await new Promise((resolve) => blocker.listen(45950, '127.0.0.1', resolve));
+  let basePort;
+  do {
+    await new Promise((resolve, reject) => {
+      blocker.once('error', reject);
+      blocker.listen(0, '127.0.0.1', () => { blocker.removeListener('error', reject); resolve(); });
+    });
+    basePort = blocker.address().port;
+    if (basePort > 65525) await new Promise((resolve) => blocker.close(resolve));
+  } while (basePort > 65525);
   t.after(() => new Promise((resolve) => blocker.close(resolve)));
-  const srv = await startMcpServer({ basePort: 45950, maxPort: 45952, token: TOKEN, handlers });
+  const srv = await startMcpServer({ basePort, maxPort: basePort + 10, token: TOKEN, handlers });
   t.after(() => srv.close());
-  assert.equal(srv.port, 45951);
-  assert.equal(srv.url, 'http://127.0.0.1:45951/mcp');
+  assert.ok(srv.port > basePort && srv.port <= basePort + 10);
+  assert.equal(srv.url, 'http://127.0.0.1:' + srv.port + '/mcp');
 });

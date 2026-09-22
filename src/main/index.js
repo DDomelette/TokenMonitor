@@ -110,10 +110,10 @@ function sendMainWindowBounds() {
   mainWindow.webContents.send('window:bounds-changed', mainWindow.getBounds());
 }
 
-function broadcastToWindows(channel, payload) {
+function broadcastToWindows(channel, ...args) {
   [mainWindow, settingsWindow].forEach(function (win) {
     if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
-    win.webContents.send(channel, payload);
+    win.webContents.send(channel, ...args);
   });
 }
 
@@ -433,6 +433,15 @@ function updateTrayMenu() {
     },
     { type: 'separator' },
     {
+      label: '重启',
+      click: () => {
+        // relaunch 只登记"退出后重启",进程仍走 quit() 的正常清理(before-quit 停调度器/销毁托盘)
+        app.isQuitting = true;
+        app.relaunch();
+        app.quit();
+      }
+    },
+    {
       label: '退出',
       click: () => {
         app.isQuitting = true;
@@ -644,6 +653,7 @@ function applySetting(key, value) {
       return;
     case 'data.historyDays':
       if (tokenSpeedRuntime) tokenSpeedRuntime.rebaselineAll();
+      if (scheduler) broadcastToWindows('providers:changed', scheduler.getSnapshot(), { providerId: '__all__', channel: 'all' });
       return;
   }
   if (key === 'mcp.enabled') {
@@ -793,7 +803,7 @@ function startSchedulerRuntime(codexRuntime) {
     store,
     getProxyInput,
     codexUsageRuntime: codexRuntime,
-    broadcast: (channel, payload) => broadcastToWindows(channel, payload),
+    broadcast: broadcastToWindows,
     onStateChange: (providerId, state) => {
       if (providerId !== 'deepseek' || !state) return;
       if (state.authStatus === 'expired' && state.lastError) {
@@ -955,7 +965,7 @@ app.whenReady().then(() => {
   ingestRuntime = startIngest({
     store,
     scheduler,
-    broadcast: (channel, payload) => broadcastToWindows(channel, payload),
+    broadcast: broadcastToWindows,
     onUsageObservation: (providerId, detail) => {
       if (tokenSpeedRuntime) tokenSpeedRuntime.observeProvider(providerId, detail.observedAt);
     }
@@ -978,6 +988,7 @@ app.whenReady().then(() => {
 
   setupIPC({
     store,
+    broadcast: broadcastToWindows,
     registry,
     scheduler,
     tokenSpeedRuntime,

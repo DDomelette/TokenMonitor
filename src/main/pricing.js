@@ -36,9 +36,11 @@ const DSH_PRICING = Object.freeze({
   })
 });
 
+// deepseek-flash 是 deepseek-v4.1-flash 到期(2026-09-10)后的现名,沿用 v4-flash 单价。
 function dshModelKey(model) {
   if (typeof model !== 'string') return null;
   if (model.startsWith('deepseek-v4-flash')) return 'deepseek-v4-flash';
+  if (model.startsWith('deepseek-flash')) return 'deepseek-v4-flash';
   if (model.startsWith('deepseek-v4-pro')) return 'deepseek-v4-pro';
   return null;
 }

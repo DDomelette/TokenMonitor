@@ -11,6 +11,7 @@ var windowDefinitions = [
     { value: 'shen-chan', label: '小深酱' }
   ], default: 'system' },
   { group: '窗口', key: 'window.layoutLocked', type: 'toggle', label: '锁定布局', default: true },
+  { group: '窗口', key: 'window.miniRowOrder', type: 'miniRowOrder', label: '小窗项目顺序(每页两行)', default: 'deepseek,codex,kimi,dsh' },
   { group: '窗口', key: 'window.edgeAutoHide', type: 'toggle', label: '贴边自动隐藏', default: false }
 ];
 
@@ -62,7 +63,8 @@ var tokenSpeedDefinitions = [
       { value: 'all', label: '展示全部' },
       { value: 'deepseek', label: 'DeepSeek' },
       { value: 'codex', label: 'Codex' },
-      { value: 'kimi', label: 'Kimi' }
+      { value: 'kimi', label: 'Kimi' },
+      { value: 'dsh', label: 'DeepSeek Harness' }
     ]
   }
 ];

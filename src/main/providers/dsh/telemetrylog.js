@@ -8,6 +8,7 @@ const {
   incrementDiagnostic
 } = require('../../core/locallog');
 const { parseTelemetryLine, rollupDshRecords } = require('./usage-records');
+const { mergeDailyUsage } = require('../../core/daily-usage');
 
 const fsp = fs.promises;
 
@@ -165,16 +166,7 @@ async function readLocalLog(ctx, opts) {
     const daily = opts && opts.retainAll
       ? rolledAll.usageDaily
       : filterUsageDaily(rolledAll.usageDaily, store.get('data.historyDays'), nowMs);
-    Object.keys(daily).forEach((key) => {
-      const prev = usageDaily[key] || { input: 0, cached: 0, output: 0, total: 0 };
-      const add = daily[key];
-      usageDaily[key] = {
-        input: prev.input + add.input,
-        cached: prev.cached + add.cached,
-        output: prev.output + add.output,
-        total: prev.total + add.total
-      };
-    });
+    usageDaily = mergeDailyUsage(usageDaily, daily);
 
     const costDaily = opts && opts.retainAll
       ? rolledAll.usageDailyCost

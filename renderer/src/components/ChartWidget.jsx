@@ -318,7 +318,7 @@ export default function ChartWidget({ id, dashboard, curvePoints: curvePointsPro
   const domRef = useRef(null);
   const stats = dashboard && dashboard.stats;
   const dailyData = stats && stats.tokenDaily;
-  // curvePoints 外部注入时优先(Dashboard 的 cost-line 传入 deepseek+dsh 合并曲线),
+  // curvePoints 外部注入时优先,
   // 否则回退到 deepseek dashboard 自带的曲线(token-line/cost-line 原行为)。
   const curvePoints = curvePointsProp || (dashboard && (id === 'token-line' ? dashboard.curveToken : dashboard.curveCost));
 

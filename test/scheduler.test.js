@@ -21,6 +21,61 @@ require.cache[electronPath] = {
 const { migrateLegacyKeys } = require('../src/main/store');
 const { startScheduler } = require('../src/main/core/scheduler');
 
+test('quota broadcast includes the timestamp of the newly persisted quota', async () => {
+  const store = makeFakeStore({});
+  const adapter = makeFakeAdapter({ fetchQuota: async () => ({ windows: [] }) });
+  const events = [];
+  const scheduler = startScheduler({
+    registry: makeRegistry([adapter]), store, intervals: false,
+    broadcast(channel, snapshot, change) {
+      events.push({ channel, snapshot, change, persisted: store.get('providers.fake.lastQuota') });
+    }
+  });
+  try {
+    await scheduler.poll('fake', 'quota');
+    const event = events.at(-1);
+    assert.ok(Number.isFinite(event.snapshot[0].quotaFetchedAt));
+    assert.equal(event.snapshot[0].quotaFetchedAt, event.persisted.fetchedAt);
+    assert.equal(event.snapshot[0].lastFetchedAt, event.persisted.fetchedAt);
+    assert.deepEqual(event.change, { providerId: 'fake', channel: 'quota' });
+  } finally { scheduler.stop(); }
+});
+
+test('pollAll bounds network concurrency and lets serialized local logs proceed while network waits', async () => {
+  const started = [];
+  const releases = new Map();
+  const providers = ['a', 'b', 'c'].map((id) => makeFakeAdapter({
+    id,
+    capabilities: { quota: true, localLog: true },
+    fetchQuota() { started.push(id); return new Promise((resolve) => releases.set(id, resolve)); },
+    async readLocalLog() { return []; }
+  }));
+  const localOrder = [];
+  let localActive = 0;
+  providers.forEach((provider) => {
+    provider.readLocalLog = async () => {
+      assert.equal(localActive++, 0);
+      localOrder.push(provider.id);
+      await new Promise((resolve) => setImmediate(resolve));
+      localActive--;
+      return [];
+    };
+  });
+  const scheduler = startScheduler({ registry: makeRegistry(providers), store: makeFakeStore({}), broadcast() {}, intervals: false });
+  try {
+    const polling = scheduler.pollAll();
+    while (localOrder.length < 3) await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(started, ['a', 'b']);
+    assert.deepEqual(localOrder, ['a', 'b', 'c']);
+    releases.get('a')({ windows: [] });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(started, ['a', 'b', 'c']);
+    releases.get('b')({ windows: [] });
+    releases.get('c')({ windows: [] });
+    await polling;
+  } finally { scheduler.stop(); }
+});
+
 function getPath(obj, path) {
   return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 }

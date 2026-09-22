@@ -6,16 +6,16 @@ const vm = require('node:vm');
 
 const registry = require('../src/renderer/js/layout/component-registry.js');
 
-// Production mutation caught: admitting backend-only `dsh` into persisted filters
-// can make the renderer display a different provider than the backend snapshot.
+// 渲染层已支持 dsh 曲线与筛选(token-speed-chart PROVIDER_META/FILTER_OPTIONS),
+// 持久化筛选白名单与渲染层可见集合保持一致。
 test('token speed settings accept only renderer-owned persisted filters', () => {
   const settings = require('../src/main/core/token-speed-settings');
   assert.deepEqual(settings.INTERVAL_SECONDS, [10, 20, 30, 60, 180, 300, 3600, 18000]);
-  assert.deepEqual(settings.PROVIDER_FILTERS, ['all', 'deepseek', 'codex', 'kimi']);
+  assert.deepEqual(settings.PROVIDER_FILTERS, ['all', 'deepseek', 'codex', 'kimi', 'dsh']);
   assert.equal(settings.normalizeIntervalSeconds('180'), 180);
   assert.equal(settings.normalizeIntervalSeconds(11), 30);
   assert.equal(settings.normalizeProviderFilter('kimi'), 'kimi');
-  assert.equal(settings.normalizeProviderFilter('dsh'), 'all');
+  assert.equal(settings.normalizeProviderFilter('dsh'), 'dsh');
   assert.equal(settings.normalizeProviderFilter('unknown'), 'all');
   assert.deepEqual(settings.normalizeTokenSpeedSettings({
     intervalSeconds: '300', providerFilter: 'codex'
@@ -45,7 +45,7 @@ test('settings definitions expose token speed selectors only when enabled', () =
   assert.equal(toggle.label, 'Token 消耗速度（会增加内存占用）');
   assert.deepEqual(Array.from(interval.options, (item) => Number(item.value)), [10, 20, 30, 60, 180, 300, 3600, 18000]);
   assert.equal(interval.visibleWhen.key, 'components.tokenSpeed');
-  assert.deepEqual(Array.from(filter.options, (item) => item.value), ['all', 'deepseek', 'codex', 'kimi']);
+  assert.deepEqual(Array.from(filter.options, (item) => item.value), ['all', 'deepseek', 'codex', 'kimi', 'dsh']);
   assert.equal(filter.visibleWhen.key, 'components.tokenSpeed');
 });
 

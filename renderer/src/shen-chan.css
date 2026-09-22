@@ -262,11 +262,6 @@
   background: var(--shen-aqua-100);
   color: var(--shen-navy);
 }
-/* 余额数字:亚克力主题的白字描边换成女仆蓝实色 */
-:root[data-theme='shen-chan'] .mini-balance {
-  color: var(--shen-navy);
-  text-shadow: none;
-}
 /* 迷你窗高度有限,主题下圆环略缩小给趴趴小深酱让位 */
 :root[data-theme='shen-chan'] .mini-ring-wrap { width: 34px; height: 34px; }
 :root[data-theme='shen-chan'] .mini-ring-wrap svg { width: 100%; height: 100%; }

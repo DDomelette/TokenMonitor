@@ -9,6 +9,7 @@ const {
   incrementDiagnostic
 } = require('../../core/locallog');
 const { filterUsageDaily } = require('../../core/usage-retention');
+const { mergeDailyUsage } = require('../../core/daily-usage');
 const { createWslPathGuard } = require('./wsl-roots');
 
 // ~/.kimi-code/sessions/**/wire.jsonl
@@ -161,17 +162,7 @@ async function readLocalLog(ctx, opts) {
     const daily = opts && opts.retainAll
       ? rolled
       : filterUsageDaily(rolled, store.get('data.historyDays'), nowMs);
-    const usageDaily = store.get('usageDaily') || {};
-    Object.keys(daily).forEach((key) => {
-      const prev = usageDaily[key] || { input: 0, cached: 0, output: 0, total: 0 };
-      const add = daily[key];
-      usageDaily[key] = {
-        input: prev.input + add.input,
-        cached: prev.cached + add.cached,
-        output: prev.output + add.output,
-        total: prev.total + add.total
-      };
-    });
+    const usageDaily = mergeDailyUsage(store.get('usageDaily'), daily);
     store.set('usageDaily', usageDaily);
   }
   return batch;

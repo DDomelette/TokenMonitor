@@ -8,6 +8,20 @@ const { sanitizeSettings, isWritableSettingKey, resolveWritableSettingKey } = re
 const ipcJs = fs.readFileSync(path.join(root, 'src/main/ipc.js'), 'utf8');
 const mainJs = fs.readFileSync(path.join(root, 'src/main/index.js'), 'utf8');
 
+test('sanitizeSettings never serializes excluded usage or ingest ledgers', () => {
+  const large = { toJSON() { throw new Error('excluded history was traversed'); } };
+  const raw = {
+    usageDaily: large, usageDailyCost: large, usageDailyPush: large, usageDailyCostPush: large,
+    ingest: { dsh: { batchRegistry: large, sources: large, diagnostics: large, enabled: true, token: 'secret' } },
+    window: { darkMode: 'dark' }
+  };
+  const clean = sanitizeSettings(raw);
+  assert.deepEqual(clean, { ingest: { dsh: { enabled: true } }, window: { darkMode: 'dark' } });
+  clean.window.darkMode = 'light';
+  assert.equal(raw.window.darkMode, 'dark');
+  assert.equal(raw.ingest.dsh.sources, large);
+});
+
 test('sanitizeSettings strips credentials but keeps proxy config and other settings', () => {
   const raw = {
     providers: { deepseek: { apiKey: 'sk-secret', sessionToken: 'tok-secret' }, proxyUrl: 'http://127.0.0.1:7890' },
@@ -62,6 +76,29 @@ test('sanitizeSettings strips mcp.token from renderer-bound copies', () => {
   const out = sanitizeSettings({ mcp: { enabled: true, token: 'secret-token' } });
   assert.equal(out.mcp.enabled, true);
   assert.equal(out.mcp.token, undefined);
+});
+
+test('sanitizeSettings strips kimi web session tokens but keeps the linked flag', () => {
+  const raw = {
+    providers: {
+      kimi: {
+        webAccessToken: 'web-acc-secret',
+        webRefreshToken: 'web-ref-secret',
+        webAccessExpiresAt: 1789000000000,
+        webLinked: true
+      }
+    }
+  };
+  const clean = sanitizeSettings(raw);
+  assert.equal(clean.providers.kimi.webAccessToken, undefined);
+  assert.equal(clean.providers.kimi.webRefreshToken, undefined);
+  // 过期时间与登录标记不敏感,设置界面据此展示状态
+  assert.equal(clean.providers.kimi.webAccessExpiresAt, 1789000000000);
+  assert.equal(clean.providers.kimi.webLinked, true);
+  assert.equal(raw.providers.kimi.webAccessToken, 'web-acc-secret');
+  // 网页凭证只能由登录捕获通道写入,不允许通用 settings:update 通道改写
+  assert.equal(isWritableSettingKey('providers.kimi.webAccessToken'), false);
+  assert.equal(isWritableSettingKey('providers.kimi.webRefreshToken'), false);
 });
 
 test('sanitizeSettings strips usageDaily and usageDailyCost from renderer-bound copies', () => {

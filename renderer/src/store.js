@@ -1,67 +1,26 @@
-// useSyncExternalStore 的极简 store:providers 快照 + dashboardById 缓存。
-// 订阅源是 preload 的 'providers:changed' 广播(任何 provider 数据/状态更新时全量推送)。
-import { useSyncExternalStore } from 'react';
-import { getProviders, getDashboard as apiGetDashboard, onProvidersChanged } from './api.js';
+import { useCallback, useSyncExternalStore } from 'react';
+import * as api from './api.js';
+import { createProviderData } from './provider-data.js';
 
-let providers = [];
-let providersLoaded = false;
-const dashboardCache = {};
-const listeners = new Set();
+const data = createProviderData(api);
 
-function emit() {
-  listeners.forEach((cb) => cb());
-}
-
-function subscribe(cb) {
-  listeners.add(cb);
-  return () => listeners.delete(cb);
-}
-
-function getSnapshot() {
-  return providers;
-}
-
-export function initProviders() {
-  if (providersLoaded) return;
-  providersLoaded = true;
-  refreshProviders();
-  onProvidersChanged((snapshot) => {
-    providers = Array.isArray(snapshot) ? snapshot : [];
-    // 任何 provider 更新都可能伴随 dashboard 数据变化:重取已缓存的 dashboard,避免停在首帧空数据
-    Object.keys(dashboardCache).forEach((pid) => {
-      apiGetDashboard(pid).then((payload) => {
-        dashboardCache[pid] = payload;
-        emit();
-      }).catch(() => {});
-    });
-    emit();
-  });
-}
-
-export function refreshProviders() {
-  getProviders().then((snapshot) => {
-    providers = Array.isArray(snapshot) ? snapshot : [];
-    emit();
-  }).catch(() => {});
-}
-
-export function getDashboard(providerId) {
-  if (dashboardCache[providerId]) return dashboardCache[providerId];
-  apiGetDashboard(providerId).then((payload) => {
-    dashboardCache[providerId] = payload;
-    emit();
-  }).catch(() => {});
-  return null;
-}
+export const initProviders = data.init;
+export const refreshProviders = data.refreshProviders;
 
 export function useProviders() {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return useSyncExternalStore(data.subscribe, data.getSnapshot, data.getSnapshot);
+}
+
+function useQuery(cache, key) {
+  const subscribe = useCallback((listener) => cache.subscribe(key, listener), [cache, key]);
+  const snapshot = () => cache.read(key);
+  return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 
 export function useDashboard(providerId) {
-  const snapshot = useSyncExternalStore(subscribe, () => dashboardCache[providerId] || null, () => dashboardCache[providerId] || null);
-  getDashboard(providerId);
-  return snapshot;
+  return useQuery(data.dashboards, providerId);
 }
 
-export { dashboardCache };
+export function useHeatmap({ provider = 'all', year }) {
+  return useQuery(data.heatmaps, JSON.stringify([provider, year]));
+}
