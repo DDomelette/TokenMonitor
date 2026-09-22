@@ -188,8 +188,8 @@ function createMainWindow() {
     alwaysOnTop: store.get('window.alwaysOnTop'),
     // 原生缩放:Chromium 在系统缩放循环中拉伸旧帧,不会露出黑色欠采样区(同 VSCode)
     resizable: true,
-    // 禁最大化:拖拽区双击留给迷你模式"双击恢复完整窗口",不与系统最大化抢手势
-    maximizable: false,
+    // 保持可最大化:拖顶部边缘放大全屏(Aero Snap)依赖 WS_MAXIMIZEBOX;
+    // 迷你模式怕双击误最大化,由 mini-mode enter/applyOnCreate 动态禁用、exit 恢复
     minWidth: 380,
     minHeight: 200,
     maxWidth: 2400,
@@ -432,6 +432,15 @@ function updateTrayMenu() {
       }
     },
     { type: 'separator' },
+    {
+      label: '重启',
+      click: () => {
+        // relaunch 只登记"退出后重启",进程仍走 quit() 的正常清理(before-quit 停调度器/销毁托盘)
+        app.isQuitting = true;
+        app.relaunch();
+        app.quit();
+      }
+    },
     {
       label: '退出',
       click: () => {
@@ -752,6 +761,15 @@ function applyBackdropTo(win) {
       accentAppliedWindows.add(win);
     } else {
       // Accent 失败回退官方材质;失焦退化由渲染端失焦实心化兜底
+      try { win.setBackgroundMaterial('acrylic'); } catch (_) {}
+    }
+  } else if (theme === 'shen-chan' && win === mainWindow) {
+    // 小深酱主题:主窗口挂水蓝亚克力 Accent(带模糊,与亚克力主题同一机制)。
+    // 正常模式下 #app 实底奶油白盖住整窗不可见;迷你模式下卡片以外的页面区域
+    // 透明,Accent 磨砂取代非透明窗口 backgroundColor(#00000000)渲染出的纯黑。
+    if (applyAccent(win, { argb: tintForTheme('shen-chan') })) {
+      accentAppliedWindows.add(win);
+    } else {
       try { win.setBackgroundMaterial('acrylic'); } catch (_) {}
     }
   } else if (accentAppliedWindows.has(win)) {

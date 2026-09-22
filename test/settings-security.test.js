@@ -78,6 +78,29 @@ test('sanitizeSettings strips mcp.token from renderer-bound copies', () => {
   assert.equal(out.mcp.token, undefined);
 });
 
+test('sanitizeSettings strips kimi web session tokens but keeps the linked flag', () => {
+  const raw = {
+    providers: {
+      kimi: {
+        webAccessToken: 'web-acc-secret',
+        webRefreshToken: 'web-ref-secret',
+        webAccessExpiresAt: 1789000000000,
+        webLinked: true
+      }
+    }
+  };
+  const clean = sanitizeSettings(raw);
+  assert.equal(clean.providers.kimi.webAccessToken, undefined);
+  assert.equal(clean.providers.kimi.webRefreshToken, undefined);
+  // 过期时间与登录标记不敏感,设置界面据此展示状态
+  assert.equal(clean.providers.kimi.webAccessExpiresAt, 1789000000000);
+  assert.equal(clean.providers.kimi.webLinked, true);
+  assert.equal(raw.providers.kimi.webAccessToken, 'web-acc-secret');
+  // 网页凭证只能由登录捕获通道写入,不允许通用 settings:update 通道改写
+  assert.equal(isWritableSettingKey('providers.kimi.webAccessToken'), false);
+  assert.equal(isWritableSettingKey('providers.kimi.webRefreshToken'), false);
+});
+
 test('sanitizeSettings strips usageDaily and usageDailyCost from renderer-bound copies', () => {
   const raw = {
     usageDaily: {

@@ -1,19 +1,20 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-test('all mode creates three smooth non-connecting platform curves', async () => {
+test('all mode creates four smooth non-connecting platform curves', async () => {
   const chart = await import('../renderer/src/lib/token-speed-chart.js');
   const snapshot = {
     providerFilter: 'all',
     series: {
       deepseek: [{ time: 1, tokensPerMinute: 100, deltaTokens: 20, quality: 'fresh' }],
       codex: [{ time: 1, tokensPerMinute: 50, deltaTokens: 10, quality: 'offline' }],
-      kimi: [{ time: 1, tokensPerMinute: null, deltaTokens: null, quality: 'collecting' }]
+      kimi: [{ time: 1, tokensPerMinute: null, deltaTokens: null, quality: 'collecting' }],
+      dsh: [{ time: 1, tokensPerMinute: 25, deltaTokens: 5, quality: 'fresh' }]
     }
   };
   const option = chart.buildTokenSpeedOption(snapshot, { isDark: true, compact: false });
-  assert.deepEqual(option.series.map((item) => item.name), ['DeepSeek', 'Codex', 'Kimi']);
-  assert.deepEqual(option.series.map((item) => item.lineStyle.color), ['#6E94F5', '#F2A05C', '#4ECB94']);
+  assert.deepEqual(option.series.map((item) => item.name), ['DeepSeek', 'Codex', 'Kimi', 'DeepSeek Harness']);
+  assert.deepEqual(option.series.map((item) => item.lineStyle.color), ['#6E94F5', '#F2A05C', '#4ECB94', '#A78BFA']);
   assert.ok(option.series.every((item) => item.smooth === true && item.connectNulls === false));
   assert.equal(option.series[2].data[0].value[1], null);
 });

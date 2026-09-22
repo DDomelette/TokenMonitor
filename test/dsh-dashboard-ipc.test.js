@@ -29,6 +29,32 @@ require.cache[electronPath] = {
 
 const setupIPC = require('../src/main/ipc');
 
+test('heatmap totals and chart details exclude Harness while its own view retains local and push records', async () => {
+  const store = makeFakeStore({
+    usageDaily: {
+      'deepseek:2026-09-14': { total: 590, cached: 580, models: [{ model: 'deepseek-chat', tokens: 590 }] },
+      'dsh:2026-09-14': { total: 900, cached: 890 },
+      'codex:2026-09-14': { total: 8 },
+      'kimi:2026-09-14': { total: 2 }
+    },
+    usageDailyPush: { 'dsh:2026-09-14': { total: 40, cached: 40 } }
+  });
+  setupIPC(buildDeps({ store }));
+  const handler = fakeIpc.handleMap.get('get:heatmap');
+  for (const provider of ['all', undefined]) {
+    const result = await handler(null, { provider, year: 2026 });
+    assert.equal(result.days['2026-09-14'], 600);
+    assert.equal(result.details.byProvider.dsh, undefined);
+    assert.equal(result.details.cachedByProvider.dsh, undefined);
+    assert.equal(result.details.cachedByProvider.deepseek['2026-09-14'], 580);
+    assert.equal(Object.values(result.details.byProvider).reduce((sum, days) => sum + days['2026-09-14'], 0), 600);
+  }
+  const harness = await handler(null, { provider: 'dsh', year: 2026 });
+  assert.equal(harness.days['2026-09-14'], 940);
+  assert.equal(harness.details.cachedByProvider.dsh['2026-09-14'], 930);
+  assert.equal(store.get('usageDaily')['dsh:2026-09-14'].total, 900);
+});
+
 function getPath(obj, key) {
   return key.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 }

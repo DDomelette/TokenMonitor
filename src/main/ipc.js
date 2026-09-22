@@ -12,6 +12,7 @@ const { getSessionSnapshot } = require('./core/session-state');
 const { skipDeepseekLogin } = require('./core/startup-windows');
 const { syncDeepSeekHistory, rescanLocalLogs } = require('./core/history-sync');
 const { UsageFetcher } = require('./providers/deepseek/usage');
+const { captureWebSession, writeWebTokens } = require('./providers/kimi/web-session');
 const { httpGet } = require('./core/http');
 const { SYSTEM_PROXY_VALUE, resolveElectronSystemProxy } = require('./core/proxy-settings');
 const { registerDiagnosticsIpc } = require('./core/diagnostics/ipc-registration');
@@ -149,6 +150,8 @@ module.exports = function setupIPC(deps) {
       const idx = key.indexOf(':');
       if (idx <= 0) return;
       const pid = key.slice(0, idx);
+      // 总览明细与合计使用同一口径；Harness 本地记录仅供单独查看。
+      if ((!provider || provider === 'all') && pid === 'dsh') return;
       const date = key.slice(idx + 1);
       const total = Number(usageDaily[key] && usageDaily[key].total) || 0;
       if (total <= 0) return;
@@ -431,6 +434,22 @@ module.exports = function setupIPC(deps) {
 
   ipcMain.on('session:relogin', () => {
     deps.createSessionWindow();
+  });
+
+  // Kimi 网页登录(月额度):捕获 localStorage 的 access/refresh token 存入 store,
+  // 之后由 web-session.ensureFreshWebToken 自行刷新;成功后立刻重拉 Kimi 额度。
+  ipcMain.on('kimi:web-login', () => {
+    captureWebSession({ logger: console })
+      .then((tokens) => {
+        writeWebTokens(deps.store, tokens);
+        deps.broadcastSettings();
+        if (deps.scheduler && typeof deps.scheduler.poll === 'function') {
+          deps.scheduler.poll('kimi', 'quota');
+        }
+      })
+      .catch((err) => {
+        console.error('[kimi:web-login]', (err && err.message) || err);
+      });
   });
 
   ipcMain.handle('get:session-state', () => {

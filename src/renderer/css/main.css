@@ -331,3 +331,33 @@ body[data-theme='acrylic-light'][data-window-active='false'] #app {
 body[data-theme='acrylic-dark'][data-window-active='false'] {
   --bg-window-dark: rgba(30, 32, 38, 0.92);
 }
+
+/* ======== 小深酱主题(设置/诊断等原生窗口):实底奶油白 + 女仆深蓝 + 水蓝 ======== */
+body[data-theme='shen-chan'] {
+  --primary: #3d9fd6;
+  --primary-light: #74c7ec;
+  --primary-dark: #2b8cc4;
+  --bg-card: #fffdf8;
+  --text-primary: #2b3a6e;
+  --text-secondary: #43568f;
+  --text-inverse: #fffdf8;
+  --border: #d9deee;
+  --shadow-window: 0 12px 34px rgba(28, 42, 82, 0.20);
+  --shadow-card: 0 4px 14px rgba(28, 42, 82, 0.10);
+  /* 下拉菜单等浮层用实色底 */
+  --bg-menu: #fffdf8;
+}
+body[data-theme='shen-chan'] #app {
+  background-color: #faf6ee;
+  background-image:
+    radial-gradient(circle 2.5px at 10px 10px, rgba(77, 179, 230, 0.10) 2.5px, transparent 3px),
+    radial-gradient(circle 1.8px at 34px 30px, rgba(217, 164, 65, 0.10) 1.8px, transparent 2.2px);
+  background-size: 48px 48px, 64px 64px;
+  box-shadow: var(--shadow-window), 0 0 0 1px var(--border);
+}
+body[data-theme='shen-chan'] .titlebar-logo { color: var(--primary-dark); }
+body[data-theme='shen-chan'] .titlebar-btn { color: #43568f; }
+body[data-theme='shen-chan'] .titlebar-btn:hover {
+  background: rgba(143, 212, 242, 0.25);
+  color: #1c2a52;
+}

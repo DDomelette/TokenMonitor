@@ -377,6 +377,7 @@ function createSettingsHarness() {
   const listeners = {};
   const context = {
     window: {
+      MiniRowOrder: require('../src/shared/mini-row-order'),
       SettingsDefinitions: [
         { group: '诊断', type: 'diagnostics', label: '诊断中心', channel: 'open:diagnostics' }
       ],

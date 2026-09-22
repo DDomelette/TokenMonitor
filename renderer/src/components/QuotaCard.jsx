@@ -1,6 +1,6 @@
 // 订阅制额度卡片:由 windows 数组驱动(不写死两条);subscription 模式不显示任何金额;
-// authStatus==='expired' 且无缓存数据时替换为重试入口(凭证由本机 CLI 维护,应用只读
-// 无法代授权,按钮只做立即重试,提示用户先去终端跑一次对应 CLI);
+// authStatus==='expired' 且无缓存数据时替换为重试入口(Kimi 可在设置里登录网页自助恢复;
+// Codex 凭证由本机 CLI 维护,应用只读无法代授权,按钮只做立即重试,提示用户先去终端跑一次 CLI);
 // 过期但有缓存数据时正常显示额度,顶部加警示条(显示数据时间+重试),下轮成功自动更新。
 // 套餐徽标:prolite→5x Pro / pro→20x Pro / plus→Plus 套餐;未检测到(API 用户)不显示。
 import React from 'react';
@@ -30,6 +30,7 @@ function formatFetchedAt(fetchedAt) {
 
 export default function QuotaCard({ provider, quotaState, authStatus, quotaFetchedAt, onRetry }) {
   const expired = authStatus === 'expired';
+  const isKimi = !!(provider && provider.id === 'kimi');
 
   if (expired && !quotaState) {
     return (
@@ -38,7 +39,11 @@ export default function QuotaCard({ provider, quotaState, authStatus, quotaFetch
           <span className="quota-card-plan">{provider ? provider.displayName : ''} 登录已过期</span>
         </div>
         <button className="quota-reauth-btn" onClick={onRetry}>立即重试</button>
-        <div className="quota-reauth-hint">凭证由本机 {provider ? provider.id : ''} CLI 维护,请先在终端运行一次 {provider ? provider.id : ''},再点此重试</div>
+        <div className="quota-reauth-hint">{
+          isKimi
+            ? '请到设置中登录 Kimi 网页(月额度通道)恢复,或在终端运行一次 kimi CLI 后点此重试'
+            : '凭证由本机 ' + (provider ? provider.id : '') + ' CLI 维护,请先在终端运行一次 ' + (provider ? provider.id : '') + ',再点此重试'
+        }</div>
       </div>
     );
   }
@@ -54,7 +59,6 @@ export default function QuotaCard({ provider, quotaState, authStatus, quotaFetch
 
   const windows = quotaState.windows || [];
   const title = (provider && provider.displayName) || quotaState.planName || '';
-  const isKimi = !!(provider && provider.id === 'kimi');
   const badge = !isKimi && quotaState.planName && quotaState.planName !== title
     ? planBadgeLabel(quotaState.planName)
     : null;

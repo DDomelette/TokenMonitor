@@ -1,4 +1,4 @@
-const VALID_MODES = new Set(['system', 'dark', 'light', 'acrylic-light', 'acrylic-dark']);
+const VALID_MODES = new Set(['system', 'dark', 'light', 'acrylic-light', 'acrylic-dark', 'shen-chan']);
 
 function ownValue(source, key) {
   if (!source || typeof source !== 'object') return undefined;

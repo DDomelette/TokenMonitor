@@ -4,6 +4,8 @@
 const SECRET_SETTING_PATHS = [
   ['providers', 'deepseek', 'apiKey'],
   ['providers', 'deepseek', 'sessionToken'],
+  ['providers', 'kimi', 'webAccessToken'],
+  ['providers', 'kimi', 'webRefreshToken'],
   ['mcp', 'token'],
   ['ingest', 'dsh', 'token']
 ];

@@ -2,6 +2,7 @@
 // (>40% 绿 / 20~40% 黄 / ≤20% 红);剩余为 0 时整条斜纹填满。resetsAt 倒计时每分钟重渲染。
 import React, { useEffect, useState } from 'react';
 import { formatReset } from '../lib/format.js';
+import { gaitForRemaining } from '../shen-assets.js';
 
 function remainingClass(percent) {
   if (percent > 40) return 'low';
@@ -22,17 +23,26 @@ export default function WindowBar({ kind, name, used, limit, remaining, resetsAt
     : Math.max(0, limitNum - (Number(used) || 0));
   const percent = limitNum > 0 ? Math.min(100, Math.max(0, (remainingNum / limitNum) * 100)) : 0;
   const empty = limitNum > 0 && remainingNum <= 0;
+  // 小深酱步态:剩余越少跑得越急(仅在"小深酱"主题下渲染可见)
+  const gait = gaitForRemaining(percent, empty);
 
   return (
     <div className="quota-window">
       <div className="quota-window-head">
-        <span className="quota-window-kind">{name || (kind === '5h' ? '5 小时窗口' : '本周额度')}</span>
+        <span className="quota-window-kind">{name || (kind === '5h' ? '5 小时窗口' : kind === 'monthly' ? '本月额度' : '本周额度')}</span>
         <span className="quota-window-used">{Math.round(percent)}%</span>
       </div>
       <div className="quota-bar">
         <div
           className={'quota-bar-fill ' + (empty ? 'empty' : remainingClass(percent))}
           style={{ width: (empty ? 100 : percent) + '%' }}
+        />
+        <img
+          className={'shen-deco shen-runner ' + gait.cls}
+          src={gait.src}
+          alt=""
+          aria-hidden="true"
+          style={{ left: Math.max(5, Math.min(95, empty ? 100 : percent)) + '%' }}
         />
       </div>
       <div className="quota-window-reset">{formatReset(resetsAt, Date.now())}</div>

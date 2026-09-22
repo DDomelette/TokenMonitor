@@ -28,7 +28,9 @@ const defaults = {
     // 迷你模式:只显示额度圆环/余额 + Token 速度的小窗状态;
     // miniBounds 单独记忆迷你窗口的位置尺寸,正常 bounds 不被覆盖
     miniMode: false,
-    miniBounds: null
+    miniBounds: null,
+    // 小窗行顺序(逗号分隔 provider id):决定每页两行的分组
+    miniRowOrder: 'deepseek,codex,kimi,dsh'
   },
   components: {
     balanceCard: true,

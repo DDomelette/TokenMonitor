@@ -3,7 +3,8 @@ import { echartsWindowPosition } from './floating-layer.js';
 export const PROVIDER_META = Object.freeze({
   deepseek: { label: 'DeepSeek', color: '#6E94F5' },
   codex: { label: 'Codex', color: '#F2A05C' },
-  kimi: { label: 'Kimi', color: '#4ECB94' }
+  kimi: { label: 'Kimi', color: '#4ECB94' },
+  dsh: { label: 'DeepSeek Harness', color: '#A78BFA' }
 });
 
 export const INTERVAL_OPTIONS = Object.freeze([
@@ -12,7 +13,8 @@ export const INTERVAL_OPTIONS = Object.freeze([
 ]);
 
 export const FILTER_OPTIONS = Object.freeze([
-  ['all', '展示全部'], ['deepseek', 'DeepSeek'], ['codex', 'Codex'], ['kimi', 'Kimi']
+  ['all', '展示全部'], ['deepseek', 'DeepSeek'], ['codex', 'Codex'], ['kimi', 'Kimi'],
+  ['dsh', 'DeepSeek Harness']
 ]);
 
 const QUALITY_LABELS = Object.freeze({
@@ -31,8 +33,8 @@ export function formatTokenRate(value) {
 }
 
 export function visibleProviderIds(filter) {
-  if (filter === 'all') return ['deepseek', 'codex', 'kimi'];
-  return PROVIDER_META[filter] ? [filter] : ['deepseek', 'codex', 'kimi'];
+  if (filter === 'all') return ['deepseek', 'codex', 'kimi', 'dsh'];
+  return PROVIDER_META[filter] ? [filter] : ['deepseek', 'codex', 'kimi', 'dsh'];
 }
 
 function rgba(hex, alpha) {

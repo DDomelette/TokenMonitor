@@ -31,7 +31,8 @@ export function createProviderData(api) {
     if (channel === 'usage' || channel === 'localLog') {
       heatmaps.invalidate((key) => {
         const [provider] = JSON.parse(key);
-        return provider === providerId || provider === 'all';
+        // all 的明细与合计都不包含 Harness。
+        return provider === providerId || (provider === 'all' && providerId !== 'dsh');
       });
     }
   }

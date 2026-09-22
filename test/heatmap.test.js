@@ -2,6 +2,19 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { buildHeatmap } = require('../src/main/core/heatmap');
 
+test('all uses official DeepSeek totals without adding or falling back to Harness', () => {
+  const data = {
+    deepseek: { '2026-09-14': 590000000, '2026-09-15': 0 },
+    dsh: { '2026-09-14': 940000000, '2026-09-15': 100, '2026-09-16': 200 },
+    codex: { '2026-09-14': 8410740 },
+    kimi: { '2026-09-14': 10 }
+  };
+  const expected = { days: { '2026-09-14': 598410750 }, maxDaily: 598410750 };
+  assert.deepEqual(buildHeatmap(data, 'all', 2026), expected);
+  assert.deepEqual(buildHeatmap(data, undefined, 2026), expected);
+  assert.deepEqual(buildHeatmap(data, 'dsh', 2026).days, data.dsh);
+});
+
 test('buildHeatmap sums multiple providers by day for "all"', () => {
   const data = {
     codex: { '2026-08-01': 100, '2026-08-02': 300 },

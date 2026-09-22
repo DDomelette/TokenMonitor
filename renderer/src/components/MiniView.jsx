@@ -1,13 +1,17 @@
-// 迷你模式视图:Codex 周额度圆环、Kimi 双环(外 5 小时/内本周)、DeepSeek 余额,
+// 迷你模式视图:Codex 周额度圆环、Kimi 双环(外 5 小时/内本周)、
+// DeepSeek 与 DeepSeek Harness(dsh)共用 DeepSeek 余额圆环(金额环 100% = ¥100,环内为金额),
 // 右侧为各平台 Token 消耗速度(与速度卡片同源:tokensPerMinute + formatTokenRate)。
+// 行顺序可在设置窗口调整(window.miniRowOrder),按每页两行分页;
+// 行数超出一屏时向左滚动播报:离场渐隐由慢到快,播完后下一页才从右入场(由快到慢),两段不重合。
 // 顶部栏含放大/最小化/关闭三钮;整窗为系统原生拖拽区(拖动顺滑不依赖 JS);
 // 贴边吸附收起后切换为竖条速度柱(柱子越高速度越快),竖条上双击恢复完整模式。
 import React, { useEffect, useRef, useState } from 'react';
 import { useProviders, useDashboard } from '../store.js';
 import useTokenSpeed from '../hooks/useTokenSpeed.js';
-import { on, send, toggleMini, getEdgeDockState } from '../api.js';
+import { on, send, toggleMini, getEdgeDockState, getSettings } from '../api.js';
 import { PROVIDER_META, formatTokenRate } from '../lib/token-speed-chart.js';
-import { formatCurrencyAmount } from '../fee-card-money.mjs';
+import { SHEN } from '../shen-assets.js';
+import '../../../src/shared/mini-row-order.js';
 
 const RING_R = 17;
 const RING_C = 2 * Math.PI * RING_R;
@@ -16,6 +20,14 @@ const INNER_R = 12.75;
 const INNER_C = 2 * Math.PI * INNER_R;
 // 内环用同色降透明度区分外环
 const KIMI_INNER_COLOR = 'rgba(78, 203, 148, 0.55)';
+
+// 行分页滚动播报:一屏两行,超出后定时向左滚动;
+// 离场向左渐隐、由慢到快(ease-in),入场从右滑入渐显、由快到慢(ease-out)。
+const { PROVIDER_IDS: MINI_ROW_PIDS, parseRowOrder } = globalThis.MiniRowOrder;
+const PAGE_SIZE = 2;
+const PAGE_COUNT = Math.ceil(MINI_ROW_PIDS.length / PAGE_SIZE);
+const ROTATE_MS = 4000;
+const ANIM_MS = 620;
 
 // 取指定种类的额度窗口;附加限额(如 Codex 的 Spark)带 name,主额度 name 为 null,优先主额度
 function windowByKind(provider, kind) {
@@ -34,6 +46,19 @@ function fracOf(win) {
   return Math.max(0, Math.min(1, remaining / limit));
 }
 
+// 金额圆环:100% = ¥100,环内数字为金额(纯数字,空间只容得下 4-5 个字符)
+const RING_FULL_YUAN = 100;
+function amountFrac(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.min(1, n / RING_FULL_YUAN);
+}
+function amountLabel(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n < 0) return '--';
+  return String(n >= 100 ? Math.round(n) : Number(n.toFixed(1)));
+}
+
 function Arc({ radius, circumference, frac, color, width }) {
   if (frac === null) return null;
   return (
@@ -46,8 +71,8 @@ function Arc({ radius, circumference, frac, color, width }) {
   );
 }
 
-function Ring({ outer, inner, color, innerColor }) {
-  const label = outer === null ? '--' : Math.round(outer * 100) + '%';
+function Ring({ outer, inner, color, innerColor, label }) {
+  const text = label !== undefined ? label : (outer === null ? '--' : Math.round(outer * 100) + '%');
   return (
     <div className="mini-ring-wrap">
       <svg width="44" height="44" viewBox="0 0 44 44">
@@ -60,7 +85,7 @@ function Ring({ outer, inner, color, innerColor }) {
           </>
         ) : null}
       </svg>
-      <span className="mini-ring-label">{label}</span>
+      <span className="mini-ring-label">{text}</span>
     </div>
   );
 }
@@ -82,12 +107,12 @@ function RowInfo({ pid, rate }) {
 // 左 12px,竖条必须画在窗口左侧;左缘停靠反之;顶缘收起露出窗口底部。
 function SpeedStrip({ edge, rates, onRestore }) {
   const FULL_SCALE = 1000000; // 1000.0K/min = 100%
-  const values = ['deepseek', 'codex', 'kimi'].map((pid) => Number(rates[pid]) || 0);
+  const values = MINI_ROW_PIDS.map((pid) => Number(rates[pid]) || 0);
   const horizontal = edge === 'top';
   const side = edge === 'right' ? 'left' : edge === 'left' ? 'right' : 'top';
   return (
     <div className={'mini-strip mini-strip-' + side} onClick={onRestore}>
-      {['deepseek', 'codex', 'kimi'].map((pid, i) => {
+      {MINI_ROW_PIDS.map((pid, i) => {
         const pct = Math.min(100, Math.round((values[i] / FULL_SCALE) * 100)) + '%';
         return (
           <div key={pid} className="mini-strip-bar">
@@ -110,6 +135,15 @@ export default function MiniView() {
   const speed = useTokenSpeed();
   const [dock, setDock] = useState(null);
   const lastClickAt = useRef(0);
+  // 行顺序:跟随设置 window.miniRowOrder(设置窗口可上下移动调整)
+  const [rowOrder, setRowOrder] = useState(MINI_ROW_PIDS);
+  // 翻页状态:page 为当前页,leaving 为正在离场的页;
+  // entered 标记是否经历过翻页(首次挂载不播入场动画)
+  const [page, setPage] = useState(0);
+  const [leaving, setLeaving] = useState(null);
+  const [entered, setEntered] = useState(false);
+  const pageRef = useRef(0);
+  const leaveTimer = useRef(null);
 
   // 挂载时拉一次停靠快照(广播只在状态变化时推送),之后跟随变化
   useEffect(() => {
@@ -118,6 +152,42 @@ export default function MiniView() {
       if (active && s) setDock(s);
     }).catch(() => {});
     const off = on('edge-dock:state', (s) => setDock(s || null));
+    return () => {
+      active = false;
+      if (typeof off === 'function') off();
+    };
+  }, []);
+
+  // 只有一页时不启动播报;翻页用 ref 记当前页,避免闭包捕获旧值。
+  // 进场与离场串行:离场动画播完(ANIM_MS)后下一页才挂载并播入场动画,两段不重合。
+  useEffect(() => {
+    if (PAGE_COUNT <= 1) return undefined;
+    const timer = setInterval(() => {
+      const current = pageRef.current;
+      const next = (current + 1) % PAGE_COUNT;
+      pageRef.current = next;
+      setLeaving(current);
+      leaveTimer.current = setTimeout(() => {
+        setLeaving(null);
+        setPage(next);
+        setEntered(true);
+      }, ANIM_MS);
+    }, ROTATE_MS);
+    return () => {
+      clearInterval(timer);
+      if (leaveTimer.current) clearTimeout(leaveTimer.current);
+    };
+  }, []);
+
+  // 行顺序:启动读一次,之后跟随 settings:loaded 广播
+  useEffect(() => {
+    let active = true;
+    getSettings().then((s) => {
+      if (active) setRowOrder(parseRowOrder(s && s.window && s.window.miniRowOrder));
+    }).catch(() => {});
+    const off = on('settings:loaded', (s) => {
+      setRowOrder(parseRowOrder(s && s.window && s.window.miniRowOrder));
+    });
     return () => {
       active = false;
       if (typeof off === 'function') off();
@@ -155,9 +225,36 @@ export default function MiniView() {
     if (p && p.id) byId[p.id] = p;
   });
   const balance = dashboard && dashboard.balance;
+  const balanceTotal = balance && Number(balance.total);
+
+  const visuals = {
+    // DeepSeek 行:圆环内为余额(¥),100% = ¥100
+    deepseek: <Ring outer={amountFrac(balanceTotal)} color={PROVIDER_META.deepseek.color} label={amountLabel(balanceTotal)} />,
+    codex: <Ring outer={fracOf(windowByKind(byId.codex, 'weekly'))} color={PROVIDER_META.codex.color} />,
+    kimi: (
+      <Ring
+        outer={fracOf(windowByKind(byId.kimi, '5h'))}
+        inner={fracOf(windowByKind(byId.kimi, 'weekly'))}
+        color={PROVIDER_META.kimi.color}
+        innerColor={KIMI_INNER_COLOR}
+      />
+    ),
+    dsh: <Ring outer={amountFrac(balanceTotal)} color={PROVIDER_META.dsh.color} label={amountLabel(balanceTotal)} />
+  };
+  const rows = rowOrder.map((pid) => ({ key: pid, visual: visuals[pid] }));
+  const pages = [];
+  for (let i = 0; i < rows.length; i += PAGE_SIZE) pages.push(rows.slice(i, i + PAGE_SIZE));
+  const renderRow = (row) => (
+    <div className="mini-row" key={row.key}>
+      {row.visual}
+      <RowInfo pid={row.key} rate={rateOf(row.key)} />
+    </div>
+  );
+  const currentPage = Math.min(page, pages.length - 1);
 
   return (
     <div className="mini-view">
+      <img className="shen-deco mini-shen" src={SHEN.lying} alt="" aria-hidden="true" />
       <div className="mini-titlebar">
         <span className="mini-titlebar-text">Token Monitor</span>
         <div className="mini-titlebar-actions">
@@ -173,25 +270,18 @@ export default function MiniView() {
         </div>
       </div>
       <div className="mini-body">
-        <div className="mini-row">
-          <div className="mini-balance">
-            {balance ? formatCurrencyAmount(balance.currency, balance.total) : '--'}
+        {leaving !== null && pages[leaving] ? (
+          <div key={'leave-' + leaving} className="mini-page mini-page-leave">
+            {pages[leaving].map(renderRow)}
           </div>
-          <RowInfo pid="deepseek" rate={rateOf('deepseek')} />
-        </div>
-        <div className="mini-row">
-          <Ring outer={fracOf(windowByKind(byId.codex, 'weekly'))} color={PROVIDER_META.codex.color} />
-          <RowInfo pid="codex" rate={rateOf('codex')} />
-        </div>
-        <div className="mini-row">
-          <Ring
-            outer={fracOf(windowByKind(byId.kimi, '5h'))}
-            inner={fracOf(windowByKind(byId.kimi, 'weekly'))}
-            color={PROVIDER_META.kimi.color}
-            innerColor={KIMI_INNER_COLOR}
-          />
-          <RowInfo pid="kimi" rate={rateOf('kimi')} />
-        </div>
+        ) : (
+          <div
+            key={'page-' + currentPage}
+            className={'mini-page' + (entered ? ' mini-page-enter' : '')}
+          >
+            {(pages[currentPage] || []).map(renderRow)}
+          </div>
+        )}
       </div>
     </div>
   );

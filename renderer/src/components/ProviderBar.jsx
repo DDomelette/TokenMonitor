@@ -1,5 +1,5 @@
 // 每日 Token 消耗(全平台堆叠柱):数据与热力图同源(get:heatmap 的 details.byProvider),
-// 最近 31 天零填充;堆叠自下而上 Codex → Kimi → DeepSeek;悬浮窗仿 model-bar(加粗日期 + 圆点行 + 缓存后缀 + 合计)。
+// 最近 31 天零填充;堆叠自下而上 Codex → Kimi → DeepSeek，Harness 不重复计入。
 import React, { useRef } from 'react';
 import useECharts from '../hooks/useECharts.js';
 import { useHeatmap } from '../store.js';
@@ -71,7 +71,7 @@ function buildOption(dom, details, dates) {
       name: provider.label,
       type: 'bar',
       stack: 'total',
-      // 只有堆叠顶层(DeepSeek)带圆角
+      // 只有堆叠顶层带圆角
       itemStyle: { borderRadius: i === STACK.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0] },
       data: dates.map((date) => (byProvider[provider.id] && Number(byProvider[provider.id][date])) || 0)
     }, density.series && density.series[i]))

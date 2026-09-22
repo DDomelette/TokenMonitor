@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('api', {
       'open:settings',
       'zoom:change',
       'session:relogin',
+      'kimi:web-login',
       'window:set-bounds',
       'resize:start',
       'resize:move',

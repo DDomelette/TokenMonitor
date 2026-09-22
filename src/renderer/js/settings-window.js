@@ -33,6 +33,15 @@
       .replace(/>/g, '&gt;');
   }
 
+  // 小窗行顺序:逗号分隔的 provider id;未知项丢弃、缺失项按默认序补尾。
+  var MINI_ROW_IDS = window.MiniRowOrder.PROVIDER_IDS;
+  var parseMiniRowOrder = window.MiniRowOrder.parseRowOrder;
+  var MINI_ROW_LABELS = {
+    deepseek: 'DeepSeek(余额)',
+    codex: 'Codex(周额度)',
+    kimi: 'Kimi(额度窗口)',
+    dsh: 'DeepSeek Harness(今日费用)'
+  };
   function showSaveError(message) {
     var errorEl = document.getElementById('settingsSaveError');
     if (!errorEl) return;
@@ -64,12 +73,18 @@
     });
   }
 
-  function buildSessionSection() {
+  function buildSessionSection(settings) {
+    var kimiLinked = !!(settings && settings.providers && settings.providers.kimi && settings.providers.kimi.webLinked);
     return '<div class="settings-section" id="sessionSection">' +
       '<div class="settings-section-title">平台登录</div>' +
       '<div class="setting-row"><div><span class="setting-label">会话状态</span></div>' +
       '<span class="session-status"><span class="status-dot offline" id="sessionStatusDot"></span><span id="sessionStatusText">未登录或会话已过期</span></span></div>' +
       '<div class="setting-row"><button class="btn btn-primary" id="sessionReloginBtn" style="width:100%;">登录平台获取用量</button></div>' +
+      '<div class="setting-row"><div><span class="setting-label">Kimi 网页(月额度)</span></div>' +
+      '<span class="session-status"><span class="status-dot ' + (kimiLinked ? 'online' : 'offline') + '"></span><span>' +
+      (kimiLinked ? '已登录,令牌自动刷新' : '未登录,登录后可读取月额度') + '</span></span></div>' +
+      '<div class="setting-row"><button class="btn btn-secondary" id="kimiWebLoginBtn" style="width:100%;">' +
+      (kimiLinked ? '重新登录 Kimi 网页' : '登录 Kimi 网页获取月额度') + '</button></div>' +
       '</div>';
   }
 
@@ -377,6 +392,20 @@
           '</div>' +
         '</div>';
       }
+      case 'miniRowOrder': {
+        var order = parseMiniRowOrder(v);
+        return '<div class="mini-order-list" data-key="' + def.key + '">' +
+          order.map(function (pid, i) {
+            return '<div class="mini-order-item" data-pid="' + pid + '">' +
+              '<span class="mini-order-name">' + MINI_ROW_LABELS[pid] + '</span>' +
+              '<span class="mini-order-btns">' +
+                '<button type="button" class="mini-order-btn" data-dir="-1"' + (i === 0 ? ' disabled' : '') + '>上移</button>' +
+                '<button type="button" class="mini-order-btn" data-dir="1"' + (i === order.length - 1 ? ' disabled' : '') + '>下移</button>' +
+              '</span>' +
+            '</div>';
+          }).join('') +
+        '</div>';
+      }
       case 'proxy': {
         var proxyMode = proxyModeFromValue(v);
         var proxyUrl = proxyMode === 'custom' ? v : '';
@@ -450,7 +479,7 @@
           if (d.key === 'apiKey' && settings.providers && settings.providers.deepseek && settings.providers.deepseek.apiKeySet) {
             placeholder = '已保存,输入新 Key 以更换';
           }
-          var vertical = d.type === 'slider' || d.type === 'credential' || d.type === 'proxy' || d.type === 'historySync' || d.type === 'diagnostics' || d.type === 'mcpServer' || d.type === 'ingestServer';
+          var vertical = d.type === 'slider' || d.type === 'credential' || d.type === 'proxy' || d.type === 'historySync' || d.type === 'diagnostics' || d.type === 'mcpServer' || d.type === 'ingestServer' || d.type === 'miniRowOrder';
           var value = d.key ? getNested(settings, d.key) : undefined;
           return '<div class="setting-row' + (vertical ? ' vertical' : '') + '"><div><span class="setting-label">' + d.label + '</span></div>' + render(d, value, placeholder) + '</div>';
         }).join('') + '</div>';
@@ -471,6 +500,11 @@
     var reloginBtn = document.getElementById('sessionReloginBtn');
     if (reloginBtn) {
       reloginBtn.addEventListener('click', function () { window.api.send('session:relogin'); });
+    }
+
+    var kimiWebLoginBtn = document.getElementById('kimiWebLoginBtn');
+    if (kimiWebLoginBtn) {
+      kimiWebLoginBtn.addEventListener('click', function () { window.api.send('kimi:web-login'); });
     }
 
     var deepseekApiKeySaveBtn = document.getElementById('deepseekApiKeySaveBtn');
@@ -517,6 +551,24 @@
     if (ingestCopyBtn) ingestCopyBtn.addEventListener('click', ingestConnection.copy);
     var ingestRotateBtn = document.getElementById('ingestRotateBtn');
     if (ingestRotateBtn) ingestRotateBtn.addEventListener('click', ingestConnection.rotate);
+
+    // 小窗项目顺序:上移/下移后按 DOM 中的最新顺序整体保存,设置广播会重渲染本列表
+    document.querySelectorAll('.mini-order-list').forEach(function (list) {
+      var key = list.dataset.key;
+      list.querySelectorAll('.mini-order-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var items = Array.prototype.slice.call(list.querySelectorAll('.mini-order-item'));
+          var order = items.map(function (it) { return it.dataset.pid; });
+          var index = items.indexOf(btn.closest('.mini-order-item'));
+          var target = index + Number(btn.dataset.dir);
+          if (index < 0 || target < 0 || target >= order.length) return;
+          var tmp = order[index];
+          order[index] = order[target];
+          order[target] = tmp;
+          settingsUpdateQueue.schedule(key, order.join(','));
+        });
+      });
+    });
 
     document.querySelectorAll('input[data-key]').forEach(function (el) {
       el.addEventListener('input', function () { handleChange(el); });
@@ -587,7 +639,7 @@
 
   function renderAll(settings) {
     lastCustomProxyUrl = getNested(settings, 'providers.proxyUrlLastCustom') || '';
-    document.getElementById('settingsBody').innerHTML = buildSessionSection() + buildPanel(settings);
+    document.getElementById('settingsBody').innerHTML = buildSessionSection(settings) + buildPanel(settings);
     bindEvents();
     syncProxyControls();
     mcpConnection.load();

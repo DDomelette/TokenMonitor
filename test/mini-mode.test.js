@@ -31,6 +31,8 @@ function makeWindow(bounds) {
     setMaximumSize(w, h) { this.maxSize = [w, h]; },
     resizable: true,
     setResizable(v) { this.resizable = v; },
+    maximizable: true,
+    setMaximizable(v) { this.maximizable = v; },
     webContents: {
       zoom: 1,
       getZoomFactor() { return this.zoom; },
@@ -173,4 +175,24 @@ test('enter/exit are no-ops without a live window', () => {
   const mini = createMiniMode({ store, getMainWindow: () => null });
   assert.equal(mini.enter(), false);
   assert.equal(mini.isActive(), false);
+});
+
+test('enter disables maximize, exit re-enables it (贴边全屏只在正常模式可用)', () => {
+  const { win, mini } = makeHarness();
+  assert.equal(win.maximizable, true);
+  mini.enter();
+  assert.equal(win.maximizable, false);
+  mini.exit();
+  assert.equal(win.maximizable, true);
+});
+
+test('applyOnCreate disables maximize when persisted mini mode is on', () => {
+  const on = makeHarness({
+    storeInitial: {
+      'window.miniMode': true,
+      'window.miniBounds': { x: 10, y: 20, width: 320, height: 228 }
+    }
+  });
+  on.mini.applyOnCreate(on.win);
+  assert.equal(on.win.maximizable, false);
 });

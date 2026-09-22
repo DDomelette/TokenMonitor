@@ -14,7 +14,6 @@ import {
   nearestFreePosition
 } from '../grid/policy.js';
 import { mergeLayoutItems, visibleComponentIds } from '../grid/visibility.js';
-import { mergeCurves } from '../lib/curve-merge.js';
 import FeeCard from './FeeCard.jsx';
 import ChartWidget from './ChartWidget.jsx';
 import QuotaCard from './QuotaCard.jsx';
@@ -59,20 +58,8 @@ function UsageWidget({ id, onContentChange }) {
   if (FEE_IDS.includes(id)) {
     return <FeeCard id={id} balance={dashboard ? dashboard.balance : null} stats={dashboard ? dashboard.stats : null} />;
   }
-  if (id === 'cost-line') {
-    return <CostWidget dashboard={dashboard} onContentChange={onContentChange} />;
-  }
+  // Token 与费用曲线统一使用 DeepSeek 官网数据，Harness 不能再次累加。
   return <ChartWidget id={id} dashboard={dashboard} />;
-}
-
-function CostWidget({ dashboard, onContentChange }) {
-  const dshDashboard = useDashboard('dsh');
-  useEffect(() => { if (onContentChange) onContentChange(); }, [dshDashboard, onContentChange]);
-  const curvePoints = mergeCurves([
-    dashboard && dashboard.curveCost,
-    dshDashboard && dshDashboard.curveCost
-  ].filter(Boolean));
-  return <ChartWidget id="cost-line" dashboard={dashboard} curvePoints={curvePoints} />;
 }
 
 function QuotaWidget({ id, onContentChange }) {

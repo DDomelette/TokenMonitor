@@ -1,0 +1,338 @@
+/* ======== 小深酱主题(Shen-chan Theme) ========
+   实底不透明(奶油白),无亚克力/毛玻璃;女仆深蓝 + 水蓝 + 刺绣金。
+   所有装饰元素(.shen-deco)只在本主题下显示,其余主题零影响。 */
+
+:root[data-theme='shen-chan'] {
+  color-scheme: light;
+  --bg-window: #faf6ee;
+  --bg-card: #fffdf8;
+  --text-primary: #2b3a6e;
+  --text-secondary: #43568f;
+  --text-inverse: #fffdf8;
+  --border: #d9deee;
+  --shadow-window: 0 12px 34px rgba(28, 42, 82, 0.20);
+  --shadow-card: 0 4px 14px rgba(28, 42, 82, 0.10);
+  --shen-navy: #1c2a52;
+  --shen-aqua: #4db3e6;
+  --shen-aqua-300: #8fd4f2;
+  --shen-aqua-100: #e3f3fc;
+  --shen-gold: #d9a441;
+}
+
+/* 装饰元素默认隐藏,仅小深酱主题显示 */
+.shen-deco { display: none !important; }
+:root[data-theme='shen-chan'] .shen-deco { display: block !important; }
+
+:root[data-theme='shen-chan'] #app {
+  background-color: #faf6ee;
+  background-image:
+    radial-gradient(circle 2.5px at 10px 10px, rgba(77, 179, 230, 0.10) 2.5px, transparent 3px),
+    radial-gradient(circle 1.8px at 34px 30px, rgba(217, 164, 65, 0.10) 1.8px, transparent 2.2px);
+  background-size: 48px 48px, 64px 64px;
+  box-shadow: var(--shadow-window);
+}
+
+/* 注意:.component-surface 同时是 gridstack 的 .grid-stack-item-content,
+   其 position:absolute(top/bottom 撑满格位)不可覆盖,否则卡片会塌缩。
+   absolute 本身就是定位上下文,装饰元素照样相对卡片定位,无需额外声明。 */
+:root[data-theme='shen-chan'] .component-surface,
+:root[data-theme='shen-chan'] .fee-card-surface {
+  background: var(--bg-card);
+  border-color: var(--border);
+  box-shadow: var(--shadow-card);
+  /* 小深酱装饰要探出卡片边缘 */
+  overflow: visible;
+}
+
+/* 卡片太小时隐藏装饰,避免挤压内容(component-surface 自带 container-type) */
+@container (max-width: 240px) {
+  :root[data-theme='shen-chan'] .shen-deco { display: none !important; }
+}
+
+/* -------- 标题栏:女仆头箍(深蓝 + 白色荷叶边) -------- */
+:root[data-theme='shen-chan'] .titlebar {
+  position: relative;
+  background: var(--shen-navy);
+  height: 38px;
+  color: #e3f3fc;
+}
+:root[data-theme='shen-chan'] .titlebar::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -9px;
+  height: 10px;
+  background-image: radial-gradient(circle 5.5px at 8px 0, #faf6ee 5.5px, transparent 6.2px);
+  background-size: 16px 10px;
+  background-repeat: repeat-x;
+  pointer-events: none;
+  z-index: 5;
+}
+:root[data-theme='shen-chan'] .titlebar-text,
+:root[data-theme='shen-chan'] .titlebar-btn { color: #cfe9f8; }
+:root[data-theme='shen-chan'] .titlebar-btn:hover { background: rgba(143, 212, 242, 0.18); color: #ffffff; }
+
+/* 比心小深酱在标题栏中部空白处,远离右侧按钮区 */
+.shen-heart {
+  position: absolute;
+  right: 210px; top: 4px;
+  width: 30px;
+  pointer-events: none;
+  animation: shen-sway 3.4s ease-in-out infinite;
+  transform-origin: bottom center;
+  z-index: 6;
+}
+@keyframes shen-sway { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+
+/* -------- Token 速度卡:趴在卡片右下角内侧(避开右上角下拉框) -------- */
+.shen-lying {
+  position: absolute;
+  bottom: -4px; right: 10px;
+  width: 86px;
+  z-index: 6;
+  pointer-events: none;
+  filter: drop-shadow(0 3px 4px rgba(28, 42, 82, 0.18));
+  animation: shen-breathe 3s ease-in-out infinite;
+}
+.shen-caption {
+  position: absolute;
+  bottom: 66px; right: 82px;
+  background: #fffdf8;
+  border: 1.5px solid var(--shen-aqua-300);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 4px 9px;
+  border-radius: 12px 12px 12px 2px;
+  box-shadow: var(--shadow-card);
+  white-space: nowrap;
+  z-index: 6;
+  pointer-events: none;
+  animation: shen-breathe 3s ease-in-out infinite;
+}
+@keyframes shen-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+
+/* -------- 额度进度条:糖果斜纹 + 步态小深酱领跑 -------- */
+:root[data-theme='shen-chan'] .quota-bar {
+  position: relative;
+  overflow: visible;
+  height: 10px;
+  margin-top: 26px;
+  background: var(--shen-aqua-100);
+  border: 1px solid var(--shen-aqua-300);
+  border-radius: 999px;
+}
+:root[data-theme='shen-chan'] .quota-bar-fill {
+  border-radius: 999px;
+  background: repeating-linear-gradient(-55deg, var(--shen-aqua) 0 10px, #6cc4ee 10px 20px);
+}
+:root[data-theme='shen-chan'] .quota-bar-fill.mid {
+  background: repeating-linear-gradient(-55deg, var(--shen-gold) 0 10px, #e8b95e 10px 20px);
+}
+:root[data-theme='shen-chan'] .quota-bar-fill.high {
+  background: repeating-linear-gradient(-55deg, #e57373 0 10px, #ef9a9a 10px 20px);
+}
+
+.shen-runner {
+  position: absolute;
+  bottom: 7px;
+  width: 36px;
+  transform: translateX(-50%);
+  transition: left 300ms ease-out;
+  pointer-events: none;
+  z-index: 6;
+  filter: drop-shadow(0 2px 2px rgba(28, 42, 82, 0.20));
+  animation: shen-bob 0.5s ease-in-out infinite alternate;
+}
+@keyframes shen-bob {
+  from { transform: translateX(-50%) translateY(0) rotate(-2deg); }
+  to { transform: translateX(-50%) translateY(-4px) rotate(3deg); }
+}
+.shen-runner.g-walk { animation-duration: 1s; }
+.shen-runner.g-hike { animation-duration: 0.75s; }
+.shen-runner.g-jog { animation-duration: 0.58s; }
+.shen-runner.g-run { animation-duration: 0.45s; }
+.shen-runner.g-sprint { animation-duration: 0.28s; }
+
+/* -------- DeepSeek 今日消耗卡:被小深酱啃了一角 -------- */
+.shen-eat {
+  position: absolute;
+  right: -8px; bottom: -12px;
+  width: 64px;
+  z-index: 7;
+  pointer-events: none;
+  filter: drop-shadow(0 3px 4px rgba(28, 42, 82, 0.18));
+  animation: shen-nibble 1.1s ease-in-out infinite;
+  transform-origin: top left;
+}
+@keyframes shen-nibble {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(2.5deg) translate(1.5px, 1px); }
+}
+/* 咬痕:窗口底色圆斑盖住卡片角(实底主题下与窗口底融为一体) */
+.shen-bite {
+  position: absolute;
+  background: #faf6ee;
+  border-radius: 50%;
+  z-index: 6;
+  pointer-events: none;
+}
+.shen-bite.b1 { width: 18px; height: 18px; right: -9px; bottom: -9px; }
+.shen-bite.b2 { width: 12px; height: 12px; right: 3px; bottom: -7px; }
+.shen-bite.b3 { width: 10px; height: 10px; right: -5px; bottom: 7px; }
+.shen-crumb {
+  position: absolute;
+  background: #fffdf8;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  z-index: 6;
+  pointer-events: none;
+}
+.shen-crumb.c1 { width: 5px; height: 5px; right: 52px; bottom: -7px; }
+.shen-crumb.c2 { width: 4px; height: 4px; right: 44px; bottom: -12px; }
+
+/* -------- 热力图:瞌睡小深酱(右下角内侧,避开顶部平台页签) -------- */
+:root[data-theme='shen-chan'] .heatmap-widget { position: relative; }
+.shen-sleep {
+  position: absolute;
+  bottom: -2px; right: 4px;
+  width: 62px;
+  z-index: 6;
+  pointer-events: none;
+  filter: drop-shadow(0 3px 4px rgba(28, 42, 82, 0.16));
+}
+.shen-zzz {
+  position: absolute;
+  bottom: 52px; right: 56px;
+  font-size: 12px;
+  font-weight: 800;
+  font-style: italic;
+  color: var(--text-secondary);
+  z-index: 6;
+  pointer-events: none;
+  animation: shen-floatz 2.6s ease-in-out infinite;
+}
+@keyframes shen-floatz {
+  0% { transform: translateY(3px); opacity: 0.2; }
+  40% { opacity: 1; }
+  100% { transform: translateY(-8px); opacity: 0; }
+}
+
+/* -------- 状态栏:写代码小深酱 -------- */
+.shen-status {
+  width: 30px;
+  align-self: flex-end;
+  margin: -6px 2px -4px auto;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 2px rgba(28, 42, 82, 0.18));
+}
+:root[data-theme='shen-chan'] .statusbar { color: var(--text-secondary); }
+
+/* -------- 迷你窗:页面透明,框区由主进程挂水蓝亚克力磨砂,小深酱趴在卡片上沿 -------- */
+:root[data-theme='shen-chan'] #app.app-mini {
+  background: transparent;      /* 卡片以外的区域由 Accent 磨砂透出桌面 */
+  overflow: visible;
+}
+:root[data-theme='shen-chan'] .app-mini .app-content { overflow: visible; }
+
+:root[data-theme='shen-chan'] .mini-view {
+  position: relative;
+  margin: 49px 8px 8px;         /* 顶部留白:小深酱呆毛在浮动最高点距窗口顶约 2px */
+  background: #fffdf8;
+  border: 2px solid var(--shen-aqua-300);
+  border-radius: 14px;
+  box-shadow: none;             /* 去掉边框阴影 */
+}
+/* 趴在气泡卡片上沿。呆毛是 PNG 内容最高点:1024px 图里内容从第 99 行开始,
+   宽 80px 时呆毛距图片上缘 7.7px;top:-52 时图片上缘距窗口顶 6px,
+   呆毛静止时距窗口顶 13.7px,呼吸浮动最高点(translateY -3px)也有 10.7px 余量,
+   任何时刻都不会被窗口上沿裁切。 */
+.mini-shen {
+  position: absolute;
+  top: -52px; left: 14px;
+  width: 80px;
+  z-index: 6;
+  pointer-events: none;
+  filter: drop-shadow(0 3px 4px rgba(28, 42, 82, 0.18));
+  animation: shen-breathe 3s ease-in-out infinite;
+}
+/* 小深酱下移后身体探进卡片约 15px,标题行整体下移避开她 */
+:root[data-theme='shen-chan'] .mini-titlebar { margin-top: 20px; }
+:root[data-theme='shen-chan'] .mini-titlebar-text { color: var(--text-secondary); }
+:root[data-theme='shen-chan'] .mini-title-btn { color: var(--text-secondary); }
+:root[data-theme='shen-chan'] .mini-title-btn:hover {
+  background: var(--shen-aqua-100);
+  color: var(--shen-navy);
+}
+/* 迷你窗高度有限,主题下圆环略缩小给趴趴小深酱让位 */
+:root[data-theme='shen-chan'] .mini-ring-wrap { width: 34px; height: 34px; }
+:root[data-theme='shen-chan'] .mini-ring-wrap svg { width: 100%; height: 100%; }
+:root[data-theme='shen-chan'] .mini-ring-label { font-size: 8px; }
+
+/* -------- 模块水印:每张卡片背景铺一张高透明度小深酱,隐约可见又不妨碍读数 --------
+   做法:奶油白半透明渐变盖在 PNG 之上,水印只剩淡淡轮廓;图表 canvas 透明底,水印可透出。
+   路径用 ../shen/(相对 dist/assets 的 CSS 文件解析到 dist/shen,dev 下解析到 public/shen)。 */
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='balance-card'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.90), rgba(255, 253, 248, 0.90)),
+    url('../shen/deepseek_chan_09_heart.png') no-repeat right 2px bottom 0 / 64px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='today-cost-card'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.92), rgba(255, 253, 248, 0.92)),
+    url('../shen/deepseek_chan_02_salute.png') no-repeat center / 58px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='cache-rate-card'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.90), rgba(255, 253, 248, 0.90)),
+    url('../shen/deepseek_chan_10_coding.png') no-repeat right 2px bottom 0 / 64px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='quota-codex'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.91), rgba(255, 253, 248, 0.91)),
+    url('../shen/shen_walk_b.png') no-repeat right 8px center / 84px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='quota-kimi'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.91), rgba(255, 253, 248, 0.91)),
+    url('../shen/shen_run_c.png') no-repeat right 8px center / 84px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='token-heatmap'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
+    url('../shen/deepseek_chan_06_sleepy.png') no-repeat center / 110px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='token-speed'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
+    url('../shen/shen_run_b.png') no-repeat left 10px center / 96px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='model-bar'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
+    url('../shen/shen_walk_a.png') no-repeat center / 100px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='provider-bar'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
+    url('../shen/shen_run_a.png') no-repeat center / 100px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='token-line'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
+    url('../shen/deepseek_chan_01_hungry.png') no-repeat center / 100px,
+    var(--bg-card);
+}
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='cost-line'] .component-surface {
+  background:
+    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
+    url('../shen/deepseek_chan_02_salute.png') no-repeat center / 100px,
+    var(--bg-card);
+}

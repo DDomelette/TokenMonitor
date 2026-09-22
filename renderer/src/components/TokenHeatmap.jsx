@@ -4,6 +4,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useHeatmap } from '../store.js';
+import { SHEN } from '../shen-assets.js';
 import { buildSundayWeekTotals, buildWeeks, blockCount, colorLevel, formatToken, sundayWeekKey } from '../lib/heatmap.js';
 import { clampToWindow, resolveVerticalFlip } from '../lib/floating-layer.js';
 import {
@@ -21,7 +22,8 @@ const PROVIDER_OPTS = [
   { id: 'all', label: '全部' },
   { id: 'deepseek', label: 'DeepSeek' },
   { id: 'codex', label: 'Codex' },
-  { id: 'kimi', label: 'Kimi' }
+  { id: 'kimi', label: 'Kimi' },
+  { id: 'dsh', label: 'Harness' }
 ];
 
 function dateLabel(date) {
@@ -357,6 +359,8 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
 
   return (
     <div className="heatmap-widget" ref={rootRef}>
+      <img className="shen-deco shen-sleep" src={SHEN.sleepy} alt="" aria-hidden="true" />
+      <span className="shen-deco shen-zzz">Z z z…</span>
       <div className="heatmap-head">
         <span className="heatmap-title">Token 活动</span>
         <div className="heatmap-providers">
@@ -377,7 +381,8 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
             {{ daily: '每日', weekly: '每周', cumulative: '累计' }[m]}
           </button>
         ))}
-        {selProvider !== 'all' && selProvider !== 'deepseek' ? <span className="heatmap-local-only">仅本机</span> : null}
+        {selProvider === 'dsh' ? <span className="heatmap-local-only">本地记录 · 不计入总览</span>
+          : selProvider !== 'all' && selProvider !== 'deepseek' ? <span className="heatmap-local-only">仅本机</span> : null}
         <span className="heatmap-total" title="当前视图总消耗">共 {formatToken(headTotal)} Token</span>
       </div>
       {mode === 'daily' ? renderDaily() : null}

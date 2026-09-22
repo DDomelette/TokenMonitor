@@ -120,7 +120,7 @@ test('quota/status changes perform no data queries; usage invalidates only affec
   calls.length = 0;
   changed({ providerId: 'dsh', channel: 'localLog' });
   await flush();
-  assert.deepEqual(calls.sort(), ['dashboard:dsh', 'heatmap:all', 'heatmap:dsh']);
+  assert.deepEqual(calls.sort(), ['dashboard:dsh', 'heatmap:dsh']);
   calls.length = 0;
   changed({ providerId: 'deepseek', channel: 'balance' });
   await flush();
