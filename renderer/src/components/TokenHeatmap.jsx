@@ -18,6 +18,10 @@ const CELL = 12;
 const GAP = 2;
 const EMPTY_HEATMAP = { days: {}, maxDaily: 0 };
 const LEVEL_ALPHA = [0.06, 0.18, 0.38, 0.62, 0.9];
+// 0 档(无消耗)与跨年格底色走 CSS 变量,暗色主题下提亮;1-4 档仍为固定透明度
+function levelColor(level) {
+  return level === 0 ? 'var(--heatmap-l0)' : 'rgba(116,184,252,' + LEVEL_ALPHA[level] + ')';
+}
 const PROVIDER_OPTS = [
   { id: 'all', label: '全部' },
   { id: 'deepseek', label: 'DeepSeek' },
@@ -243,8 +247,8 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
                 width: CELL,
                 height: CELL,
                 background: cell && cell.inYear
-                  ? 'rgba(116,184,252,' + LEVEL_ALPHA[level] + ')'
-                  : 'rgba(0,0,0,0.04)'
+                  ? levelColor(level)
+                  : 'var(--heatmap-out)'
               };
               return cell ? (
                 <div
@@ -283,10 +287,10 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
                   width: CELL,
                   height: CELL,
                   background: !cell.inYear
-                    ? 'rgba(0,0,0,0.04)'
+                    ? 'var(--heatmap-out)'
                     : filled
                       ? 'rgba(116,184,252,0.55)'
-                      : 'rgba(116,184,252,' + LEVEL_ALPHA[0] + ')'
+                      : 'var(--heatmap-l0)'
                 };
                 return (
                   <div
@@ -392,7 +396,7 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
       <div className="heatmap-legend">
         <span>少</span>
         {[0, 1, 2, 3, 4].map((l) => (
-          <span key={l} className="heatmap-legend-cell" style={{ background: 'rgba(116,184,252,' + LEVEL_ALPHA[l] + ')' }} />
+          <span key={l} className="heatmap-legend-cell" style={{ background: levelColor(l) }} />
         ))}
         <span>多</span>
       </div>

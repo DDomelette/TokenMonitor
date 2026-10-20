@@ -25,7 +25,9 @@ function setElementTheme(element, theme) {
   if (element.classList && typeof element.classList.toggle === 'function') {
     element.classList.toggle('dark', isDark);
   }
-  if (element.style) element.style.colorScheme = theme;
+  // color-scheme 只接受 light/dark/normal;主题名(acrylic-light/shen-chan 等)
+  // 直接写入会被 CSS 解析丢弃,必须映射为标准值
+  if (element.style) element.style.colorScheme = isDark ? 'dark' : 'light';
 }
 
 export function installThemeSync(options) {

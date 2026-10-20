@@ -97,16 +97,19 @@ export default function TokenSpeedCard() {
           const rate = metric && metric.tokensPerMinute !== null
             ? formatTokenRate(metric.tokensPerMinute)
             : '--/min';
-          const delta = metric && metric.deltaTokens !== null
-            ? Math.round(metric.deltaTokens).toLocaleString('zh-CN')
-            : '--';
+          // deltaTokens 缺失时不渲染整行,避免拼出 "本周期 +-- Token"
+          const deltaValid = metric && metric.deltaTokens !== null
+            && Number.isFinite(Number(metric.deltaTokens));
+          const delta = deltaValid
+            ? Math.round(Number(metric.deltaTokens)).toLocaleString('zh-CN')
+            : null;
           const status = metricStatus(metric, intervalSeconds);
           return (
             <div className="token-speed-legend" key={providerId}>
               <span className="token-speed-dot" style={{ backgroundColor: meta.color }} />
               <span className="token-speed-provider">{meta.label}</span>
               <strong>{rate}</strong>
-              {providerFilter !== 'all' && <span className="token-speed-delta">本周期 +{delta} Token</span>}
+              {providerFilter !== 'all' && delta !== null && <span className="token-speed-delta">本周期 +{delta} Token</span>}
               {status && <span className="token-speed-status">{status}</span>}
             </div>
           );

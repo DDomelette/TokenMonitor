@@ -56,7 +56,8 @@ test('acrylic-dark also activates the shared dark hooks (body.dark) for charts a
 
   assert.equal(rootEl.dataset.theme, 'acrylic-dark');
   assert.equal(bodyEl.classList.contains('dark'), true);
-  assert.equal(rootEl.style.colorScheme, 'acrylic-dark');
+  // color-scheme 只接受标准值:acrylic-dark 必须映射为 dark,写主题名会被 CSS 解析丢弃
+  assert.equal(rootEl.style.colorScheme, 'dark');
 });
 
 test('acrylic themes ship semi-transparent window and card surfaces', () => {

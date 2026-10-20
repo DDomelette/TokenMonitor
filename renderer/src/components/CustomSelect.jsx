@@ -4,7 +4,7 @@
 // 且 backdrop-filter 会使 fixed 以卡片为包含块(同 heatmap tooltip 的坑)。
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { resolveVerticalFlip } from '../lib/floating-layer.js';
+import { resolveVerticalFlip, clampToWindow } from '../lib/floating-layer.js';
 
 export default function CustomSelect({ value, options, onChange, ariaLabel }) {
   const [open, setOpen] = useState(false);
@@ -43,9 +43,12 @@ export default function CustomSelect({ value, options, onChange, ariaLabel }) {
       const menuHeight = options.length * 26 + 10;
       // 窗口内下方空间不足且上方更宽敞时向上展开(判定收敛到 floating-layer)
       const below = resolveVerticalFlip(rect, menuHeight, { gap: 4, margin: 0 }).below;
+      // 水平方向钳制进窗口:触发器贴近右缘时,菜单(最小 88px)不得溢出窗口
+      const width = Math.max(rect.width, 88);
+      const left = clampToWindow(rect.left, 0, width, 0).x;
       setMenuPos({
-        left: rect.left,
-        width: Math.max(rect.width, 88),
+        left: left,
+        width: width,
         top: below ? rect.bottom + 4 : null,
         bottom: below ? null : window.innerHeight - rect.top + 4,
         below: below

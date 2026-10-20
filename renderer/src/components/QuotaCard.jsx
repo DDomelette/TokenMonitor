@@ -25,7 +25,14 @@ function kimiPlanLabel(planName) {
 function formatFetchedAt(fetchedAt) {
   const d = new Date(Number(fetchedAt));
   if (!Number.isFinite(d.getTime())) return '上次';
-  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  const time = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  // 只写 HH:mm 会让昨天/更早的数据读起来像今天的,跨天必须带日期
+  const now = new Date();
+  const sameDay = d.getFullYear() === now.getFullYear()
+    && d.getMonth() === now.getMonth()
+    && d.getDate() === now.getDate();
+  if (sameDay) return time;
+  return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + time;
 }
 
 export default function QuotaCard({ provider, quotaState, authStatus, quotaFetchedAt, onRetry }) {

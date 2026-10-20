@@ -208,7 +208,6 @@ export default function Dashboard({ editing }) {
         );
         const target = Math.max(need, base);
         if (target === cur) return;
-        console.debug('[fit]', id, 'h', cur, '->', target, { need: need, base: base, scrollHeight: content.scrollHeight, clientHeight: content.clientHeight });
         grid.update(itemEl, { h: target });
       });
     };

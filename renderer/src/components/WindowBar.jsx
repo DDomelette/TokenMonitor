@@ -30,7 +30,7 @@ export default function WindowBar({ kind, name, used, limit, remaining, resetsAt
     <div className="quota-window">
       <div className="quota-window-head">
         <span className="quota-window-kind">{name || (kind === '5h' ? '5 小时窗口' : kind === 'monthly' ? '本月额度' : '本周额度')}</span>
-        <span className="quota-window-used">{Math.round(percent)}%</span>
+        <span className="quota-window-used">剩余 {Math.round(percent)}%</span>
       </div>
       <div className="quota-bar">
         <div
