@@ -82,8 +82,6 @@ body,
   flex: 1;
   overflow: auto;
   padding: 12px;
-  /* 让出右侧缩放手柄(.resize-e 6px)的位置:滚动条不再与窗口缩放手柄重叠 */
-  margin-right: 6px;
 }
 
 /* 细滚动条,覆盖原生样式以去掉两端的箭头按钮 */
@@ -239,6 +237,9 @@ body,
   --radius-input: 8px;
   --shadow-window: 0 4px 24px rgba(0, 0, 0, 0.08);
   --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.04);
+  /* 热力图:无消耗格(0 档)与跨年格底色;暗色主题在 theme.css 覆盖 */
+  --heatmap-l0: rgba(116, 184, 252, 0.06);
+  --heatmap-out: rgba(0, 0, 0, 0.04);
 }
 
 /* ======== 仪表盘组件 ======== */
@@ -842,6 +843,12 @@ body,
 
 .heatmap-cell {
   border-radius: 2px;
+}
+
+/* hover 描边:tooltip 有 220ms 停稳延迟,先给出即时的可交互反馈 */
+.heatmap-cell:hover {
+  outline: 1px solid var(--primary-dark);
+  outline-offset: 0;
 }
 
 .heatmap-months {

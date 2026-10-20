@@ -72,7 +72,7 @@ export default function TitleBar({ editing, layoutLocked, onToggleLayoutEdit }) 
         <button className="titlebar-btn" title="最小化" onClick={() => send('window:minimize')}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3 8.5a.75.75 0 0 1 .75-.75h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 3 8.5z" /></svg>
         </button>
-        <button className="titlebar-btn" title="关闭" onClick={() => send('window:minimize')}>
+        <button className="titlebar-btn" title="关闭(退至托盘)" aria-label="关闭(退至托盘)" onClick={() => send('window:minimize')}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
         </button>
       </div>

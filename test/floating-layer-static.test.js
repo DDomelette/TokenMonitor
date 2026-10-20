@@ -34,8 +34,10 @@ test('heatmap tooltip uses shared clamp and flip primitives', () => {
 
 test('custom select menu uses shared flip decision', () => {
   const source = read('renderer/src/components/CustomSelect.jsx');
-  assert.match(source, /import \{ resolveVerticalFlip \} from '\.\.\/lib\/floating-layer\.js'/);
+  assert.match(source, /import \{ resolveVerticalFlip, clampToWindow \} from '\.\.\/lib\/floating-layer\.js'/);
   assert.match(source, /resolveVerticalFlip\(rect, menuHeight/);
+  // 水平方向也要钳制进窗口:触发器贴近右缘时菜单(最小 88px)不得溢出
+  assert.match(source, /clampToWindow\(rect\.left, 0, width, 0\)/);
 });
 
 // 静态计数无法区分 tooltip 配置"定义"与"引用"(如 ChartWidget 的 curveTooltip 助手

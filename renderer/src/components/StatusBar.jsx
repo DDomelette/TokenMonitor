@@ -7,7 +7,10 @@ import { SHEN } from '../shen-assets.js';
 function formatRefresh(lastFetchedAt, now) {
   if (!Number.isFinite(lastFetchedAt)) return '--';
   const elapsed = Math.max(0, Math.floor((now - lastFetchedAt) / 60000));
-  return elapsed === 0 ? '刚刚刷新' : elapsed + ' 分钟前';
+  if (elapsed === 0) return '刚刚刷新';
+  // 超过 1 小时还显示 "90 分钟前" 不直观,切换为小时粒度
+  if (elapsed >= 60) return Math.floor(elapsed / 60) + ' 小时前';
+  return elapsed + ' 分钟前';
 }
 
 export default function StatusBar() {

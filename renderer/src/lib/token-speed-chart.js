@@ -66,9 +66,12 @@ function tooltipFormatter(params) {
       ? formatTokenRate(datum.value[1])
       : '--/min';
     const quality = QUALITY_LABELS[datum.quality] || '';
+    // deltaTokens 缺失时不拼 "+",避免 "本周期 +-- Token"
+    const deltaText = formatTokenDelta(datum.deltaTokens);
+    const deltaPart = deltaText === '--' ? '' : '<br/>本周期 +' + deltaText + ' Token';
     return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'
       + item.color + '"></span> ' + item.seriesName + ': ' + rate
-      + '<br/>本周期 +' + formatTokenDelta(datum.deltaTokens) + ' Token'
+      + deltaPart
       + (quality ? ' · ' + quality : '');
   }).join('<br/>');
   return (header ? '<b>' + header + '</b><br/>' : '') + body;
