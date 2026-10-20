@@ -73,6 +73,28 @@ async function backfillMonths(store, token, month, year, requestOptions) {
   }
 }
 
+// 费用日数据只随返回月份覆盖单月;向前补抓一个月的费用,把日数据拼到 cost.dailyData 前面,
+// 让渲染层"近 30 天花费"在跨月时仍准确(aggregate 保持当月口径,不受影响)。
+// 补抓失败不阻断主流程,渲染层按可得数据求和即可。
+async function prependPreviousMonthCost(usage, token, requestOptions) {
+  const current = Array.isArray(usage.cost.dailyData) ? usage.cost.dailyData : [];
+  try {
+    const prev = new Date(usage.year, usage.month - 2, 1);
+    const prevCost = await fetcher.fetchUsageCost(
+      token,
+      prev.getMonth() + 1,
+      prev.getFullYear(),
+      requestOptions
+    );
+    const prevDays = prevCost && Array.isArray(prevCost.dailyData) ? prevCost.dailyData : [];
+    const existing = new Set(current.map((d) => d && d.date));
+    const extra = prevDays.filter((d) => d && d.date && !existing.has(d.date));
+    usage.cost.dailyData = extra.concat(current);
+  } catch (e) {
+    usage.cost.dailyData = current;
+  }
+}
+
 module.exports = {
   id: 'deepseek',
   displayName: 'DeepSeek',
@@ -100,7 +122,8 @@ module.exports = {
       month,
       year,
       requestOptions
-    ).then((usage) => {
+    ).then(async (usage) => {
+      if (usage && usage.cost) await prependPreviousMonthCost(usage, token, requestOptions);
       if (usage && usage.amount) persistDaily(ctx.store, usage.amount.dailyData);
       return backfillMonths(
         ctx.store,

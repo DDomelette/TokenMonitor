@@ -45,7 +45,7 @@ test('only null, undefined, and empty amounts use the missing placeholder', asyn
   assert.equal(formatCurrencyAmount('not-a-code', '10.00'), '10.00');
 });
 
-test('FeeCard formats total, topped-up, and granted balances through one helper', () => {
+test('FeeCard formats total and granted balances through one helper; topped-up row replaced by 30-day cost', () => {
   const source = fs.readFileSync(
     path.resolve(__dirname, '../renderer/src/components/FeeCard.jsx'),
     'utf8'
@@ -53,7 +53,10 @@ test('FeeCard formats total, topped-up, and granted balances through one helper'
 
   assert.match(source, /import \{ formatCurrencyAmount \} from '\.\.\/fee-card-money\.mjs';/);
   assert.match(source, /formatCurrencyAmount\(balance\.currency, balance\.total\)/);
-  assert.match(source, /formatCurrencyAmount\(balance\.currency, balance\.toppedUp\)/);
   assert.match(source, /formatCurrencyAmount\(balance\.currency, balance\.granted\)/);
-  assert.doesNotMatch(source, /balance\.(?:total|toppedUp|granted)\s*\|\|\s*'--'/);
+  assert.doesNotMatch(source, /balance\.(?:total|granted)\s*\|\|\s*'--'/);
+  // 余额卡的"充值"行已改为"近30天花费",数字取自近 30 天费用求和
+  assert.doesNotMatch(source, /balance\.toppedUp/);
+  assert.match(source, /近30天花费/);
+  assert.match(source, /getLast30DaysCost\(stats\.costDaily\)/);
 });
