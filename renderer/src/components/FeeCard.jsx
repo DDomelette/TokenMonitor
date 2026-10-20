@@ -1,6 +1,6 @@
 // 统计卡片(余额/今日消耗/缓存命中率),逻辑从 fee-cards.js 逐行迁移。
 import React from 'react';
-import { getYesterdayCost } from '../fee-card-date.mjs';
+import { getYesterdayCost, getLast30DaysCost } from '../fee-card-date.mjs';
 import { formatCurrencyAmount } from '../fee-card-money.mjs';
 import { SHEN } from '../shen-assets.js';
 
@@ -32,6 +32,8 @@ export default function FeeCard({ id, balance, stats }) {
   if (id === 'balance-card') {
     if (balance) {
       const cls = getBalanceClass(balance.total);
+      // stats 未到达时(如仅余额请求成功)按 '--' 兜底,不阻塞余额本身显示
+      const last30Cost = stats ? getLast30DaysCost(stats.costDaily) : null;
       return (
         <div className="fee-card-content">
           <div className="fee-card-value-wrap">
@@ -40,7 +42,7 @@ export default function FeeCard({ id, balance, stats }) {
             </div>
           </div>
           <div className="fee-card-sub">
-            充值 {formatCurrencyAmount(balance.currency, balance.toppedUp)}<br />
+            近30天花费 {last30Cost === null ? '--' : '¥' + last30Cost.toFixed(2)}<br />
             赠金 {formatCurrencyAmount(balance.currency, balance.granted)}
           </div>
         </div>

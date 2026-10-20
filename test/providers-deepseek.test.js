@@ -142,8 +142,44 @@ test('deepseek adapter fetchUsage skips months already marked fetched', async ()
   };
   try {
     await deepseekAdapter.fetchUsage(ctx, { month: 8, year: 2026 });
-    // 全部历史月份已标记 → 只有当月 cost+amount 两个请求,无回填请求
-    assert.equal(mock.paths().length, 2);
+    // 全部历史月份已标记 → 当月 cost+amount + 上月 cost(近30天花费跨月补抓)三个请求,无回填请求
+    assert.equal(mock.paths().length, 3);
+    assert.ok(mock.paths().some((p) => p.includes('/api/v0/usage/cost?month=7&year=2026')));
+  } finally {
+    mock.restore();
+  }
+});
+
+test('deepseek adapter fetchUsage prepends previous-month cost days for the 30-day window', async () => {
+  // bodies[0] = 当月(8 月)cost;bodies[1] 之后复用 = 当月 amount 与上月(7 月)cost
+  const currentCostBody = responseBody([
+    { date: '2026-08-01', data: [{ model: 'deepseek-chat', usage: [{ type: 'RESPONSE_TOKEN', amount: '5' }] }] },
+    { date: '2026-08-02', data: [{ model: 'deepseek-chat', usage: [{ type: 'RESPONSE_TOKEN', amount: '7' }] }] }
+  ]);
+  const prevMonthBody = responseBody([
+    { date: '2026-07-30', data: [{ model: 'deepseek-chat', usage: [{ type: 'RESPONSE_TOKEN', amount: '11' }] }] },
+    { date: '2026-07-31', data: [{ model: 'deepseek-chat', usage: [{ type: 'RESPONSE_TOKEN', amount: '13' }] }] }
+  ]);
+  const mock = mockHttpsSequence([currentCostBody, prevMonthBody]);
+  const data = {
+    'providers.deepseek.fetchedMonths': ['2026-07', '2026-06', '2026-05', '2026-04', '2026-03', '2026-02']
+  };
+  const ctx = {
+    store: {
+      get: (k) => (k === 'providers.deepseek.sessionToken' ? 'tok' : data[k]),
+      set: (k, v) => { data[k] = v; }
+    },
+    getProxyUrl: () => null
+  };
+  try {
+    const usage = await deepseekAdapter.fetchUsage(ctx, { month: 8, year: 2026 });
+    // 上月费用日拼在当月之前,跨月的近 30 天窗口不缺尾
+    assert.deepEqual(usage.cost.dailyData.map((d) => d.date), [
+      '2026-07-30', '2026-07-31', '2026-08-01', '2026-08-02'
+    ]);
+    // 返回月份保持当月、未触发回退(aggregate 由响应 total 字段构成,与日数据拼接无关)
+    assert.equal(usage.month, 8);
+    assert.equal(usage.fellBack, false);
   } finally {
     mock.restore();
   }

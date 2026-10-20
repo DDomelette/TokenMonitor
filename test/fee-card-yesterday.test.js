@@ -111,7 +111,8 @@ test('FeeCard delegates yesterday lookup and no longer derives a UTC date inline
     'utf8'
   );
 
-  assert.match(source, /import \{ getYesterdayCost \} from '\.\.\/fee-card-date\.mjs';/);
+  assert.match(source, /import \{ getYesterdayCost, getLast30DaysCost \} from '\.\.\/fee-card-date\.mjs';/);
   assert.doesNotMatch(source, /toISOString\(\)/);
   assert.doesNotMatch(source, /function getYesterdayCost\s*\(/);
+  assert.doesNotMatch(source, /function getLast30DaysCost\s*\(/);
 });
