@@ -269,70 +269,70 @@
 
 /* -------- 模块水印:每张卡片背景铺一张高透明度小深酱,隐约可见又不妨碍读数 --------
    做法:奶油白半透明渐变盖在 PNG 之上,水印只剩淡淡轮廓;图表 canvas 透明底,水印可透出。
-   路径用 ../shen/(相对 dist/assets 的 CSS 文件解析到 dist/shen,dev 下解析到 public/shen)。 */
+   路径使用 public 根路径，由 Vite 按 base 重写为适配 Electron file:// 的相对地址。 */
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='balance-card'] .component-surface {
   background:
     linear-gradient(rgba(255, 253, 248, 0.90), rgba(255, 253, 248, 0.90)),
-    url('../shen/deepseek_chan_09_heart.png') no-repeat right 2px bottom 0 / 64px,
+    url('/shen/deepseek_chan_09_heart.png') no-repeat right 2px bottom 0 / 64px,
     var(--bg-card);
 }
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='today-cost-card'] .component-surface {
   background:
     linear-gradient(rgba(255, 253, 248, 0.92), rgba(255, 253, 248, 0.92)),
-    url('../shen/deepseek_chan_02_salute.png') no-repeat center / 58px,
+    url('/shen/deepseek_chan_02_salute.png') no-repeat center / 58px,
     var(--bg-card);
 }
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='cache-rate-card'] .component-surface {
   background:
     linear-gradient(rgba(255, 253, 248, 0.90), rgba(255, 253, 248, 0.90)),
-    url('../shen/deepseek_chan_10_coding.png') no-repeat right 2px bottom 0 / 64px,
+    url('/shen/deepseek_chan_10_coding.png') no-repeat right 2px bottom 0 / 64px,
     var(--bg-card);
 }
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='quota-codex'] .component-surface {
   background:
     linear-gradient(rgba(255, 253, 248, 0.91), rgba(255, 253, 248, 0.91)),
-    url('../shen/shen_walk_b.png') no-repeat right 8px center / 84px,
+    url('/shen/shen_walk_b.png') no-repeat right 8px center / 84px,
     var(--bg-card);
 }
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='quota-kimi'] .component-surface {
   background:
     linear-gradient(rgba(255, 253, 248, 0.91), rgba(255, 253, 248, 0.91)),
-    url('../shen/shen_run_c.png') no-repeat right 8px center / 84px,
+    url('/shen/shen_run_c.png') no-repeat right 8px center / 84px,
     var(--bg-card);
 }
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='token-heatmap'] .component-surface {
   background:
     linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
-    url('../shen/deepseek_chan_06_sleepy.png') no-repeat center / 110px,
+    url('/shen/deepseek_chan_06_sleepy.png') no-repeat center / 110px,
     var(--bg-card);
 }
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='token-speed'] .component-surface {
   background:
     linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
-    url('../shen/shen_run_b.png') no-repeat left 10px center / 96px,
+    url('/shen/shen_run_b.png') no-repeat left 10px center / 96px,
     var(--bg-card);
 }
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='model-bar'] .component-surface {
   background:
     linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
-    url('../shen/shen_walk_a.png') no-repeat center / 100px,
+    url('/shen/shen_walk_a.png') no-repeat center / 100px,
     var(--bg-card);
 }
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='provider-bar'] .component-surface {
   background:
     linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
-    url('../shen/shen_run_a.png') no-repeat center / 100px,
+    url('/shen/shen_run_a.png') no-repeat center / 100px,
     var(--bg-card);
 }
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='token-line'] .component-surface {
   background:
     linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
-    url('../shen/deepseek_chan_01_hungry.png') no-repeat center / 100px,
+    url('/shen/deepseek_chan_01_hungry.png') no-repeat center / 100px,
     var(--bg-card);
 }
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='cost-line'] .component-surface {
   background:
     linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
-    url('../shen/deepseek_chan_02_salute.png') no-repeat center / 100px,
+    url('/shen/deepseek_chan_02_salute.png') no-repeat center / 100px,
     var(--bg-card);
 }
