@@ -127,13 +127,14 @@ export default function Dashboard({ editing }) {
   }, [quotaSig]);
 
   useEffect(() => {
-    getSettings().then((nextSettings) => {
+    // 设置服务暂时不可用时仍使用默认布局，避免窗口永久停留在加载态。
+    getSettings().catch(() => ({})).then((nextSettings) => {
       const normalizedSettings = nextSettings || {};
       layoutRef.current = validateState(normalizedSettings.layout, normalizedSettings);
       visibilitySignatureRef.current = visibleComponentIds(normalizedSettings).sort().join(',');
       setSettings(normalizedSettings);
       setReady(true);
-    }).catch(() => {});
+    });
   }, []);
 
   // 主进程在任意设置写入后广播 settings:loaded。只有可见 ID 集合变化时才重建 grid。

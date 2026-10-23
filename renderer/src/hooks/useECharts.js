@@ -1,10 +1,10 @@
 // useECharts(ref, buildOption, deps):容器有非零尺寸时才 init(gridstack 布局前挂载时容器为 0x0),
-// 尺寸变化时惰性补 init 或 resize;数据变化时全量 setOption。
+// 尺寸变化时惰性补 init 或 resize;数据变化时增量合并 setOption。
 // 尺寸稳定(150ms 无变化)后按新宽高重建 option:密度配置(字体/网格/标签间隔/hideOverlap)
 // 是 build 时按当时宽高算死的,只 resize 不重建会导致坐标轴标签按旧尺寸被隐藏。
 // 返回 { update } 供外部显式推送;ResizeObserver 自适应容器尺寸。
 import { useEffect, useRef } from 'react';
-import * as echarts from 'echarts';
+import echarts from '../lib/echarts.js';
 
 export default function useECharts(ref, buildOption, deps) {
   const chartRef = useRef(null);
@@ -53,16 +53,20 @@ export default function useECharts(ref, buildOption, deps) {
       if (rebuildTimer) clearTimeout(rebuildTimer);
       if (chartRef.current) chartRef.current.dispose();
       chartRef.current = null;
+      delete dom.__chart;
     };
   }, [ref]);
 
   useEffect(() => {
-    if (chartRef.current) chartRef.current.setOption(buildRef.current(), true);
+    // 平台筛选会减少 series，显式替换系列以避免合并更新留下旧曲线。
+    if (chartRef.current) {
+      chartRef.current.setOption(buildRef.current(), { replaceMerge: ['series'] });
+    }
   }, deps || []);
 
   return {
     update: (option) => {
-      if (chartRef.current) chartRef.current.setOption(option, true);
+      if (chartRef.current) chartRef.current.setOption(option);
     },
     resize: () => {
       if (chartRef.current) chartRef.current.resize();

@@ -1,7 +1,7 @@
 // 图表组件:model-bar(每日 Token 堆叠柱)/ token-line / cost-line(曲线)。
 // 密度自适应与主题逻辑从 curve-chart.js / model-bar.js / charts.js 平移。
 import React, { useRef } from 'react';
-import * as echarts from 'echarts';
+import echarts from '../lib/echarts.js';
 import useECharts from '../hooks/useECharts.js';
 import { getTheme, getBarTheme } from '../lib/chartTheme.js';
 import { curvePointLabels } from '../lib/curve-merge.js';
