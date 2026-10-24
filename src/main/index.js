@@ -259,6 +259,13 @@ function createMainWindow() {
     sendMainWindowBounds();
   });
 
+  function notifyMaximizeState() {
+    if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+    mainWindow.webContents.send('window:maximize-state', mainWindow.isMaximized());
+  }
+  mainWindow.on('maximize', notifyMaximizeState);
+  mainWindow.on('unmaximize', notifyMaximizeState);
+
   // 原生缩放结束后持久化最终尺寸(原生缩放不经过 window:set-bounds / resize:end)
   mainWindow.on('resized', function () {
     if (edgeDock && edgeDock.getDockMeta()) {
@@ -984,7 +991,7 @@ app.whenReady().then(() => {
     scheduler,
     broadcast: broadcastToWindows,
     onUsageObservation: (providerId, detail) => {
-      if (tokenSpeedRuntime) tokenSpeedRuntime.observeProvider(providerId, detail.observedAt);
+      if (tokenSpeedRuntime) tokenSpeedRuntime.observeProvider(providerId, detail);
     }
   });
   ingestRuntime.start();
