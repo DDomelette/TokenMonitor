@@ -19,6 +19,7 @@ const { registerDiagnosticsIpc } = require('./core/diagnostics/ipc-registration'
 const { detectProxyPort } = require('./core/proxy-detect');
 const { buildDshDashboard } = require('./core/dsh-dashboard');
 const { MINI_WIDTH, MINI_HEIGHT } = require('./core/mini-mode');
+const { createMaximizedDrag } = require('./core/maximized-drag');
 const {
   PUSH_USAGE_KEY,
   PUSH_COST_KEY,
@@ -40,6 +41,7 @@ function deepseekApiKeyCtx(deps, apiKey) {
 module.exports = function setupIPC(deps) {
   let mainResizeState = null;
   let settingsResizeState = null;
+  const maximizedDrag = createMaximizedDrag();
 
   registerDiagnosticsIpc({
     ipcMain,
@@ -370,6 +372,32 @@ module.exports = function setupIPC(deps) {
   ipcMain.handle('get:bounds', () => {
     if (!getMain()) return null;
     return getMain().getBounds();
+  });
+
+  function mainWindowFromSender(event) {
+    var win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || win !== getMain() || win.isDestroyed()) return null;
+    return win;
+  }
+
+  ipcMain.handle('window:is-maximized', (event) => {
+    var win = mainWindowFromSender(event);
+    return Boolean(win && win.isMaximized());
+  });
+
+  ipcMain.handle('window:start-maximized-drag', (event, point) => {
+    var win = mainWindowFromSender(event);
+    if (!win || (deps.miniMode && deps.miniMode.isActive())) return false;
+    return maximizedDrag.start(win, point);
+  });
+
+  ipcMain.on('window:move-maximized-drag', (event, point) => {
+    maximizedDrag.move(mainWindowFromSender(event), point);
+  });
+
+  ipcMain.on('window:end-maximized-drag', (event) => {
+    var win = mainWindowFromSender(event);
+    if (maximizedDrag.end(win)) deps.persistMainWindowBounds();
   });
 
   ipcMain.handle('window:commit', (event, bounds) => {

@@ -61,6 +61,11 @@ body,
   -webkit-app-region: drag;
 }
 
+/* 最大化下拉由 React + 主进程接管,避免系统拖拽与还原定位互相竞争 */
+.titlebar.restore-drag {
+  -webkit-app-region: no-drag;
+}
+
 .titlebar-left {
   display: flex;
   align-items: center;

@@ -1,13 +1,61 @@
 // 标题栏:刷新/设置/布局编辑/最小化/关闭按钮,图标沿用旧 SVG。
 // 关闭按钮行为与旧版一致(隐藏到托盘 = window:minimize)。
 // 刷新/设置点击有短暂图标动画;布局编辑按钮切换激活外观表示"编排中"。
-import React, { useState } from 'react';
-import { send, toggleMini } from '../api.js';
+import React, { useEffect, useRef, useState } from 'react';
+import { send, toggleMini, windowDrag } from '../api.js';
 import { SHEN } from '../shen-assets.js';
 
 export default function TitleBar({ editing, layoutLocked, onToggleLayoutEdit }) {
   const [spinning, setSpinning] = useState(false);
   const [gearTap, setGearTap] = useState(false);
+  const [maximized, setMaximized] = useState(false);
+  const [restoreDragging, setRestoreDragging] = useState(false);
+  const dragRef = useRef(false);
+
+  useEffect(() => {
+    let mounted = true;
+    windowDrag.isMaximized().then((value) => {
+      if (mounted) setMaximized(Boolean(value));
+    }).catch(() => {});
+    const offState = windowDrag.onState((value) => {
+      if (mounted) setMaximized(Boolean(value));
+    });
+    const onMove = (event) => {
+      // 还原过程中窗口会在静止光标下移动,产生 buttons=0 的 hover 事件;
+      // 只有左键仍按住时才更新拖拽位置,避免窗口被后续 hover 突然拉走。
+      if (!dragRef.current || event.buttons !== 1) return;
+      send('window:move-maximized-drag', { screenX: event.screenX, screenY: event.screenY });
+    };
+    const onEnd = () => {
+      if (!dragRef.current) return;
+      dragRef.current = false;
+      setRestoreDragging(false);
+      send('window:end-maximized-drag');
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onEnd);
+    return () => {
+      mounted = false;
+      offState();
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onEnd);
+    };
+  }, []);
+
+  const onTitleMouseDown = (event) => {
+    if (event.button !== 0 || !maximized || event.target.closest('.titlebar-actions')) return;
+    event.preventDefault();
+    dragRef.current = true;
+    setRestoreDragging(true);
+    windowDrag.start({ screenX: event.screenX, screenY: event.screenY }).then((started) => {
+      if (started) return;
+      dragRef.current = false;
+      setRestoreDragging(false);
+    }).catch(() => {
+      dragRef.current = false;
+      setRestoreDragging(false);
+    });
+  };
 
   const onRefresh = () => {
     send('refresh:dashboard');
@@ -19,7 +67,10 @@ export default function TitleBar({ editing, layoutLocked, onToggleLayoutEdit }) 
   };
 
   return (
-    <div className="titlebar">
+    <div
+      className={'titlebar' + (maximized || restoreDragging ? ' restore-drag' : '')}
+      onMouseDown={onTitleMouseDown}
+    >
       <div className="titlebar-left">
         <span className="titlebar-logo" aria-hidden="true">
           <svg viewBox="0 0 108 120" width="100%" height="100%">

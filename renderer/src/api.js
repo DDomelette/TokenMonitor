@@ -57,4 +57,10 @@ export function toggleMini() {
   return api.send('window:toggle-mini');
 }
 
+export const windowDrag = {
+  isMaximized: () => api.invoke('window:is-maximized'),
+  onState: (cb) => api.on('window:maximize-state', cb),
+  start: (point) => api.invoke('window:start-maximized-drag', point)
+};
+
 export default api;
