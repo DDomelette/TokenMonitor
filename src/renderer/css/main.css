@@ -302,11 +302,11 @@ body:not(.dark) {
 /* ======== 亚克力主题:与主窗口一致的高透磨砂 ======== */
 body[data-theme='acrylic-light'] {
   --bg-card: rgba(255, 255, 255, 0.28);
-  /* 文本直接落在透明窗口底(透出灰黑桌面)上,整体转白色系 */
-  --text-primary: #F3F4F6;
-  --text-secondary: rgba(255, 255, 255, 0.75);
+  /* 浅色磨砂上的设置文本使用深色系,避免白字被桌面高光淹没 */
+  --text-primary: #1A1A2E;
+  --text-secondary: #4B5563;
   /* 下拉菜单等浮层:高透卡片底会透出后面的文字,需实色底 */
-  --bg-menu: rgba(45, 48, 56, 0.97);
+  --bg-menu: rgba(255, 255, 255, 0.97);
 }
 body[data-theme='acrylic-light'] #app {
   background: rgba(255, 255, 255, 0.08);
@@ -315,6 +315,8 @@ body[data-theme='acrylic-light'] #app {
 body[data-theme='acrylic-dark'] {
   --bg-window-dark: rgba(20, 22, 28, 0.15);
   --bg-card: rgba(255, 255, 255, 0.05);
+  --text-primary: #F3F4F6;
+  --text-secondary: #C7CDD6;
   /* 下拉菜单等浮层:高透卡片底会透出后面的文字,需实色底 */
   --bg-menu: rgba(28, 30, 38, 0.97);
 }

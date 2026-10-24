@@ -20,8 +20,8 @@ const DWM_BB_TRANSITIONONMAXIMIZED = 0x4;
 // 主题 tint。注意 GradientColor 是 ABGR 字节序(高字节 alpha,其后 B/G/R),
 // 不是 ARGB——灰色无所谓,彩色写反会蓝红颠倒
 const ACCENT_TINTS = {
-  'acrylic-light': 0x14ffffff, // 白,alpha 0.08
-  'acrylic-dark': 0x261c1614, // rgba(20,22,28,0.15) 的 ABGR
+  'acrylic-light': 0x40ffffff, // 白,alpha 0.25:保留桌面模糊层次,避免亮调近似实色
+  'acrylic-dark': 0x801c1614, // rgba(20,22,28,0.50) 的 ABGR:明亮桌面上也保证白字对比度
   // 小深酱:水蓝 #d8edfa,alpha 0x2e(~18%),迷你窗框区呈浅蓝磨砂
   'shen-chan': 0x2efaedd8
 };

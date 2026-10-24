@@ -683,15 +683,19 @@ body,
 }
 
 .quota-bar {
-  height: 6px;
+  position: relative;
+  height: 10px;
+  /* 所有主题统一采用小深酱的结构尺寸,装饰预留区不随主题切换增减 */
+  margin-top: 26px;
   background: rgba(116, 184, 252, 0.12);
-  border-radius: 3px;
-  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  overflow: visible;
 }
 
 .quota-bar-fill {
   height: 100%;
-  border-radius: 3px;
+  border-radius: 999px;
   transition: width 300ms ease-out;
 }
 
