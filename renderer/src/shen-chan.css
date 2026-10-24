@@ -112,13 +112,9 @@
 
 /* -------- 额度进度条:糖果斜纹 + 步态小深酱领跑 -------- */
 :root[data-theme='shen-chan'] .quota-bar {
-  position: relative;
-  overflow: visible;
-  height: 10px;
-  margin-top: 26px;
+  /* 尺寸、外边距与定位沿用统一基础结构,这里只覆盖主题外观 */
   background: var(--shen-aqua-100);
-  border: 1px solid var(--shen-aqua-300);
-  border-radius: 999px;
+  border-color: var(--shen-aqua-300);
 }
 :root[data-theme='shen-chan'] .quota-bar-fill {
   border-radius: 999px;

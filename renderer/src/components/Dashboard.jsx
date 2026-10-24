@@ -216,9 +216,11 @@ export default function Dashboard({ editing }) {
       if (!fitRaf) fitRaf = requestAnimationFrame(fitItems);
     };
     fitRef.current = scheduleFit;
-    // 窗口变窄文本换行、编辑模式手动缩放、异步数据到达都会改变所需高度
+    // 窗口变窄文本换行、编辑模式手动缩放、异步数据到达都会改变所需高度。
+    // 主题事件也立即重测量,避免字体/装饰样式生效后仍沿用旧卡片高度。
     const fitObserver = new ResizeObserver(scheduleFit);
     fitObserver.observe(host);
+    window.addEventListener('tokenmonitor:theme-applied', scheduleFit);
     const fitRetry1 = setTimeout(scheduleFit, 600);
     const fitRetry2 = setTimeout(scheduleFit, 1800);
     scheduleFit();
@@ -310,6 +312,7 @@ export default function Dashboard({ editing }) {
     return () => {
       grid.off('change');
       fitObserver.disconnect();
+      window.removeEventListener('tokenmonitor:theme-applied', scheduleFit);
       if (fitRaf) cancelAnimationFrame(fitRaf);
       clearTimeout(fitRetry1);
       clearTimeout(fitRetry2);

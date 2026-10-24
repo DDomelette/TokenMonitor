@@ -731,6 +731,9 @@ function revealWhenReady(win) {
 // 记录 Accent 已在哪些窗口生效:主题切换时决定 enable/clear,
 // 也用于失焦实心化(路线 B)与 Accent 持久透明的互斥
 const accentAppliedWindows = new WeakSet();
+// 记录每个窗口当前的原生材质。Windows 不会在已可见窗口上可靠地重算
+// Accent 模糊区;只有材质真正变化时才短暂隐藏并恢复,避免同主题刷新造成闪烁。
+const appliedBackdropThemes = new WeakMap();
 
 // 与渲染端 resolveTheme 同语义:跟随系统主开关优先,亚克力为显式手动模式
 function resolveEffectiveTheme() {
@@ -756,24 +759,38 @@ function windowMaterialOptions() {
 function applyBackdropTo(win) {
   if (!win || win.isDestroyed() || !useAccentBackdrop()) return;
   var theme = resolveEffectiveTheme();
-  if (isAcrylicTheme(theme)) {
-    if (applyAccent(win, { argb: tintForTheme(theme) })) {
-      accentAppliedWindows.add(win);
+  var usesAccent = isAcrylicTheme(theme) || (theme === 'shen-chan' && win === mainWindow);
+  var backdropTheme = usesAccent ? theme : 'solid';
+  var previousTheme = appliedBackdropThemes.get(win);
+  if (previousTheme === backdropTheme) return;
+
+  // 可见窗口直接调用 SWCA 时,DWM 可能继续沿用旧的模糊区:普通 -> 亚克力
+  // 仍是实色,亚克力 -> 普通仍透明。材质变化时先隐藏,设置完成后恢复一次合成。
+  var refreshVisibleWindow = previousTheme !== undefined && win.isVisible();
+  var wasFocused = refreshVisibleWindow && win.isFocused();
+  if (refreshVisibleWindow) win.hide();
+  try {
+    if (usesAccent) {
+      // 不要先重置背景材质:它会重置 DWM 合成状态,
+      // 使紧随其后的 SWCA 虽然返回成功,窗口却仍显示为实色。失败时才回退官方材质。
+      var tint = theme === 'shen-chan' ? tintForTheme('shen-chan') : tintForTheme(theme);
+      if (applyAccent(win, { argb: tint })) {
+        accentAppliedWindows.add(win);
+      } else {
+        accentAppliedWindows.delete(win);
+        try { win.setBackgroundMaterial('acrylic'); } catch (_) {}
+      }
     } else {
-      // Accent 失败回退官方材质;失焦退化由渲染端失焦实心化兜底
-      try { win.setBackgroundMaterial('acrylic'); } catch (_) {}
+      if (accentAppliedWindows.has(win) && clearAccent(win)) accentAppliedWindows.delete(win);
+      // 清掉 Accent 失败时可能设置过的官方材质,普通主题必须恢复实心背景。
+      try { win.setBackgroundMaterial('none'); } catch (_) {}
     }
-  } else if (theme === 'shen-chan' && win === mainWindow) {
-    // 小深酱主题:主窗口挂水蓝亚克力 Accent(带模糊,与亚克力主题同一机制)。
-    // 正常模式下 #app 实底奶油白盖住整窗不可见;迷你模式下卡片以外的页面区域
-    // 透明,Accent 磨砂取代非透明窗口 backgroundColor(#00000000)渲染出的纯黑。
-    if (applyAccent(win, { argb: tintForTheme('shen-chan') })) {
-      accentAppliedWindows.add(win);
-    } else {
-      try { win.setBackgroundMaterial('acrylic'); } catch (_) {}
+    appliedBackdropThemes.set(win, backdropTheme);
+  } finally {
+    if (refreshVisibleWindow && !win.isDestroyed()) {
+      if (wasFocused || typeof win.showInactive !== 'function') win.show();
+      else win.showInactive();
     }
-  } else if (accentAppliedWindows.has(win)) {
-    if (clearAccent(win)) accentAppliedWindows.delete(win);
   }
 }
 

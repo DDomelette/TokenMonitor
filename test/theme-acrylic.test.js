@@ -67,8 +67,9 @@ test('acrylic themes ship semi-transparent window and card surfaces', () => {
   assert.match(css, /:root\[data-theme='acrylic-dark'\]/);
   assert.match(css, /\[data-theme='acrylic-light'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.[1-6]/);
   assert.match(css, /\[data-theme='acrylic-dark'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.0/);
-  // 窗口底色高透,透出 DWM acrylic 磨砂
-  assert.match(css, /\[data-theme='acrylic-light'\][\s\S]*?--bg-window: rgba\(255, 255, 255, 0\.08\)/);
+  // 亮调卡片降低白色遮罩,让 DWM 磨砂纹理可见,不再接近日间实底
+  assert.match(css, /\[data-theme='acrylic-light'\][\s\S]*?--bg-window: rgba\(255, 255, 255, 0\.14\)/);
+  assert.match(css, /\[data-theme='acrylic-light'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.36\)/);
   assert.match(css, /\[data-theme='acrylic-dark'\][\s\S]*?--bg-window: rgba\(20, 22, 28, 0\.15\)/);
 });
 
@@ -109,6 +110,8 @@ test('settings window follows the acrylic theme like the main window', () => {
   assert.match(css, /body\[data-theme='acrylic-light'\] #app \{\s*background: rgba\(255, 255, 255, 0\.08\)/);
   assert.match(css, /body\[data-theme='acrylic-dark'\][\s\S]*?--bg-window-dark: rgba\(20, 22, 28, 0\.15\)/);
   assert.match(css, /body\[data-theme='acrylic-dark'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.05\)/);
+  assert.match(css, /body\[data-theme='acrylic-dark'\][\s\S]*?--text-primary: #F3F4F6/);
+  assert.match(css, /body\[data-theme='acrylic-dark'\][\s\S]*?--text-secondary: #C7CDD6/);
 });
 
 test('login window follows the acrylic theme like the main window', () => {
@@ -120,20 +123,30 @@ test('login window follows the acrylic theme like the main window', () => {
   assert.match(html, /body\[data-theme='acrylic-dark'\] \.container \{\s*background: rgba\(20, 22, 28, 0\.15\)/);
 });
 
-test('acrylic-light keeps text and titlebar icons readable on the gray-dark backdrop', () => {
+test('acrylic-light keeps text and titlebar icons readable on the light backdrop', () => {
   const css = fs.readFileSync(path.join(root, 'renderer/src/theme.css'), 'utf8');
 
-  // 窗口底 0.08 近全透,透出的桌面偏灰黑:标题栏/状态栏文字与图标用白色
-  assert.match(css, /:root\[data-theme='acrylic-light'\] \.statusbar \{[^}]*color: rgba\(255, 255, 255, 0\.92\)/);
-  assert.match(css, /:root\[data-theme='acrylic-light'\] \.titlebar-btn \{\s*color: rgba\(255, 255, 255, 0\.85\)/);
-  // 卡片底回升到 0.55,深色次级文本在白色衬底上保持可读
-  assert.match(css, /\[data-theme='acrylic-light'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.55\)/);
+  // 浅色磨砂上的标题栏、状态栏和窗口按钮统一使用深色系
+  assert.match(css, /:root\[data-theme='acrylic-light'\] \.titlebar-text \{\s*color: #1F2937/);
+  assert.match(css, /:root\[data-theme='acrylic-light'\] \.statusbar \{[^}]*color: #4B5563/);
+  assert.match(css, /:root\[data-theme='acrylic-light'\] \.titlebar-btn \{\s*color: rgba\(31, 41, 55, 0\.82\)/);
+  // 卡片保留轻度白色衬底,兼顾深色次级文本可读性与磨砂纹理可见性
+  assert.match(css, /\[data-theme='acrylic-light'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.36\)/);
   assert.match(css, /\[data-theme='acrylic-light'\][\s\S]*?--text-secondary: #4B5563/);
 
-  // 设置窗口文本直接落在透明窗口底上,整体转白色系
+  // 设置窗口同样使用深色文字,不能在浅色磨砂上显示白字
   const mainCss = fs.readFileSync(path.join(root, 'src/renderer/css/main.css'), 'utf8');
-  assert.match(mainCss, /body\[data-theme='acrylic-light'\][\s\S]*?--text-primary: #F3F4F6/);
-  assert.match(mainCss, /body\[data-theme='acrylic-light'\][\s\S]*?--text-secondary: rgba\(255, 255, 255, 0\.75\)/);
+  assert.match(mainCss, /body\[data-theme='acrylic-light'\][\s\S]*?--text-primary: #1A1A2E/);
+  assert.match(mainCss, /body\[data-theme='acrylic-light'\][\s\S]*?--text-secondary: #4B5563/);
+});
+
+test('mini window has an explicit glass surface in both acrylic themes', () => {
+  const css = fs.readFileSync(path.join(root, 'renderer/src/theme.css'), 'utf8');
+
+  assert.match(css, /:root\[data-theme='acrylic-light'\] #app\.app-mini,/);
+  assert.match(css, /:root\[data-theme='acrylic-dark'\] #app\.app-mini \{/);
+  assert.match(css, /#app\.app-mini \{[^}]*background: var\(--bg-window\)/);
+  assert.match(css, /#app\.app-mini \{[^}]*backdrop-filter: blur\(20px\) saturate\(150%\)/);
 });
 
 test('theme-sync tracks window focus state for the inactive fallback', async () => {
