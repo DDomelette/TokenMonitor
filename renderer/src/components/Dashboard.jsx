@@ -2,6 +2,7 @@
 // 数据流:组件内部 useDashboard(store) 订阅,grid 结构由 useMemo 冻结,避免与 gridstack DOM 冲突。
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { GridStack } from 'gridstack';
+import { fitGridItemHeight } from '../grid/fit-height.js';
 import 'gridstack/dist/gridstack.min.css';
 import { getSettings, on, send } from '../api.js';
 import { useDashboard, useProviders } from '../store.js';
@@ -200,14 +201,18 @@ export default function Dashboard({ editing }) {
         const node = itemEl.gridstackNode;
         const cur = node && node.h ? node.h : parseInt(itemEl.getAttribute('gs-h'), 10);
         const pad = itemEl.clientHeight - content.clientHeight;
-        const need = Math.ceil((content.scrollHeight + pad) / cell);
-        if (!Number.isFinite(need)) return;
         const baseItem = baseItems.find((it) => it.id === id);
         const base = Math.max(
           baseItem && baseItem.h ? baseItem.h : 1,
           MIN_SIZES[id] ? MIN_SIZES[id].h : 1
         );
-        const target = Math.max(need, base);
+        const target = fitGridItemHeight({
+          base,
+          cell,
+          padding: pad,
+          scrollHeight: content.scrollHeight,
+          clientHeight: content.clientHeight
+        });
         if (target === cur) return;
         grid.update(itemEl, { h: target });
       });
