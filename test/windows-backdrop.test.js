@@ -93,17 +93,20 @@ test('windows apply the accent while hidden, then reveal on ready-to-show', () =
   assert.match(main, /setTimeout\(reveal,\s*\d+\)/);
 });
 
-test('visible windows recompose only when the native backdrop theme changes', () => {
+test('visible windows recompose after DWM processes the hidden state', () => {
   const main = fs.readFileSync(path.join(root, 'src/main/index.js'), 'utf8');
 
   assert.match(main, /const appliedBackdropThemes = new WeakMap\(\)/);
+  assert.match(main, /const backdropRestoreTimers = new WeakMap\(\)/);
   assert.match(main, /if \(previousTheme === backdropTheme\) return/);
   assert.match(main, /previousTheme !== undefined && win\.isVisible\(\)/);
   assert.match(main, /if \(refreshVisibleWindow\) win\.hide\(\)/);
   // SWCA 前不能重置 backgroundMaterial,否则 DWM 会丢失 Accent 磨砂合成状态
   const accentBranch = main.slice(main.indexOf('if (usesAccent) {'), main.indexOf('} else {', main.indexOf('if (usesAccent) {')));
   assert.doesNotMatch(accentBranch, /setBackgroundMaterial\('none'\)/);
-  assert.match(main, /if \(refreshVisibleWindow && !win\.isDestroyed\(\)\)/);
+  assert.match(main, /if \(refreshVisibleWindow\) restoreBackdropWindow\(win, wasFocused\)/);
+  assert.match(main, /if \(previousTimer\) clearTimeout\(previousTimer\)/);
+  assert.match(main, /var timer = setTimeout\(function \(\) \{[\s\S]*?\}, 40\)/);
 });
 
 test('preload and packaging expose what the accent path needs', () => {

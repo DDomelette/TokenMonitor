@@ -76,11 +76,11 @@ function Ring({ outer, inner, color, innerColor, label }) {
   return (
     <div className="mini-ring-wrap">
       <svg width="44" height="44" viewBox="0 0 44 44">
-        <circle cx="22" cy="22" r={RING_R} fill="none" stroke="var(--border)" strokeWidth="4.5" />
+        <circle cx="22" cy="22" r={RING_R} fill="none" stroke="var(--mini-ring-track, var(--border))" strokeWidth="4.5" />
         <Arc radius={RING_R} circumference={RING_C} frac={outer} color={color} width={4.5} />
         {inner !== undefined ? (
           <>
-            <circle cx="22" cy="22" r={INNER_R} fill="none" stroke="var(--border)" strokeWidth="4" />
+            <circle cx="22" cy="22" r={INNER_R} fill="none" stroke="var(--mini-ring-track, var(--border))" strokeWidth="4" />
             <Arc radius={INNER_R} circumference={INNER_C} frac={inner} color={innerColor || color} width={4} />
           </>
         ) : null}
