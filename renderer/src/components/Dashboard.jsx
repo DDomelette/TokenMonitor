@@ -2,7 +2,7 @@
 // 数据流:组件内部 useDashboard(store) 订阅,grid 结构由 useMemo 冻结,避免与 gridstack DOM 冲突。
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { GridStack } from 'gridstack';
-import { fitGridItemHeight } from '../grid/fit-height.js';
+import { applyGridItemHeights, fitGridItemHeight } from '../grid/fit-height.js';
 import 'gridstack/dist/gridstack.min.css';
 import { getSettings, on, send } from '../api.js';
 import { useDashboard, useProviders } from '../store.js';
@@ -184,15 +184,17 @@ export default function Dashboard({ editing }) {
 
     /* ---- 内容溢出时自动撑高模块,替代内部滚动条 ----
        测量 .grid-stack-item-content 的 scrollHeight,按格高调整到合身。
-       撑高以布局记录的预设高度为基准浮动:内容回落后缩回基准,避免瞬时溢出
-       (凭证过期横幅、空态长文案、窄窗口文本换行)被"只增不减"棘轮永久累积。 */
+       记住本轮已测得的所需高度,避免基准高度本身不足时反复伸缩;
+       内容、主题或宽度变化时清除记忆,重新探测是否可以缩回布局基准。 */
     let fitRaf = 0;
+    const fittedHeights = new Map();
     const fitItems = () => {
       fitRaf = 0;
       if (editingRef.current) return; // 编辑模式下由用户手动定尺寸,绝不介入
       const cell = grid.getCellHeight(true);
       if (!cell) return;
       const baseItems = (layoutRef.current[bp] && layoutRef.current[bp].items) || [];
+      const updates = [];
       host.querySelectorAll('.grid-stack-item').forEach((itemEl) => {
         const id = itemEl.getAttribute('gs-id');
         if (CHART_IDS.includes(id)) return;
@@ -211,21 +213,35 @@ export default function Dashboard({ editing }) {
           cell,
           padding: pad,
           scrollHeight: content.scrollHeight,
-          clientHeight: content.clientHeight
+          clientHeight: content.clientHeight,
+          retainedHeight: fittedHeights.get(id)
         });
-        if (target === cur) return;
-        grid.update(itemEl, { h: target });
+        if (content.scrollHeight > content.clientHeight + 1) fittedHeights.set(id, target);
+        else if (target === base) fittedHeights.delete(id);
+        if (target !== cur) updates.push({ itemEl, h: target });
       });
+      applyGridItemHeights(grid, host, updates);
     };
     const scheduleFit = () => {
       if (!fitRaf) fitRaf = requestAnimationFrame(fitItems);
     };
-    fitRef.current = scheduleFit;
-    // 窗口变窄文本换行、编辑模式手动缩放、异步数据到达都会改变所需高度。
-    // 主题事件也立即重测量,避免字体/装饰样式生效后仍沿用旧卡片高度。
-    const fitObserver = new ResizeObserver(scheduleFit);
+    const refitContent = () => {
+      fittedHeights.clear();
+      scheduleFit();
+    };
+    fitRef.current = refitContent;
+    // 只有宽度变化会使文本重新换行;自动撑高引起的 host 高度变化不能清除测高记忆。
+    let lastFitWidth = host.clientWidth;
+    const fitObserver = new ResizeObserver(() => {
+      const width = host.clientWidth;
+      if (width !== lastFitWidth) {
+        lastFitWidth = width;
+        fittedHeights.clear();
+      }
+      scheduleFit();
+    });
     fitObserver.observe(host);
-    window.addEventListener('tokenmonitor:theme-applied', scheduleFit);
+    window.addEventListener('tokenmonitor:theme-applied', refitContent);
     const fitRetry1 = setTimeout(scheduleFit, 600);
     const fitRetry2 = setTimeout(scheduleFit, 1800);
     scheduleFit();
@@ -317,7 +333,7 @@ export default function Dashboard({ editing }) {
     return () => {
       grid.off('change');
       fitObserver.disconnect();
-      window.removeEventListener('tokenmonitor:theme-applied', scheduleFit);
+      window.removeEventListener('tokenmonitor:theme-applied', refitContent);
       if (fitRaf) cancelAnimationFrame(fitRaf);
       clearTimeout(fitRetry1);
       clearTimeout(fitRetry2);

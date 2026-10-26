@@ -295,6 +295,15 @@ body,
   justify-content: center;
 }
 
+/* 装饰与测高内容分层:负 bottom 的啃食装饰在层内裁切,
+   不再向 gridstack content 的 scrollHeight 贡献永久溢出。 */
+.fee-card-decorations {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
 .fee-card-value-wrap {
   min-width: 0;
 }
