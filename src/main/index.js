@@ -741,6 +741,21 @@ const accentAppliedWindows = new WeakSet();
 // 记录每个窗口当前的原生材质。Windows 不会在已可见窗口上可靠地重算
 // Accent 模糊区;只有材质真正变化时才短暂隐藏并恢复,避免同主题刷新造成闪烁。
 const appliedBackdropThemes = new WeakMap();
+const backdropRestoreTimers = new WeakMap();
+
+// DWM 需要先实际处理隐藏状态,再重算 Accent;同一调用栈内立即 show 可能仍沿用旧 tint。
+// 延迟恢复并取消同窗口的旧任务,避免连续切换时窗口被过期的恢复操作抢先显示。
+function restoreBackdropWindow(win, wasFocused) {
+  var previousTimer = backdropRestoreTimers.get(win);
+  if (previousTimer) clearTimeout(previousTimer);
+  var timer = setTimeout(function () {
+    backdropRestoreTimers.delete(win);
+    if (win.isDestroyed()) return;
+    if (wasFocused || typeof win.showInactive !== 'function') win.show();
+    else win.showInactive();
+  }, 40);
+  backdropRestoreTimers.set(win, timer);
+}
 
 // 与渲染端 resolveTheme 同语义:跟随系统主开关优先,亚克力为显式手动模式
 function resolveEffectiveTheme() {
@@ -794,10 +809,7 @@ function applyBackdropTo(win) {
     }
     appliedBackdropThemes.set(win, backdropTheme);
   } finally {
-    if (refreshVisibleWindow && !win.isDestroyed()) {
-      if (wasFocused || typeof win.showInactive !== 'function') win.show();
-      else win.showInactive();
-    }
+    if (refreshVisibleWindow) restoreBackdropWindow(win, wasFocused);
   }
 }
 

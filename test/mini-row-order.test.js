@@ -50,3 +50,13 @@ test('settings expose the mini row order editor bound to window.miniRowOrder', (
   assert.match(settingsWindow, /mini-order-btn/);
   assert.match(settingsWindow, /order\.join\(','\)/);
 });
+
+test('mini ring tracks stay visible in light and dark themes', () => {
+  const styles = fs.readFileSync(path.join(root, 'renderer/src/styles.css'), 'utf8');
+  const theme = fs.readFileSync(path.join(root, 'renderer/src/theme.css'), 'utf8');
+  const tracks = miniView.match(/stroke="var\(--mini-ring-track, var\(--border\)\)"/g) || [];
+
+  assert.equal(tracks.length, 2, 'outer and inner ring tracks must use the dedicated color token');
+  assert.match(styles, /--mini-ring-track:\s*#CBD5E1;/i);
+  assert.match(theme, /:root\[data-theme\$='dark'\]\s*\{[^}]*--mini-ring-track:\s*#4B5563;/i);
+});

@@ -10,6 +10,7 @@
   --text-secondary: #A8B0BD;
   --text-inverse: #111827;
   --border: #3A3C45;
+  --mini-ring-track: #4B5563;
   --shadow-window: 0 12px 34px rgba(0, 0, 0, 0.34);
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.28);
   /* 暗色卡片上亮色主题的空格底色几乎不可见,提高亮度保持网格结构可读 */
