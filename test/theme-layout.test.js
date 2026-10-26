@@ -22,6 +22,7 @@ test('all themes share the shen-chan quota-bar box metrics', () => {
 test('theme changes synchronously schedule grid content refitting', () => {
   const dashboard = fs.readFileSync(path.join(root, 'renderer/src/components/Dashboard.jsx'), 'utf8');
 
-  assert.match(dashboard, /window\.addEventListener\('tokenmonitor:theme-applied', scheduleFit\)/);
-  assert.match(dashboard, /window\.removeEventListener\('tokenmonitor:theme-applied', scheduleFit\)/);
+  assert.match(dashboard, /window\.addEventListener\('tokenmonitor:theme-applied', refitContent\)/);
+  assert.match(dashboard, /window\.removeEventListener\('tokenmonitor:theme-applied', refitContent\)/);
+  assert.match(dashboard, /const refitContent = \(\) => \{\s*fittedHeights\.clear\(\);\s*scheduleFit\(\);/);
 });

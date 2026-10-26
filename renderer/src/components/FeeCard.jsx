@@ -55,20 +55,24 @@ export default function FeeCard({ id, balance, stats }) {
     if (stats && stats.token && stats.cost) {
       const yesterdayCost = getYesterdayCost(stats.costDaily);
       return (
-        <div className="fee-card-content">
-          <div className="fee-card-value-wrap">
-            <div className="fee-card-value primary">¥{stats.cost.todayCost.toFixed(2)}</div>
+        <>
+          <div className="fee-card-content">
+            <div className="fee-card-value-wrap">
+              <div className="fee-card-value primary">¥{stats.cost.todayCost.toFixed(2)}</div>
+            </div>
+            <div className="fee-card-sub">
+              {formatTokens(stats.token.todayTokens)} tokens<br />昨日:¥{yesterdayCost.toFixed(2)}
+            </div>
           </div>
-          <div className="fee-card-sub">
-            {formatTokens(stats.token.todayTokens)} tokens<br />昨日:¥{yesterdayCost.toFixed(2)}
+          <div className="fee-card-decorations" aria-hidden="true">
+            <span className="shen-deco shen-bite b1" />
+            <span className="shen-deco shen-bite b2" />
+            <span className="shen-deco shen-bite b3" />
+            <span className="shen-deco shen-crumb c1" />
+            <span className="shen-deco shen-crumb c2" />
+            <img className="shen-deco shen-eat" src={SHEN.hungry} alt="" />
           </div>
-          <span className="shen-deco shen-bite b1" />
-          <span className="shen-deco shen-bite b2" />
-          <span className="shen-deco shen-bite b3" />
-          <span className="shen-deco shen-crumb c1" />
-          <span className="shen-deco shen-crumb c2" />
-          <img className="shen-deco shen-eat" src={SHEN.hungry} alt="" aria-hidden="true" />
-        </div>
+        </>
       );
     }
     return placeholders(id);
