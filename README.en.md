@@ -2,25 +2,25 @@
 
 [中文](README.md) | **English**
 
-A multi-platform AI usage monitor as a desktop floating widget — track quotas, balances and token consumption of **DeepSeek**, **Codex (OpenAI)** and **Kimi** in a single window.
+A multi-platform AI usage monitor as a desktop floating widget—track quotas, balances and token consumption for **DeepSeek**, **Codex (OpenAI)** and **Kimi** in one window, with local or pushed **DeepSeek Harness (DSH)** usage included.
 
 ![Main window](docs/screenshots/main-window.png)
 
 ## Recent Updates
 
-- **Codex archived-usage rebuild** (2026-08): on first launch after upgrade, Codex historical usage is automatically rebuilt by event-level deduplication across the active (`~/.codex/sessions`) and archived (`~/.codex/archived_sessions`) rollout logs. Old usage stays visible while the migration runs; a failure never mutates existing data and retries on the next launch; rollouts moved between the two directories resume from their original offset by stable UUID. A custom archive directory requires the explicit `providers.codex.archivedLogRoot` setting.
-- **Edge Auto Hide** (2026-08): drag the window to the left, right or top screen edge to dock it; it collapses to a thin trigger strip and slides back out on hover with a damped animation. Dragging undocks instantly, tray wake / opening settings fully expands it, and the dock state is restored after restart.
-- **Read-only credential reuse** (2026-08): Codex / Kimi credentials are now read-only views of the local CLI credential files, eliminating the refresh_token rotation race with the CLI; also fixed false "session expired" flashes during the CLI's refresh window.
-- **Proxy UX** (2026-08): custom proxy IP / port fields are pre-filled (auto-detecting the current system proxy port, or the last used value).
-- **Themed dropdowns for the token-speed card** (2026-08): provider / time-window selectors now use the same CustomSelect as the settings page, and menus are no longer clipped by the card.
+- **Theme, layout and chart refinements** (2026-10): fixed acrylic switching, text contrast, maximized-window drag restoration and card-height jitter; ECharts now loads on demand, with improved chart updates and resource cleanup.
+- **DeepSeek 30-day spending** (2026-10): the balance card now shows spending over the last 30 days, automatically fetching the previous month when the window crosses a month boundary; the cost trend can cover roughly two months.
+- **Shen-chan theme and Kimi web quotas** (2026-09): added a character theme with decorations, animated pace-based progress bars and a dedicated mini view; the Kimi web channel reads 5-hour, weekly and monthly quotas.
+- **Mini mode and WSL log discovery** (2026-08): added a mini view with balance/quota rings, live rates, paged rotation and an edge-docked speed strip; automatically discovers Kimi session logs in running WSL distributions.
+- **Dual-channel DSH collection** (2026-08): supports local telemetry files and Bearer-authenticated push ingestion; auto mode pauses file polling while push is active, and DSH usage feeds the dashboard, heatmap, token-speed card and MCP.
 
 ## Features
 
 ### Platform Quota Board
 
 - **Codex**: weekly quota and per-model windows (e.g. GPT-5.3-Codex-Spark), plan badge (e.g. `5x Pro`), reset countdown.
-- **Kimi**: weekly quota and 5-hour window, plan name badge (e.g. Allegretto), reset countdown.
-- **DeepSeek**: balance, today's cost and cache-hit-rate stat cards.
+- **Kimi**: weekly, 5-hour and monthly quota windows, using the web channel first with CLI credentials as fallback; includes reset countdowns.
+- **DeepSeek**: balance, today's cost, cache-hit rate and spending over the last 30 days.
 
 ### Charts
 
@@ -28,20 +28,21 @@ A multi-platform AI usage monitor as a desktop floating widget — track quotas,
 - **Token consumption trend**: output / cache-hit / cache-miss stacked.
 - **DeepSeek daily tokens**: daily bars stacked by model (pro / flash etc.).
 - **Daily token consumption**: DeepSeek, Kimi and Codex stacked in one chart, same source as the heatmap.
-- **Token activity heatmap**: GitHub-style yearly heatmap, switchable by platform / daily / weekly / cumulative; hover for per-platform daily details; visible months adapt to window width.
+- **Token activity heatmap**: GitHub-style yearly heatmap, switchable by platform / daily / weekly / cumulative; hover for daily details, with a dedicated Harness view, current-view totals and adaptive visible months.
 
 #### Token Burn Rate
 
 - Enable "Token burn rate (uses more memory)" under Settings → Components.
-- Show all providers or DeepSeek / Codex / Kimi individually, with eight rolling windows from 10 seconds to 5 hours.
+- Show all providers or DeepSeek / Codex / Kimi / DeepSeek Harness individually, with eight rolling windows from 10 seconds to 5 hours.
 - The curve shows normalized tokens/minute; hover for the delta of the current period.
 - Counting only starts while the module is enabled; disabling stops the extra listeners and clears the last 6 hours of rate history.
 
 ### Window & Interaction
 
 - **Windows 11 acrylic + rounded corners**: rendered by the DWM compositor, corners stay in sync while resizing; native edge resizing with no lag and no black edges; no fade-out when unfocused.
-- **Theme modes**: follow system / light / dark / acrylic (light) / acrylic (dark), applied to both the main window and the settings window.
-- **Edge auto hide**: dock to the left / right / top screen edge, collapse to a trigger strip, slide out on hover with a damped animation; fully expands on tray wake or when opening settings.
+- **Theme modes**: follow system / light / dark / acrylic (light) / acrylic (dark) / Shen-chan, applied to both the main window and the settings window.
+- **Mini floating view**: balance/quota rings and live token rates, with four data sources rotating in two-row pages and configurable ordering; edge docking collapses it to a speed strip, and double-clicking the strip restores the full window.
+- **Edge auto hide**: dock the full window to the left / right / top screen edge and slide it out on hover; fully expands on tray wake or when opening settings.
 - **Free layout**: click the "edit layout" icon in the title bar to drag cards around and resize them; can be locked in settings.
 - **Component visibility**: toggle each card in the settings panel.
 - **Network proxy**: system proxy (auto-detects the active proxy port for pre-fill) / direct / custom.
@@ -55,10 +56,11 @@ A multi-platform AI usage monitor as a desktop floating widget — track quotas,
 | Platform | Method |
 | --- | --- |
 | DeepSeek | API Key for balance; built-in proxy session (first-time DeepSeek platform login required) for usage details |
-| Codex | Read-only reuse of the local Codex CLI credentials (kept fresh by the CLI itself, no re-login needed) |
-| Kimi | Read-only reuse of the local Kimi CLI credentials (kept fresh by the CLI itself, no re-login needed) |
+| Codex | Read-only local Codex CLI credentials for quotas; active and archived rollout logs for usage accounting |
+| Kimi | Web session for 5-hour, weekly and monthly quotas (CLI credentials as fallback); read-only local and running-WSL Kimi CLI session logs for usage |
+| DeepSeek Harness | Local telemetry files (`~/.dsh/telemetry/usage-YYYY-MM-DD.jsonl`) or Bearer-authenticated push ingestion over a local HTTP endpoint; auto / file-only / push-only modes |
 
-All data is processed locally and never uploaded to any third-party server.
+Usage aggregation and history remain local; queries go only to the corresponding official provider APIs. DSH push ingestion listens on `127.0.0.1` by default.
 
 ## Quick Start
 
