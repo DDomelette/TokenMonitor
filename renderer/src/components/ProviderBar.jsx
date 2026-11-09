@@ -66,7 +66,7 @@ function buildOption(dom, details, dates) {
     yAxis: Object.assign({ type: 'value' }, density.yAxis, {
       axisLabel: Object.assign({ color: t.textColor, fontSize: 9, formatter: (v) => formatToken(v) }, density.yAxis.axisLabel)
     }),
-    animation: true,
+    animation: false,
     series: STACK.map((provider, i) => Object.assign({
       name: provider.label,
       type: 'bar',

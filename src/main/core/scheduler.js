@@ -7,7 +7,7 @@ const {
   resolveElectronSystemProxy
 } = require('./proxy-settings');
 
-const DEFAULT_INTERVALS = { usage: 10 * 1000, quota: 60 * 1000, balance: 60 * 1000, localLog: 60 * 1000 };
+const DEFAULT_INTERVALS = { usage: 60 * 1000, quota: 60 * 1000, balance: 60 * 1000, localLog: 60 * 1000 };
 
 function isAuthError(err) {
   const msg = (err && (err.message || String(err))) || '';

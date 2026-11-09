@@ -216,7 +216,7 @@ function buildDailyOption(dom, dailyData) {
     yAxis: Object.assign({ type: 'value' }, density.yAxis, {
       axisLabel: Object.assign({ color: t.textColor, fontSize: 9, formatter: (v) => formatToken(v) }, density.yAxis.axisLabel)
     }),
-    animation: true,
+    animation: false,
     series: [
       Object.assign({ name: '输出 Token', type: 'bar', stack: 'total', itemStyle: { borderRadius: [0, 0, 0, 0] }, data: completionData }, density.series && density.series[0]),
       Object.assign({ name: '缓存未命中', type: 'bar', stack: 'total', itemStyle: { borderRadius: [0, 0, 0, 0] }, data: missData }, density.series && density.series[1]),

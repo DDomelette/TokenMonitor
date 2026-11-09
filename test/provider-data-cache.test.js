@@ -32,6 +32,28 @@ test('ten dashboard subscribers share one request and one cached result', async 
   stop();
 });
 
+test('identical query results keep the old snapshot and do not notify chart subscribers', async () => {
+  let value = { stats: { tokenDaily: [{ date: '2026-11-09', total: 100 }] } };
+  const cache = createQueryCache(async () => JSON.parse(JSON.stringify(value)));
+  let notified = 0;
+  const stop = cache.subscribe('deepseek', () => { notified += 1; });
+  await flush();
+  assert.equal(notified, 1);
+  const first = cache.read('deepseek');
+
+  cache.invalidate();
+  await flush();
+  assert.equal(notified, 1, '相同内容不得触发 React / ECharts 重绘');
+  assert.equal(cache.read('deepseek'), first, '相同内容必须保留旧引用');
+
+  value.stats.tokenDaily[0].total = 120;
+  cache.invalidate();
+  await flush();
+  assert.equal(notified, 2, '真实数据变化仍必须通知');
+  assert.equal(cache.read('deepseek').stats.tokenDaily[0].total, 120);
+  stop();
+});
+
 test('changes during an inflight request discard its old reply and coalesce the follow-up', async () => {
   const requests = [];
   const cache = createQueryCache(() => {
