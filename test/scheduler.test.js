@@ -19,7 +19,11 @@ require.cache[electronPath] = {
 };
 
 const { migrateLegacyKeys } = require('../src/main/store');
-const { startScheduler } = require('../src/main/core/scheduler');
+const { startScheduler, DEFAULT_INTERVALS } = require('../src/main/core/scheduler');
+
+test('web usage polling defaults to once per minute', () => {
+  assert.equal(DEFAULT_INTERVALS.usage, 60 * 1000);
+});
 
 test('quota broadcast includes the timestamp of the newly persisted quota', async () => {
   const store = makeFakeStore({});

@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+env:
+  ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+  ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
