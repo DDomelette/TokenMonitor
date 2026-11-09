@@ -2,10 +2,11 @@
 // 最近 31 天零填充;堆叠自下而上 Codex → Kimi → DeepSeek，Harness 不重复计入。
 import React, { useRef } from 'react';
 import useECharts from '../hooks/useECharts.js';
+import useBeijingDayKey from '../hooks/useBeijingDayKey.js';
 import { useHeatmap } from '../store.js';
 import { getBarTheme } from '../lib/chartTheme.js';
 import { formatToken as formatWan } from '../lib/heatmap.js';
-import { addBeijingDays, beijingDateParts, beijingDayKey } from '../lib/beijing-calendar.js';
+import { addBeijingDays } from '../lib/beijing-calendar.js';
 import { barDensity, isCardMode, formatToken, windowClampedPosition } from './ChartWidget.jsx';
 
 const DAYS = 31;
@@ -16,8 +17,7 @@ const STACK = [
   { id: 'deepseek', label: 'DeepSeek', color: '#6E94F5' }
 ];
 
-function lastDays(count) {
-  const today = beijingDayKey();
+function lastDays(count, today) {
   const days = [];
   for (let i = count - 1; i >= 0; i--) {
     days.push(addBeijingDays(today, -i));
@@ -80,13 +80,13 @@ function buildOption(dom, details, dates) {
 
 export default function ProviderBar() {
   const domRef = useRef(null);
-  const nowParts = beijingDateParts();
-  const year = nowParts ? nowParts.year : new Date().getFullYear();
-  const dates = lastDays(DAYS);
+  const today = useBeijingDayKey();
+  const year = Number(today.slice(0, 4));
+  const dates = lastDays(DAYS, today);
   const data = useHeatmap({ provider: 'all', year });
   const details = data ? data.details : null;
 
-  useECharts(domRef, () => buildOption(domRef.current, details, dates), [details]);
+  useECharts(domRef, () => buildOption(domRef.current, details, dates), [details, today]);
 
   return <div className="chart-container" ref={domRef} />;
 }

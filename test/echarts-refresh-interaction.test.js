@@ -24,3 +24,19 @@ test('periodically refreshed bar charts do not replay entrance animations', () =
     assert.doesNotMatch(source, /animation: true/, file + ' must not restart entrance animation');
   }
 });
+
+test('date-driven charts advance at Beijing midnight even when query data is unchanged', () => {
+  const clock = readRenderer('hooks/useBeijingDayKey.js');
+  assert.match(clock, /createLocalCalendarClock\(/);
+  assert.match(clock, /onChange: \(_, nextKey\) => setDayKey\(nextKey\)/);
+
+  const providerBar = readRenderer('components/ProviderBar.jsx');
+  assert.match(providerBar, /const today = useBeijingDayKey\(\)/);
+  assert.match(providerBar, /lastDays\(DAYS, today\)/);
+  assert.match(providerBar, /\[details, today\]/);
+
+  const chartWidget = readRenderer('components/ChartWidget.jsx');
+  assert.match(chartWidget, /const today = useBeijingDayKey\(\)/);
+  assert.match(chartWidget, /buildDailyOption\(domRef\.current, dailyData, today\)/);
+  assert.match(chartWidget, /\[id, dailyData, curvePoints, today\]/);
+});

@@ -3,6 +3,7 @@
 import React, { useRef } from 'react';
 import echarts from '../lib/echarts.js';
 import useECharts from '../hooks/useECharts.js';
+import useBeijingDayKey from '../hooks/useBeijingDayKey.js';
 import { getTheme, getBarTheme } from '../lib/chartTheme.js';
 import { curvePointLabels } from '../lib/curve-merge.js';
 import { echartsWindowPosition as windowClampedPosition } from '../lib/floating-layer.js';
@@ -168,7 +169,7 @@ export function formatToken(n) {
 // 悬浮层定位原语已收敛到 lib/floating-layer.js;保留 re-export 兼容 ProviderBar 的 import。
 export { windowClampedPosition };
 
-function buildDailyOption(dom, dailyData) {
+function buildDailyOption(dom, dailyData, today) {
   const isDark = document.body.classList.contains('dark');
   const t = getBarTheme(isDark);
   const dates = [];
@@ -176,10 +177,8 @@ function buildDailyOption(dom, dailyData) {
   const missData = [];
   const completionData = [];
   // 平台按月返回零填充数据:截掉今天之后的空白天,避免图表尾部大片空白
-  const now = new Date();
-  const todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
   (dailyData || []).forEach((d) => {
-    if (d.date > todayStr) return;
+    if (d.date > today) return;
     dates.push(d.date.slice(5));
     hitData.push(d.cacheHit || 0);
     missData.push(d.cacheMiss || 0);
@@ -316,6 +315,7 @@ const CURVE_CONFIGS = {
 
 export default function ChartWidget({ id, dashboard, curvePoints: curvePointsProp }) {
   const domRef = useRef(null);
+  const today = useBeijingDayKey();
   const stats = dashboard && dashboard.stats;
   const dailyData = stats && stats.tokenDaily;
   // curvePoints 外部注入时优先,
@@ -323,13 +323,13 @@ export default function ChartWidget({ id, dashboard, curvePoints: curvePointsPro
   const curvePoints = curvePointsProp || (dashboard && (id === 'token-line' ? dashboard.curveToken : dashboard.curveCost));
 
   const buildOption = () => {
-    if (id === 'model-bar') return buildDailyOption(domRef.current, dailyData);
+    if (id === 'model-bar') return buildDailyOption(domRef.current, dailyData, today);
     const config = CURVE_CONFIGS[id];
     if (!config) return {};
     return buildCurveOption(domRef.current, curvePoints, config);
   };
 
-  useECharts(domRef, buildOption, [id, dailyData, curvePoints]);
+  useECharts(domRef, buildOption, [id, dailyData, curvePoints, today]);
 
   return <div className="chart-container" ref={domRef} />;
 }
