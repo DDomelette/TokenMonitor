@@ -1,5 +1,5 @@
-// 迷你模式视图:Codex 周额度圆环、Kimi 双环(外 5 小时/内本周)、
-// DeepSeek 与 DeepSeek Harness(dsh)共用 DeepSeek 余额圆环(金额环 100% = ¥100,环内为金额),
+// 迷你模式视图:Codex/Kimi 主额度窗口统一由 QuotaRing 显示单环、两段或三段;
+// DeepSeek 与 DeepSeek Harness(dsh)复用同一组件显示 DeepSeek 余额(金额环 100% = ¥100,环内为金额),
 // 右侧为各平台 Token 消耗速度(与速度卡片同源:tokensPerMinute + formatTokenRate)。
 // 行顺序可在设置窗口调整(window.miniRowOrder),按每页两行分页;
 // 行数超出一屏时向左滚动播报:离场渐隐由慢到快,播完后下一页才从右入场(由快到慢),两段不重合。
@@ -10,16 +10,10 @@ import { useProviders, useDashboard } from '../store.js';
 import useTokenSpeed from '../hooks/useTokenSpeed.js';
 import { on, send, toggleMini, getEdgeDockState, getSettings } from '../api.js';
 import { PROVIDER_META, formatTokenRate } from '../lib/token-speed-chart.js';
+import { quotaSegments } from '../lib/quota-ring.mjs';
+import QuotaRing from './QuotaRing.jsx';
 import { SHEN } from '../shen-assets.js';
 import '../../../src/shared/mini-row-order.js';
-
-const RING_R = 17;
-const RING_C = 2 * Math.PI * RING_R;
-// 内环与外环相贴:内环外缘(半径+半个线宽)= 外环内缘(17 - 4.5/2 = 14.75)
-const INNER_R = 12.75;
-const INNER_C = 2 * Math.PI * INNER_R;
-// 内环用同色降透明度区分外环
-const KIMI_INNER_COLOR = 'rgba(78, 203, 148, 0.55)';
 
 // 行分页滚动播报:一屏两行,超出后定时向左滚动;
 // 离场向左渐隐、由慢到快(ease-in),入场从右滑入渐显、由快到慢(ease-out)。
@@ -28,23 +22,6 @@ const PAGE_SIZE = 2;
 const PAGE_COUNT = Math.ceil(MINI_ROW_PIDS.length / PAGE_SIZE);
 const ROTATE_MS = 4000;
 const ANIM_MS = 620;
-
-// 取指定种类的额度窗口;附加限额(如 Codex 的 Spark)带 name,主额度 name 为 null,优先主额度
-function windowByKind(provider, kind) {
-  const quota = provider && provider.quota;
-  const windows = quota && Array.isArray(quota.windows) ? quota.windows : [];
-  const matches = windows.filter((w) => w && w.kind === kind);
-  return matches.find((w) => !w.name) || matches[0] || null;
-}
-
-// 剩余比例(0–1);无数据/认证异常返回 null(只画灰轨道)
-function fracOf(win) {
-  if (!win) return null;
-  const limit = Number(win.limit);
-  const remaining = Number(win.remaining);
-  if (!Number.isFinite(limit) || limit <= 0 || !Number.isFinite(remaining)) return null;
-  return Math.max(0, Math.min(1, remaining / limit));
-}
 
 // 金额圆环:100% = ¥100,环内数字为金额(纯数字,空间只容得下 4-5 个字符)
 const RING_FULL_YUAN = 100;
@@ -57,37 +34,6 @@ function amountLabel(amount) {
   const n = Number(amount);
   if (!Number.isFinite(n) || n < 0) return '--';
   return String(n >= 100 ? Math.round(n) : Number(n.toFixed(1)));
-}
-
-function Arc({ radius, circumference, frac, color, width }) {
-  if (frac === null) return null;
-  return (
-    <circle
-      cx="22" cy="22" r={radius} fill="none"
-      stroke={color} strokeWidth={width} strokeLinecap="round"
-      strokeDasharray={circumference * frac + ' ' + circumference}
-      transform="rotate(-90 22 22)"
-    />
-  );
-}
-
-function Ring({ outer, inner, color, innerColor, label }) {
-  const text = label !== undefined ? label : (outer === null ? '--' : Math.round(outer * 100) + '%');
-  return (
-    <div className="mini-ring-wrap">
-      <svg width="44" height="44" viewBox="0 0 44 44">
-        <circle cx="22" cy="22" r={RING_R} fill="none" stroke="var(--mini-ring-track, var(--border))" strokeWidth="4.5" />
-        <Arc radius={RING_R} circumference={RING_C} frac={outer} color={color} width={4.5} />
-        {inner !== undefined ? (
-          <>
-            <circle cx="22" cy="22" r={INNER_R} fill="none" stroke="var(--mini-ring-track, var(--border))" strokeWidth="4" />
-            <Arc radius={INNER_R} circumference={INNER_C} frac={inner} color={innerColor || color} width={4} />
-          </>
-        ) : null}
-      </svg>
-      <span className="mini-ring-label">{text}</span>
-    </div>
-  );
 }
 
 function RowInfo({ pid, rate }) {
@@ -227,19 +173,19 @@ export default function MiniView() {
   const balance = dashboard && dashboard.balance;
   const balanceTotal = balance && Number(balance.total);
 
+  // 所有平台只负责准备数据；单环/两段/三段、中央读数和几何绘制统一由 QuotaRing 决定。
+  const balanceSegments = [{ key: 'balance', label: '余额', frac: amountFrac(balanceTotal) }];
+  const balanceVisual = (pid) => (
+    <QuotaRing segments={balanceSegments} color={PROVIDER_META[pid].color} label={amountLabel(balanceTotal)} />
+  );
+  const quotaVisual = (pid) => (
+    <QuotaRing segments={quotaSegments(byId[pid])} color={PROVIDER_META[pid].color} />
+  );
   const visuals = {
-    // DeepSeek 行:圆环内为余额(¥),100% = ¥100
-    deepseek: <Ring outer={amountFrac(balanceTotal)} color={PROVIDER_META.deepseek.color} label={amountLabel(balanceTotal)} />,
-    codex: <Ring outer={fracOf(windowByKind(byId.codex, 'weekly'))} color={PROVIDER_META.codex.color} />,
-    kimi: (
-      <Ring
-        outer={fracOf(windowByKind(byId.kimi, '5h'))}
-        inner={fracOf(windowByKind(byId.kimi, 'weekly'))}
-        color={PROVIDER_META.kimi.color}
-        innerColor={KIMI_INNER_COLOR}
-      />
-    ),
-    dsh: <Ring outer={amountFrac(balanceTotal)} color={PROVIDER_META.dsh.color} label={amountLabel(balanceTotal)} />
+    deepseek: balanceVisual('deepseek'),
+    codex: quotaVisual('codex'),
+    kimi: quotaVisual('kimi'),
+    dsh: balanceVisual('dsh')
   };
   const rows = rowOrder.map((pid) => ({ key: pid, visual: visuals[pid] }));
   const pages = [];
