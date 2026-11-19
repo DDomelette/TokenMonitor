@@ -30,11 +30,13 @@ test('row normalization removes duplicates and unknown ids without mutating the 
 test('mini view deepseek/dsh rows share the DeepSeek balance at 100 yuan full scale', () => {
   assert.match(miniView, /RING_FULL_YUAN = 100/);
   assert.match(miniView, /amountFrac\(balanceTotal\)/);
+  assert.match(miniView, /const balanceSegments = \[\{ key: 'balance', label: '余额', frac: amountFrac\(balanceTotal\) \}\]/);
   for (const provider of ['deepseek', 'dsh']) {
-    assert.ok(miniView.includes(`${provider}: <Ring outer={amountFrac(balanceTotal)} color={PROVIDER_META.${provider}.color} label={amountLabel(balanceTotal)} />`));
+    assert.ok(miniView.includes(`${provider}: balanceVisual('${provider}')`));
   }
-  // Ring 支持自定义环内数字标签
-  assert.match(miniView, /label !== undefined \? label/);
+  // 金额环与额度环都复用 QuotaRing，仅数据准备方式不同
+  assert.match(miniView, /import QuotaRing from '\.\/QuotaRing\.jsx'/);
+  assert.match(miniView, /<QuotaRing segments=\{balanceSegments\}/);
 });
 
 test('settings expose the mini row order editor bound to window.miniRowOrder', () => {
@@ -51,12 +53,13 @@ test('settings expose the mini row order editor bound to window.miniRowOrder', (
   assert.match(settingsWindow, /order\.join\(','\)/);
 });
 
-test('mini ring tracks stay visible in light and dark themes', () => {
+test('shared mini ring tracks stay visible in light and dark themes', () => {
   const styles = fs.readFileSync(path.join(root, 'renderer/src/styles.css'), 'utf8');
   const theme = fs.readFileSync(path.join(root, 'renderer/src/theme.css'), 'utf8');
-  const tracks = miniView.match(/stroke="var\(--mini-ring-track, var\(--border\)\)"/g) || [];
+  const quotaRing = fs.readFileSync(path.join(root, 'renderer/src/components/QuotaRing.jsx'), 'utf8');
 
-  assert.equal(tracks.length, 2, 'outer and inner ring tracks must use the dedicated color token');
+  assert.match(quotaRing, /TRACK_COLOR = 'var\(--mini-ring-track, var\(--border\)\)'/);
+  assert.doesNotMatch(miniView, /innerColor|INNER_R|KIMI_INNER_COLOR/);
   assert.match(styles, /--mini-ring-track:\s*#CBD5E1;/i);
   assert.match(theme, /:root\[data-theme\$='dark'\]\s*\{[^}]*--mini-ring-track:\s*#4B5563;/i);
 });
