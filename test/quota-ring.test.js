@@ -69,6 +69,23 @@ test('shared ring slots preserve requested layout and gaps', async () => {
   assert.match(ringArcPath(-20, 200), /A 17 17 0 1 1/);
 });
 
+test('rounded segment paths reserve cap space and keep tiny progress inside the slot', async () => {
+  const { RING_CAP_INSET, ringPoint, ringRoundedArcPath } = await loadRingLogic();
+  const path = ringRoundedArcPath(-145, -35);
+  const start = ringPoint(-145 + RING_CAP_INSET);
+
+  assert.ok(path.startsWith(`M ${start.x.toFixed(3)} ${start.y.toFixed(3)} A 17 17`));
+  assert.match(ringRoundedArcPath(-145, -144), /^M [-\d.]+ [-\d.]+ L [-\d.]+ [-\d.]+$/);
+});
+
+test('segmented tracks and progress use rounded caps with uniform color opacity', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../renderer/src/components/QuotaRing.jsx'), 'utf8');
+  const segmentedSource = source.slice(source.indexOf('function SegmentedRing'), source.indexOf('export default'));
+
+  assert.equal((segmentedSource.match(/strokeLinecap="round"/g) || []).length, 2);
+  assert.doesNotMatch(segmentedSource, /strokeOpacity|SEGMENT_OPACITY/);
+});
+
 test('all mini providers call the same QuotaRing component', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../renderer/src/components/MiniView.jsx'), 'utf8');
 

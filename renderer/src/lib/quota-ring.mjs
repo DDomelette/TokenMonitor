@@ -3,7 +3,10 @@
 
 export const RING_RADIUS = 17;
 export const RING_CENTER = 22;
+export const RING_STROKE_WIDTH = 4.5;
 export const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+// 圆头超出路径端点的角度；路径预先内缩，避免侵入分段之间的隔断。
+export const RING_CAP_INSET = Math.asin(RING_STROKE_WIDTH / (2 * RING_RADIUS)) * 180 / Math.PI;
 
 // 两段：顶部 120°，底部名义 240°；两个交界处各留 10° 隔断。
 // 三段：每段名义 120°；实际 110° 弧 + 10° 隔断。
@@ -64,4 +67,15 @@ export function ringArcPath(start, end) {
   const to = ringPoint(end);
   const largeArc = end - start > 180 ? 1 : 0;
   return `M ${from.x.toFixed(3)} ${from.y.toFixed(3)} A ${RING_RADIUS} ${RING_RADIUS} 0 ${largeArc} 1 ${to.x.toFixed(3)} ${to.y.toFixed(3)}`;
+}
+
+export function ringRoundedArcPath(start, end) {
+  // 极短进度以零长度直线路径呈现圆点，避免反向弧线或侵入相邻分段。
+  if (end - start <= 2 * RING_CAP_INSET) {
+    const point = ringPoint(start + Math.min(RING_CAP_INSET, Math.max(0, end - start)));
+    const x = point.x.toFixed(3);
+    const y = point.y.toFixed(3);
+    return `M ${x} ${y} L ${x} ${y}`;
+  }
+  return ringArcPath(start + RING_CAP_INSET, end - RING_CAP_INSET);
 }
