@@ -5,23 +5,23 @@ import {
   RING_CIRCUMFERENCE,
   RING_RADIUS,
   RING_SLOTS,
-  ringArcPath
+  RING_STROKE_WIDTH,
+  ringRoundedArcPath
 } from '../lib/quota-ring.mjs';
 
 const TRACK_COLOR = 'var(--mini-ring-track, var(--border))';
-const SEGMENT_OPACITY = [1, 0.55, 0.35];
 
 function SingleRing({ frac, color }) {
   return (
     <>
       <circle
         cx="22" cy="22" r={RING_RADIUS} fill="none"
-        stroke={TRACK_COLOR} strokeWidth="4.5"
+        stroke={TRACK_COLOR} strokeWidth={RING_STROKE_WIDTH}
       />
       {frac !== null ? (
         <circle
           cx="22" cy="22" r={RING_RADIUS} fill="none"
-          stroke={color} strokeWidth="4.5" strokeLinecap="round"
+          stroke={color} strokeWidth={RING_STROKE_WIDTH} strokeLinecap="round"
           strokeDasharray={`${RING_CIRCUMFERENCE * frac} ${RING_CIRCUMFERENCE}`}
           transform="rotate(-90 22 22)"
         />
@@ -39,14 +39,14 @@ function SegmentedRing({ segments, color }) {
     return (
       <g key={segment.key || index}>
         <path
-          d={ringArcPath(slot.start, slot.end)} fill="none"
-          stroke={TRACK_COLOR} strokeWidth="4.5"
+          d={ringRoundedArcPath(slot.start, slot.end)} fill="none"
+          stroke={TRACK_COLOR} strokeWidth={RING_STROKE_WIDTH} strokeLinecap="round"
         />
         {segment.frac !== null && segment.frac > 0 ? (
           <path
-            d={ringArcPath(slot.start, valueEnd)} fill="none"
-            stroke={segment.color || color} strokeOpacity={SEGMENT_OPACITY[index]}
-            strokeWidth="4.5"
+            d={ringRoundedArcPath(slot.start, valueEnd)} fill="none"
+            stroke={segment.color || color}
+            strokeWidth={RING_STROKE_WIDTH} strokeLinecap="round"
           />
         ) : null}
       </g>
