@@ -62,4 +62,10 @@ test('minimum card mode keeps the compact legend on one row so the curve remains
   const compact = styles.slice(styles.indexOf('@container (max-width: 220px)'));
   assert.match(compact, /\.token-speed-legends\s*\{[^}]*flex-wrap:\s*nowrap/);
   assert.match(compact, /\.token-speed-provider\s*\{[^}]*display:\s*none/);
+  assert.match(compact, /\.token-speed-rate-full\s*\{[^}]*display:\s*none/);
+  assert.match(compact, /\.token-speed-card \.token-speed-rate-tiny\s*\{[^}]*display:\s*inline/);
+  assert.match(component, /formatCompactRate/);
+  const select = fs.readFileSync(path.join(root, 'renderer/src/components/CustomSelect.jsx'), 'utf8');
+  assert.match(select, /compactLabels/);
+  assert.match(select, /aria-label=\{ariaLabel\}/);
 });

@@ -1,26 +1,9 @@
+/* 颜色统一由 ../shared/palette.css 注册，这里只保留设置窗尺寸。 */
 :root {
-  --primary: #74B8FC;
-  --primary-light: #95CAFF;
-  --primary-dark: #5A9FE0;
-  --bg-window: rgba(255, 255, 255, 0.92);
-  --bg-window-dark: rgba(30, 32, 38, 0.92);
-  --bg-card: #F8F9FC;
-  --bg-card-dark: #252730;
-  --text-primary: #1A1A2E;
-  --text-secondary: #6B7280;
-  --text-inverse: #FFFFFF;
-  --text-on-primary: #111827;
-  --border: #E5E7EB;
-  --border-dark: #3A3C45;
-  --success: #22C55E;
-  --warning: #F59E0B;
-  --error: #EF4444;
   --radius-window: 16px;
   --radius-card: 12px;
   --radius-btn: 8px;
   --radius-input: 8px;
-  --shadow-window: 0 4px 24px rgba(0, 0, 0, 0.08);
-  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 html {
@@ -53,49 +36,25 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
-  /* 半透明白底透出少量 DWM acrylic 磨砂 */
-  background: rgba(255, 255, 255, 0.93);
+  /* 主窗与设置窗使用同一个主题表面色，亚克力透明度也由注册表决定。 */
+  background: var(--bg-window);
   border-radius: 0;
   box-shadow: var(--shadow-window), 0 0 0 1px var(--border);
   overflow: hidden;
   container-type: inline-size;
 }
 
-body.dark #app {
-  background: var(--bg-window-dark);
-  box-shadow: var(--shadow-window), 0 0 0 1px var(--border-dark);
-  color: #E5E7EB;
-}
+body.dark { color: var(--text-primary); }
 
-/* 拖动缩放期间: 临时改为不透明的直角实心渲染。
-   透明窗口在快速缩放时存在无法从渲染侧消除的帧竞态
-   (旧帧被裁剪 / 透明区残留旧像素), 实心直角下这些竞态不可见。
-   松手且原生窗口落定后由 app.js 移除该类恢复圆角与透明。 */
+/* 拖动缩放期间使用注册的不透明实底，避免透明窗口快速缩放时残留旧帧。 */
 html.is-window-resizing body {
-  background: #FFFFFF;
+  background: var(--settings-resize-bg);
   border-radius: 0;
-}
-
-html.is-window-resizing body.dark {
-  background: rgb(30, 32, 38);
 }
 
 html.is-window-resizing #app {
   border-radius: 0;
   box-shadow: none;
-}
-
-body.dark {
-  --text-primary: #E5E7EB;
-  --text-secondary: #9CA3AF;
-  --border: #3A3C45;
-  --bg-card: var(--bg-card-dark);
-}
-
-body:not(.dark) {
-  --primary: #4B90E0;
-  --primary-light: #74ABF0;
-  --primary-dark: #3A78C0;
 }
 
 .titlebar {
@@ -140,7 +99,7 @@ body:not(.dark) {
   justify-content: center;
   border: none;
   background: transparent;
-  color: #5b6372;
+  color: var(--text-secondary);
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
@@ -148,7 +107,7 @@ body:not(.dark) {
 }
 
 .titlebar-btn:hover {
-  background: rgba(116, 184, 252, 0.1);
+  background: var(--control-hover);
   color: var(--primary);
 }
 
@@ -210,8 +169,8 @@ body:not(.dark) {
   margin-right: 4px;
 }
 
-.status-dot.online { background: var(--success); }
-.status-dot.offline { background: var(--error); }
+.status-dot.online { background: var(--status-success); }
+.status-dot.offline { background: var(--status-danger); }
 
 .component-wrapper {
   min-width: 0;
@@ -239,7 +198,7 @@ body:not(.dark) {
 
 .component-wrapper.drag-over {
   border-color: var(--primary);
-  background: rgba(116, 184, 252, 0.04);
+  background: var(--settings-drop-target-bg);
 }
 
 .component-title-selector {
@@ -268,7 +227,7 @@ body:not(.dark) {
 
 .time-select:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(116, 184, 252, 0.15);
+  box-shadow: 0 0 0 2px var(--control-focus-ring);
 }
 
 .chart-container {
@@ -300,67 +259,18 @@ body:not(.dark) {
 .resize-sw { bottom: 0; left: 0; width: 20px; height: 20px; cursor: sw-resize; }
 
 
-/* ======== 亚克力主题:与主窗口一致的高透磨砂 ======== */
-body[data-theme='acrylic-light'] {
-  --bg-card: rgba(255, 255, 255, 0.28);
-  /* 浅色磨砂上的设置文本使用深色系,避免白字被桌面高光淹没 */
-  --text-primary: #1A1A2E;
-  --text-secondary: #4B5563;
-  /* 下拉菜单等浮层:高透卡片底会透出后面的文字,需实色底 */
-  --bg-menu: rgba(255, 255, 255, 0.97);
-}
-body[data-theme='acrylic-light'] #app {
-  background: rgba(255, 255, 255, 0.08);
-}
-/* acrylic-dark 时 body.dark 已生效,这里只把暗色底/卡片换成半透变体 */
-body[data-theme='acrylic-dark'] {
-  --bg-window-dark: rgba(20, 22, 28, 0.15);
-  --bg-card: rgba(255, 255, 255, 0.05);
-  --text-primary: #F3F4F6;
-  --text-secondary: #C7CDD6;
-  /* 下拉菜单等浮层:高透卡片底会透出后面的文字,需实色底 */
-  --bg-menu: rgba(28, 30, 38, 0.97);
-}
-
-/* ======== 失焦实心化:退回接近常规主题的实底与深文字 ======== */
-body[data-theme='acrylic-light'][data-window-active='false'] {
-  --text-primary: #1A1A2E;
-  --text-secondary: #6B7280;
-  --bg-menu: rgba(255, 255, 255, 0.98);
-}
-body[data-theme='acrylic-light'][data-window-active='false'] #app {
-  background: rgba(255, 255, 255, 0.93);
-}
-body[data-theme='acrylic-dark'][data-window-active='false'] {
-  --bg-window-dark: rgba(30, 32, 38, 0.92);
-}
-
-/* ======== 小深酱主题(设置/诊断等原生窗口):实底奶油白 + 女仆深蓝 + 水蓝 ======== */
-body[data-theme='shen-chan'] {
-  --primary: #3d9fd6;
-  --primary-light: #74c7ec;
-  --primary-dark: #2b8cc4;
-  --bg-card: #fffdf8;
-  --text-primary: #2b3a6e;
-  --text-secondary: #43568f;
-  --text-inverse: #fffdf8;
-  --border: #d9deee;
-  --shadow-window: 0 12px 34px rgba(28, 42, 82, 0.20);
-  --shadow-card: 0 4px 14px rgba(28, 42, 82, 0.10);
-  /* 下拉菜单等浮层用实色底 */
-  --bg-menu: #fffdf8;
-}
+/* ======== 亚克力、失焦实底与小深酱颜色全部由共享注册表提供 ======== */
 body[data-theme='shen-chan'] #app {
-  background-color: #faf6ee;
+  background-color: var(--bg-window);
   background-image:
-    radial-gradient(circle 2.5px at 10px 10px, rgba(77, 179, 230, 0.10) 2.5px, transparent 3px),
-    radial-gradient(circle 1.8px at 34px 30px, rgba(217, 164, 65, 0.10) 1.8px, transparent 2.2px);
+    radial-gradient(circle 2.5px at 10px 10px, var(--shen-dot-aqua) 2.5px, transparent 3px),
+    radial-gradient(circle 1.8px at 34px 30px, var(--shen-dot-gold) 1.8px, transparent 2.2px);
   background-size: 48px 48px, 64px 64px;
   box-shadow: var(--shadow-window), 0 0 0 1px var(--border);
 }
 body[data-theme='shen-chan'] .titlebar-logo { color: var(--primary-dark); }
-body[data-theme='shen-chan'] .titlebar-btn { color: #43568f; }
+body[data-theme='shen-chan'] .titlebar-btn { color: var(--text-secondary); }
 body[data-theme='shen-chan'] .titlebar-btn:hover {
-  background: rgba(143, 212, 242, 0.25);
-  color: #1c2a52;
+  background: var(--control-hover);
+  color: var(--shen-navy);
 }

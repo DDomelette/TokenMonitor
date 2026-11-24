@@ -11,13 +11,19 @@ var systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
 function applyTheme() {
   var windowValues = (themeSettings && themeSettings.window) || {};
   var theme = ThemeModeLink.resolveTheme(windowValues, systemThemeMedia.matches);
-  document.body.classList.toggle('dark', theme === 'dark' || theme === 'acrylic-dark');
+  var isDark = theme === 'dark' || theme === 'acrylic-dark';
+  // 共享注册表挂在根节点；body 标记保留给既有交互与测试。
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+  document.body.classList.toggle('dark', isDark);
   document.body.dataset.theme = theme;
 }
 
 // 失焦实心化(Accent 未生效时主进程才下发)
 window.api.on('window:focus-state', function (focused) {
-  document.body.dataset.windowActive = String(focused !== false);
+  var active = String(focused !== false);
+  document.documentElement.dataset.windowActive = active;
+  document.body.dataset.windowActive = active;
 });
 
 window.api.invoke('get:settings').then(function (settings) {

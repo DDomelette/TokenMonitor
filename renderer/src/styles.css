@@ -211,41 +211,20 @@ body,
 }
 
 .status-dot.online {
-  background: #22c55e;
+  background: var(--status-success);
 }
 
 .status-dot.offline {
-  background: #ef4444;
+  background: var(--status-danger);
 }
 
 /* ======== 透明窗口时代遗留:非透明窗口 + DWM 圆角后不再需要在拖动时切直角 ======== */
 
-/* ======== CSS 变量(从旧 main.css 平移) ======== */
+/* ======== 尺寸变量；颜色统一由 src/shared/palette.css 注册 ======== */
 :root {
-  --primary: #74B8FC;
-  --primary-light: #95CAFF;
-  --primary-dark: #5A9FE0;
-  --bg-window: rgba(255, 255, 255, 0.92);
-  --bg-window-dark: rgba(30, 32, 38, 0.92);
-  --bg-card: #F8F9FC;
-  --bg-card-dark: #252730;
-  --text-primary: #1A1A2E;
-  --text-secondary: #6B7280;
-  --text-inverse: #FFFFFF;
-  --border: #E5E7EB;
-  --mini-ring-track: #CBD5E1;
-  --border-dark: #3A3C45;
-  --success: #22C55E;
-  --warning: #F59E0B;
-  --error: #EF4444;
   --radius-card: 12px;
   --radius-btn: 8px;
   --radius-input: 8px;
-  --shadow-window: 0 4px 24px rgba(0, 0, 0, 0.08);
-  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.04);
-  /* 热力图:无消耗格(0 档)与跨年格底色;暗色主题在 theme.css 覆盖 */
-  --heatmap-l0: rgba(116, 184, 252, 0.06);
-  --heatmap-out: rgba(0, 0, 0, 0.04);
 }
 
 /* ======== 仪表盘组件 ======== */
@@ -277,7 +256,7 @@ body,
 
 .fee-card-surface {
   /* 渐变叠加在实色卡片底上,避免窗口半透明时透出底色、与其他卡片风格不一致 */
-  background: linear-gradient(135deg, rgba(116, 184, 252, 0.04), rgba(149, 202, 255, 0.02)), var(--bg-card);
+  background: var(--fee-card-glow), var(--bg-card);
   transition: all 200ms ease-out;
   cursor: default;
 }
@@ -285,7 +264,7 @@ body,
 .fee-card-surface:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-card);
-  background: linear-gradient(135deg, rgba(116, 184, 252, 0.08), rgba(149, 202, 255, 0.04)), var(--bg-card);
+  background: var(--fee-card-glow-hover), var(--bg-card);
 }
 
 .fee-card-content {
@@ -321,8 +300,8 @@ body,
 }
 
 .fee-card-value.primary { color: var(--primary); }
-.fee-card-value.warning { color: var(--warning); }
-.fee-card-value.error { color: var(--error); }
+.fee-card-value.warning { color: var(--status-warning); }
+.fee-card-value.error { color: var(--status-danger); }
 
 .fee-card-sub {
   font-size: clamp(9px, 7.5cqw, 12px);
@@ -337,52 +316,37 @@ body,
   width: 100%;
 }
 
-/* ======== Token 消耗速度曲线卡片 ======== */
+/* ======== Token 消耗速度：复用统计图的标题、图例与内容骨架 ======== */
 .token-speed-card {
   display: flex;
   flex: 1;
   min-height: 0;
   width: 100%;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.token-speed-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-  flex-shrink: 0;
 }
 
 .token-speed-title {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 650;
-  line-height: 1.2;
   white-space: nowrap;
 }
 
 .token-speed-icon {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-  color: var(--text-secondary);
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  color: var(--primary-dark);
 }
 
 .token-speed-controls {
   display: flex;
+  flex: none;
   gap: 6px;
   margin-left: auto;
   min-width: 0;
 }
 
-/* 主题化下拉(与设置页 custom-select 同款):圆角触发器 + 主题色菜单,
-   替代原生 <select>——原生展开列表由 OS 渲染,透明/暗色窗口里是直角白底 */
+/* 原生 select 的操作系统菜单无法跟随窗口主题，继续使用主题化下拉。 */
 .themed-select {
   position: relative;
   min-width: 0;
@@ -414,7 +378,7 @@ body,
 }
 
 .themed-select.open .themed-select-trigger {
-  box-shadow: 0 0 0 2px rgba(116, 184, 252, 0.18);
+  box-shadow: 0 0 0 2px var(--control-active);
 }
 
 .themed-select-trigger svg {
@@ -422,9 +386,7 @@ body,
   transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.themed-select.open .themed-select-trigger svg {
-  transform: rotate(180deg);
-}
+.themed-select.open .themed-select-trigger svg { transform: rotate(180deg); }
 
 .themed-select-label {
   overflow: hidden;
@@ -432,16 +394,17 @@ body,
   white-space: nowrap;
 }
 
+.themed-select-label-compact { display: none; }
+
 .themed-select-menu {
   position: fixed;
   z-index: 10000;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  background: var(--chart-tooltip-bg);
+  border: 1px solid var(--chart-tooltip-border);
   border-radius: var(--radius-input);
-  box-shadow: 0 6px 20px rgba(31, 41, 55, 0.18);
+  box-shadow: var(--chart-tooltip-shadow);
   overflow: hidden;
   transform-origin: top center;
-  /* 菜单仅在打开时挂载,展开动画用 keyframes(较快、带轻微回弹的阻尼感) */
   animation: themed-select-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -463,57 +426,51 @@ body,
 .themed-select-option {
   padding: 5px 8px;
   font-size: 10px;
-  color: var(--text-primary);
+  color: var(--chart-tooltip-text);
   cursor: pointer;
   white-space: nowrap;
   transition: background 120ms ease-out;
 }
 
-.themed-select-option:hover {
-  background: rgba(116, 184, 252, 0.12);
-}
+.themed-select-option:hover { background: var(--control-hover); }
 
 .themed-select-option.selected {
-  color: var(--primary);
-  font-weight: 500;
+  color: var(--control-active-text);
+  font-weight: 600;
 }
 
-/* 向上展开(窗口下方空间不足时)的定位由 CustomSelect 内联 bottom 控制,
-   .drop-up 仅切换 transform-origin 与动画方向(见上) */
-
-.token-speed-legends {
+.usage-chart-legend.token-speed-legends {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 12px;
+  max-height: 48px;
   min-width: 0;
-  flex-shrink: 0;
+  margin-bottom: 3px;
 }
 
 .token-speed-legend {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 3px 5px;
-  min-width: 0;
-  color: var(--text-secondary);
+  max-width: 160px;
   font-size: 10px;
-  line-height: 1.25;
 }
 
-.token-speed-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex: 0 0 7px;
+.token-speed-provider {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+
+.usage-chart-legend-mark.line.token-speed-dot { flex: 0 0 10px; }
 
 .token-speed-legend strong {
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 650;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+.token-speed-rate-compact,
+.token-speed-rate-tiny { display: none; }
 
 .token-speed-delta,
 .token-speed-status {
@@ -521,37 +478,40 @@ body,
   white-space: nowrap;
 }
 
-.token-speed-status {
-  opacity: 0.82;
-}
+.token-speed-chart { min-height: 0; }
 
-.token-speed-chart {
-  flex: 1;
-  min-height: 54px;
-  width: 100%;
+@container (max-width: 320px) {
+  .token-speed-card .usage-chart-header { flex-wrap: wrap; gap: 5px; }
+  .token-speed-card .usage-chart-subtitle { display: none; }
+  .token-speed-controls { width: 100%; margin-left: 0; }
+  .token-speed-controls .themed-select { flex: 1; max-width: none; }
 }
 
 @container (max-width: 220px) {
-  .token-speed-card { gap: 1px; }
-  .token-speed-header { gap: 2px; }
+  .token-speed-card .usage-chart-header { gap: 2px; }
   .token-speed-title { gap: 4px; font-size: 10px; }
   .token-speed-icon { width: 14px; height: 14px; flex-basis: 14px; }
-  .token-speed-controls { width: 100%; margin-left: 0; gap: 3px; }
-  .themed-select { flex: 1; max-width: none; }
-  .themed-select-trigger {
-    border-radius: 5px;
-    font-size: 8px;
-    padding: 1px 3px;
-  }
+  .token-speed-controls { gap: 3px; }
+  .themed-select-trigger { border-radius: 5px; font-size: 8px; padding: 1px 3px; }
   .themed-select-option { font-size: 8px; padding: 3px 5px; }
-  .token-speed-legends { flex-wrap: nowrap; justify-content: space-between; gap: 1px; }
-  .token-speed-legend { flex-wrap: nowrap; gap: 1px; font-size: 7px; }
+  .usage-chart-legend.token-speed-legends { flex-wrap: nowrap; justify-content: space-between; gap: 1px; }
+  .token-speed-legend { flex-wrap: nowrap; gap: 1px; overflow: hidden; font-size: 8px; }
   .token-speed-provider { display: none; }
-  .token-speed-legend strong { font-size: 7px; letter-spacing: -0.2px; }
+  .token-speed-legend strong { overflow: hidden; font-size: 8px; letter-spacing: 0; }
+  .token-speed-rate-full { display: none; }
+  .token-speed-rate-compact { display: inline; }
   .token-speed-delta,
   .token-speed-status { display: none; }
-  .token-speed-dot { width: 4px; height: 4px; flex-basis: 4px; }
-  .token-speed-chart { min-height: 20px; }
+  .usage-chart-legend-mark.line.token-speed-dot { width: 4px; height: 2px; flex-basis: 4px; }
+  .token-speed-card .usage-chart-body { min-height: 20px; }
+}
+
+@container (max-width: 120px) {
+  .token-speed-card .themed-select-label-full,
+  .token-speed-card .token-speed-rate-compact { display: none; }
+  .token-speed-card .themed-select-label-compact,
+  .token-speed-card .token-speed-rate-tiny { display: inline; }
+  .token-speed-card .themed-select-trigger svg { width: 7px; height: 7px; }
 }
 
 /* gridstack 基础覆写:隐藏默认边框,内容占满(margin 由 --gs-item-margin-* 变量生效,勿再 inset:0 覆盖) */
@@ -702,7 +662,7 @@ body,
   height: 10px;
   /* 所有主题统一采用小深酱的结构尺寸,装饰预留区不随主题切换增减 */
   margin-top: 26px;
-  background: rgba(116, 184, 252, 0.12);
+  background: var(--quota-track);
   border: 1px solid transparent;
   border-radius: 999px;
   overflow: visible;
@@ -714,18 +674,18 @@ body,
   transition: width 300ms ease-out;
 }
 
-.quota-bar-fill.low { background: var(--success); }
-.quota-bar-fill.mid { background: var(--warning); }
-.quota-bar-fill.high { background: var(--error); }
+.quota-bar-fill.low { background: var(--status-success); }
+.quota-bar-fill.mid { background: var(--status-warning); }
+.quota-bar-fill.high { background: var(--status-danger); }
 
 /* 剩余为 0:斜纹填满整条,直观表示耗尽 */
 .quota-bar-fill.empty {
   background: repeating-linear-gradient(
     -45deg,
-    var(--error) 0,
-    var(--error) 6px,
-    rgba(239, 68, 68, 0.2) 6px,
-    rgba(239, 68, 68, 0.2) 12px
+    var(--status-danger) 0,
+    var(--status-danger) 6px,
+    var(--quota-empty-stripe) 6px,
+    var(--quota-empty-stripe) 12px
   );
 }
 
@@ -750,7 +710,7 @@ body,
   border: none;
   border-radius: var(--radius-btn);
   background: var(--primary);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 12px;
   cursor: pointer;
   margin-top: 4px;
@@ -771,13 +731,13 @@ body,
   padding: 4px 8px;
   margin-bottom: 6px;
   border-radius: var(--radius-btn);
-  background: rgba(245, 158, 11, 0.14);
-  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: var(--quota-stale-bg);
+  border: 1px solid var(--quota-stale-border);
 }
 
 .quota-stale-text {
   font-size: 10px;
-  color: var(--warning, #F59E0B);
+  color: var(--status-warning);
 }
 
 .quota-stale-retry {
@@ -785,68 +745,56 @@ body,
   border: none;
   border-radius: var(--radius-btn);
   background: var(--primary);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 10px;
   padding: 2px 10px;
   cursor: pointer;
 }
 
-/* ======== Token 活动热力图 ======== */
+/* ======== Token 活动热力图：结构与其他统计卡保持一致 ======== */
 .heatmap-widget {
   width: 100%;
+  min-width: 0;
 }
 
 .heatmap-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-bottom: 8px;
 }
 
-.heatmap-title {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
+.heatmap-heading { flex: none; }
+
+.heatmap-providers {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 100%;
+  margin-left: auto;
 }
+
+.heatmap-modes {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.heatmap-mode-control { flex: none; }
 
 .heatmap-total {
   margin-left: auto;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--warning, #F59E0B);
-}
-
-.heatmap-providers,
-.heatmap-modes {
-  display: flex;
-  gap: 4px;
-}
-
-.heatmap-tab {
-  border: none;
-  background: transparent;
-  font-size: 11px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 6px;
-}
-
-.heatmap-tab.active {
-  background: rgba(116, 184, 252, 0.16);
   color: var(--primary-dark);
-  font-weight: 600;
-}
-
-.heatmap-modes {
-  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .heatmap-local-only {
-  font-size: 10px;
-  color: var(--warning);
-  margin-left: 6px;
   align-self: center;
+  color: var(--text-secondary);
+  font-size: 10px;
 }
 
 .heatmap-grid {
@@ -861,10 +809,10 @@ body,
 }
 
 .heatmap-cell {
-  border-radius: 2px;
+  border-radius: 3px;
+  transition: background-color 180ms ease-out, outline-color 120ms ease-out;
 }
 
-/* hover 描边:tooltip 有 220ms 停稳延迟,先给出即时的可交互反馈 */
 .heatmap-cell:hover {
   outline: 1px solid var(--primary-dark);
   outline-offset: 0;
@@ -873,17 +821,17 @@ body,
 .heatmap-months {
   display: flex;
   gap: 2px;
-  margin-top: 4px;
+  margin-top: 5px;
 }
 
 .heatmap-month-cell {
-  font-size: 10px;
-  color: var(--text-secondary);
   position: relative;
   height: 14px;
+  color: var(--text-secondary);
+  font-size: 10px;
 }
 
-/* 标签宽度与列宽解耦,自由溢出到相邻空列;最后一列右对齐,避免"月"被卡片右缘裁掉 */
+/* 标签可跨入相邻空列；最后一列右对齐，避免文字被卡片右缘裁切。 */
 .heatmap-month-text {
   position: absolute;
   left: 0;
@@ -901,30 +849,30 @@ body,
   align-items: center;
   gap: 3px;
   margin-top: 8px;
-  font-size: 10px;
   color: var(--text-secondary);
+  font-size: 10px;
 }
 
 .heatmap-legend-cell {
   width: 10px;
   height: 10px;
-  border-radius: 2px;
+  border-radius: 3px;
 }
 
-/* 自定义悬停提示:原生 title 在透明窗口不显示 */
 .heatmap-tooltip {
   position: fixed;
   transform: translate(-50%, -100%);
-  background: rgba(30, 32, 38, 0.95);
-  color: #fff;
-  padding: 6px 10px;
-  border-radius: 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--chart-tooltip-border);
+  border-radius: 9px;
+  background: var(--chart-tooltip-bg);
+  box-shadow: var(--chart-tooltip-shadow);
+  color: var(--chart-tooltip-text);
   font-size: 11px;
-  line-height: 1.5;
+  line-height: 1.6;
   pointer-events: none;
   z-index: 10000;
   white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   transition: left 0.12s ease-out, top 0.12s ease-out, opacity 0.26s ease-out;
   animation: heatmap-tip-in 260ms ease-out;
 }
@@ -939,37 +887,47 @@ body,
   transition: left 0.12s ease-out, top 0.12s ease-out, opacity 0.32s ease-in-out;
 }
 
-.heatmap-tooltip-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 14px;
-  margin-bottom: 2px;
-}
-
-.heatmap-tooltip-date {
-  font-weight: 600;
-}
-
-/* 头部右侧总消耗量 */
-.heatmap-tooltip-total {
-  font-weight: 600;
-  color: #9fd0fd;
-  white-space: nowrap;
-}
-
-.heatmap-tooltip.below {
-  transform: translate(-50%, 0);
-}
-
+.heatmap-tooltip-head,
 .heatmap-tooltip-row {
   display: flex;
   justify-content: space-between;
-  gap: 14px;
+  gap: 18px;
 }
 
-.heatmap-tooltip-label {
-  color: rgba(255, 255, 255, 0.75);
+.heatmap-tooltip-head {
+  align-items: baseline;
+  margin-bottom: 3px;
+}
+
+.heatmap-tooltip-date,
+.heatmap-tooltip-total { font-weight: 600; }
+
+.heatmap-tooltip-total {
+  color: var(--chart-tooltip-accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.heatmap-tooltip.below { transform: translate(-50%, 0); }
+.heatmap-tooltip-label { color: var(--chart-tooltip-label); }
+.heatmap-tooltip-value { font-variant-numeric: tabular-nums; }
+
+@container (max-width: 560px) {
+  .heatmap-providers { justify-content: flex-start; margin-left: 0; }
+}
+
+@container (max-width: 420px) {
+  .heatmap-widget .usage-chart-subtitle { display: none; }
+}
+
+@container (max-width: 340px) {
+  .heatmap-providers .chart-range-option { min-height: 23px; padding: 0 6px; font-size: 9px; }
+  .heatmap-total { flex-basis: 100%; margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heatmap-cell,
+  .heatmap-tooltip { transition: none; animation: none; }
 }
 
 
@@ -1037,7 +995,7 @@ body,
 }
 
 .mini-title-btn:hover {
-  background: rgba(116, 184, 252, 0.16);
+  background: var(--mini-control-hover);
   color: var(--text-primary);
 }
 
@@ -1178,13 +1136,9 @@ body,
 .mini-strip-bar {
   position: relative;
   flex: 1;
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--mini-strip-track);
   border-radius: 999px;
   overflow: hidden;
-}
-
-:root[data-theme$='dark'] .mini-strip-bar {
-  background: rgba(255, 255, 255, 0.45);
 }
 
 .mini-strip-fill {
@@ -1202,4 +1156,295 @@ body,
   bottom: 0;
   right: auto;
   transition: width 0.4s ease-out;
+}
+
+
+/* ======== 统一统计图：共享周期、信息层级与图例 ======== */
+.chart-range-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  margin: -4px 0 10px;
+}
+
+.chart-range-copy,
+.chart-range-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.chart-range-title {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.chart-range-source,
+.chart-range-dates {
+  color: var(--text-secondary);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.chart-range-dates {
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-range-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.chart-range-option {
+  min-height: 25px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 160ms ease-out, background-color 160ms ease-out, box-shadow 160ms ease-out;
+}
+
+.chart-range-option:hover {
+  color: var(--text-primary);
+  background: var(--control-hover);
+}
+
+.chart-range-option.active {
+  color: var(--text-primary);
+  background: var(--bg-card);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.10);
+}
+
+.chart-range-option:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.grid-stack-item[data-component-id='model-bar'] .component-surface,
+.grid-stack-item[data-component-id='provider-bar'] .component-surface,
+.grid-stack-item[data-component-id='token-line'] .component-surface,
+.grid-stack-item[data-component-id='cost-line'] .component-surface,
+.grid-stack-item[data-component-id='token-speed'] .component-surface,
+.grid-stack-item[data-component-id='token-heatmap'] .component-surface {
+  padding: 11px 13px 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.usage-chart-frame {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
+.usage-chart-header {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.usage-chart-heading {
+  min-width: 0;
+}
+
+.usage-chart-title {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 18px;
+  letter-spacing: 0.01em;
+}
+
+.usage-chart-subtitle {
+  margin-top: 1px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.usage-chart-kpi {
+  flex: none;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-chart-value {
+  display: block;
+  color: var(--text-primary);
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 20px;
+  letter-spacing: -0.02em;
+}
+
+.usage-chart-value-label {
+  display: block;
+  margin-top: 1px;
+  color: var(--text-secondary);
+  font-size: 9px;
+  line-height: 12px;
+}
+
+.usage-chart-legend {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 12px;
+  min-height: 15px;
+  max-height: 31px;
+  margin-bottom: 2px;
+  overflow: hidden;
+}
+
+.usage-chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 132px;
+  color: var(--text-secondary);
+  font-size: 9px;
+  line-height: 13px;
+}
+
+.usage-chart-legend-mark {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+}
+
+.usage-chart-legend-mark.line {
+  width: 10px;
+  height: 2px;
+  border-radius: 2px;
+}
+
+.usage-chart-legend-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-chart-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.usage-chart-body .chart-container {
+  position: absolute;
+  inset: 0;
+}
+
+.usage-chart-state {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg-card) 82%, transparent);
+  color: var(--text-secondary);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+@container (max-width: 260px) {
+  .usage-chart-subtitle,
+  .usage-chart-value-label,
+  .usage-chart-legend {
+    display: none;
+  }
+
+  .usage-chart-header {
+    margin-bottom: 1px;
+  }
+
+  .usage-chart-value {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 640px) {
+  .chart-range-source,
+  .chart-range-dates {
+    display: none;
+  }
+
+  .chart-range-toolbar {
+    gap: 8px;
+  }
+
+  .chart-range-option {
+    padding: 0 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chart-range-option {
+    transition: none;
+  }
+}
+
+
+.chart-range-toolbar {
+  flex-wrap: wrap;
+}
+
+.chart-range-actions {
+  margin-left: auto;
+}
+
+.chart-range-retention {
+  flex-basis: 100%;
+  min-height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 10px;
+  line-height: 18px;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.chart-range-retention:hover {
+  color: var(--primary);
+}
+
+.chart-range-retention:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chart-range-retention {
+    transition: none;
+  }
 }

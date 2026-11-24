@@ -6,7 +6,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { resolveVerticalFlip, clampToWindow } from '../lib/floating-layer.js';
 
-export default function CustomSelect({ value, options, onChange, ariaLabel }) {
+export default function CustomSelect({ value, options, onChange, ariaLabel, compactLabels }) {
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState(null);
   const rootRef = useRef(null);
@@ -72,7 +72,14 @@ export default function CustomSelect({ value, options, onChange, ariaLabel }) {
         aria-expanded={open}
         onClick={toggle}
       >
-        <span className="themed-select-label">{current ? current[1] : String(value)}</span>
+        <span className="themed-select-label">
+          <span className="themed-select-label-full">{current ? current[1] : String(value)}</span>
+          {compactLabels ? (
+            <span className="themed-select-label-compact" aria-hidden="true">
+              {compactLabels[current ? current[0] : value] || (current ? current[1] : String(value))}
+            </span>
+          ) : null}
+        </span>
         <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
           <path d="M2.5 4.5L6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>

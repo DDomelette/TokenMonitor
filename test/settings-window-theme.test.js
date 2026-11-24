@@ -47,11 +47,11 @@ test('settings window re-applies theme on main-process notifications and system 
 });
 
 test('settings primary button text keeps readable contrast in every theme', () => {
-  const css = fs.readFileSync(path.join(root, 'src/renderer/css/main.css'), 'utf8');
+  const palette = fs.readFileSync(path.join(root, 'src/shared/palette.css'), 'utf8');
   const html = fs.readFileSync(path.join(root, 'src/renderer/settings-window.html'), 'utf8');
   const declarations = (selector) => {
     const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const block = css.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));
+    const block = palette.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));
     assert.ok(block, `missing CSS block: ${selector}`);
     return Object.fromEntries(
       Array.from(block[1].matchAll(/--([\w-]+):\s*(#[0-9A-Fa-f]{6})\s*;/g), (match) => [match[1], match[2]])
@@ -68,13 +68,13 @@ test('settings primary button text keeps readable contrast in every theme', () =
   };
 
   const rootVariables = declarations(':root');
-  const lightVariables = declarations('body:not(.dark)');
+  const darkVariables = { ...rootVariables, ...declarations(":root[data-theme$='dark']") };
   const themes = {
-    light: { ...rootVariables, ...lightVariables },
-    dark: { ...rootVariables, ...declarations('body.dark') },
-    'acrylic-light': { ...rootVariables, ...lightVariables, ...declarations("body[data-theme='acrylic-light']") },
-    'acrylic-dark': { ...rootVariables, ...declarations('body.dark'), ...declarations("body[data-theme='acrylic-dark']") },
-    'shen-chan': { ...rootVariables, ...lightVariables, ...declarations("body[data-theme='shen-chan']") }
+    light: rootVariables,
+    dark: darkVariables,
+    'acrylic-light': { ...rootVariables, ...declarations(":root[data-theme='acrylic-light']") },
+    'acrylic-dark': { ...darkVariables, ...declarations(":root[data-theme='acrylic-dark']") },
+    'shen-chan': { ...rootVariables, ...declarations(":root[data-theme='shen-chan']") }
   };
 
   assert.match(html, /\.btn-primary\s*\{[^}]*color:\s*var\(--text-on-primary\)/);
@@ -83,5 +83,23 @@ test('settings primary button text keeps readable contrast in every theme', () =
       const ratio = contrast(variables['text-on-primary'], variables[state]);
       assert.ok(ratio >= 4.5, `${name} ${state} contrast ${ratio.toFixed(2)} must be at least 4.5`);
     }
+  }
+});
+
+
+test('settings window loads the shared palette and has no private color literals', () => {
+  const html = fs.readFileSync(path.join(root, 'src/renderer/settings-window.html'), 'utf8');
+  const css = fs.readFileSync(path.join(root, 'src/renderer/css/main.css'), 'utf8');
+  const js = fs.readFileSync(path.join(root, 'src/renderer/js/settings-window.js'), 'utf8');
+  const palette = fs.readFileSync(path.join(root, 'src/shared/palette.css'), 'utf8');
+
+  assert.match(html, /<link rel="stylesheet" href="\.\.\/shared\/palette\.css">\s*<link rel="stylesheet" href="css\/main\.css">/);
+  assert.match(js, /document\.documentElement\.dataset\.theme = theme;/);
+  assert.match(js, /document\.documentElement\.dataset\.windowActive = active;/);
+  assert.doesNotMatch(css, /#[\da-f]{3,8}\b|rgba?\(/i);
+  assert.doesNotMatch(html, /#[\da-f]{3,8}\b|rgba?\(|var\(--(?:success|warning|error)\b/i);
+  assert.doesNotMatch(js, /'#c43b3b'/);
+  for (const token of ['--control-focus-ring', '--control-thumb-shadow', '--control-knob', '--settings-menu-shadow', '--settings-resize-bg']) {
+    assert.ok(palette.includes(token + ':'), token + ' must be registered');
   }
 });

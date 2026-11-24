@@ -5,15 +5,18 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 
-test('login page loads theme-mode-link before login.js and ships dark styles', () => {
+test('login page loads the shared palette and theme link before semantic styles and behavior', () => {
   const html = fs.readFileSync(path.join(root, 'src/renderer/login.html'), 'utf8');
 
+  assert.match(html, /<link rel="stylesheet" href="\.\.\/shared\/palette\.css">\s*<style>/);
   assert.match(
     html,
     /<script src="js\/theme-mode-link\.js"><\/script>\s*<script src="js\/login\.js"><\/script>/
   );
-  assert.match(html, /body\.dark \.container/);
-  assert.match(html, /body\.dark \.form-input/);
+  assert.match(html, /\.container\s*\{[^}]*background:\s*var\(--bg-window\)/);
+  assert.match(html, /\.form-input\s*\{[^}]*background:\s*var\(--bg-card\)/);
+  assert.match(html, /\.form-input:focus\s*\{[^}]*var\(--control-focus-ring\)/);
+  assert.doesNotMatch(html, /body\.dark \.(?:container|form-input)/);
 });
 
 test('login window resolves theme from persisted settings and the system media query', () => {

@@ -149,16 +149,22 @@ test('final theme stylesheet is loaded last and covers all main-window surface c
     path.resolve(__dirname, '../renderer/src/theme.css'),
     'utf8'
   );
-  assert.match(source, /:root\[data-theme[$]?=['"]dark['"]\]/);
-  assert.match(source, /--bg-window:/);
-  assert.match(source, /--bg-card:/);
-  assert.match(source, /--text-primary:/);
-  assert.match(source, /--text-secondary:/);
-  assert.match(source, /--border:/);
+  const palette = fs.readFileSync(path.resolve(__dirname, '../src/shared/palette.css'), 'utf8');
+  // 主题结构留在 theme.css，颜色令牌统一由共享注册表提供。
+  assert.match(palette, /:root\[data-theme[$]?=['"]dark['"]\]/);
+  assert.match(palette, /--bg-window:/);
+  assert.match(palette, /--bg-card:/);
+  assert.match(palette, /--text-primary:/);
+  assert.match(palette, /--text-secondary:/);
+  assert.match(palette, /--border:/);
   assert.match(source, /#app/);
   assert.match(source, /\.component-surface/);
   assert.match(source, /\.titlebar-btn/);
   assert.match(source, /\.statusbar/);
   assert.match(source, /\.content::-webkit-scrollbar-thumb/);
-  assert.match(source, /\.heatmap-tooltip/);
+
+  assert.match(mainSource, /import '\.\/shen-chan\.css';\s*import '\.\.\/\.\.\/src\/shared\/palette\.css';/);
+  const styles = fs.readFileSync(path.resolve(__dirname, '../renderer/src/styles.css'), 'utf8');
+  assert.match(palette, /--chart-tooltip-bg:/);
+  assert.match(styles, /\.heatmap-tooltip\s*\{[^}]*var\(--chart-tooltip-bg\)/);
 });

@@ -9,7 +9,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useProviders, useDashboard } from '../store.js';
 import useTokenSpeed from '../hooks/useTokenSpeed.js';
 import { on, send, toggleMini, getEdgeDockState, getSettings } from '../api.js';
-import { PROVIDER_META, formatTokenRate } from '../lib/token-speed-chart.js';
+import { PROVIDER_META, formatTokenRate, providerColor } from '../lib/token-speed-chart.js';
 import { quotaSegments } from '../lib/quota-ring.mjs';
 import QuotaRing from './QuotaRing.jsx';
 import { SHEN } from '../shen-assets.js';
@@ -40,7 +40,7 @@ function RowInfo({ pid, rate }) {
   const meta = PROVIDER_META[pid];
   return (
     <div className="mini-row-info">
-      <span className="mini-dot" style={{ background: meta.color }} />
+      <span className="mini-dot" style={{ background: providerColor(pid) }} />
       <span className="mini-name">{meta.label}</span>
       <span className="mini-speed">{rate}</span>
     </div>
@@ -65,8 +65,8 @@ function SpeedStrip({ edge, rates, onRestore }) {
             <div
               className="mini-strip-fill"
               style={horizontal
-                ? { background: PROVIDER_META[pid].color, width: pct }
-                : { background: PROVIDER_META[pid].color, height: pct }}
+                ? { background: providerColor(pid), width: pct }
+                : { background: providerColor(pid), height: pct }}
             />
           </div>
         );
@@ -176,10 +176,10 @@ export default function MiniView() {
   // 所有平台只负责准备数据；单环/两段/三段、中央读数和几何绘制统一由 QuotaRing 决定。
   const balanceSegments = [{ key: 'balance', label: '余额', frac: amountFrac(balanceTotal) }];
   const balanceVisual = (pid) => (
-    <QuotaRing segments={balanceSegments} color={PROVIDER_META[pid].color} label={amountLabel(balanceTotal)} />
+    <QuotaRing segments={balanceSegments} color={providerColor(pid)} label={amountLabel(balanceTotal)} />
   );
   const quotaVisual = (pid) => (
-    <QuotaRing segments={quotaSegments(byId[pid])} color={PROVIDER_META[pid].color} />
+    <QuotaRing segments={quotaSegments(byId[pid])} color={providerColor(pid)} />
   );
   const visuals = {
     deepseek: balanceVisual('deepseek'),

@@ -6,6 +6,7 @@ import './theme.css';
 import './layout-lock.css';
 import './provider-health.css';
 import './shen-chan.css';
+import '../../src/shared/palette.css';
 
 createRoot(document.getElementById('root')).render(<App />);
 

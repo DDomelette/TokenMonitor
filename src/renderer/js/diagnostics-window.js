@@ -167,7 +167,11 @@
   function applyTheme() {
     var windowValues = (themeSettings && themeSettings.window) || {};
     var theme = ThemeModeLink.resolveTheme(windowValues, systemThemeMedia.matches);
-    document.body.classList.toggle('dark', theme === 'dark' || theme === 'acrylic-dark');
+    var isDark = theme === 'dark' || theme === 'acrylic-dark';
+    // 与主窗、设置窗、登录窗共享根节点上的语义色。
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+    document.body.classList.toggle('dark', isDark);
     document.body.dataset.theme = theme;
   }
 
@@ -192,7 +196,9 @@
   window.diagnosticsApi.onThemeChanged(refreshTheme);
 
   window.diagnosticsApi.onFocusState(function (focused) {
-    document.body.dataset.windowActive = String(focused !== false);
+    var active = String(focused !== false);
+    document.documentElement.dataset.windowActive = active;
+    document.body.dataset.windowActive = active;
   });
 
   systemThemeMedia.addEventListener('change', applyTheme);

@@ -1,11 +1,7 @@
 import { echartsWindowPosition } from './floating-layer.js';
+import { colorWithAlpha, getSemanticChartTheme, PROVIDER_META, providerColor } from './chartTheme.js';
 
-export const PROVIDER_META = Object.freeze({
-  deepseek: { label: 'DeepSeek', color: '#6E94F5' },
-  codex: { label: 'Codex', color: '#F2A05C' },
-  kimi: { label: 'Kimi', color: '#4ECB94' },
-  dsh: { label: 'DeepSeek Harness', color: '#A78BFA' }
-});
+export { PROVIDER_META, providerColor };
 
 export const INTERVAL_OPTIONS = Object.freeze([
   [10, '10 秒'], [20, '20 秒'], [30, '30 秒'], [60, '1 分钟'],
@@ -37,14 +33,6 @@ export function visibleProviderIds(filter) {
   return PROVIDER_META[filter] ? [filter] : ['deepseek', 'codex', 'kimi', 'dsh'];
 }
 
-function rgba(hex, alpha) {
-  const value = hex.replace('#', '');
-  const red = parseInt(value.slice(0, 2), 16);
-  const green = parseInt(value.slice(2, 4), 16);
-  const blue = parseInt(value.slice(4, 6), 16);
-  return `rgba(${red},${green},${blue},${alpha})`;
-}
-
 function formatTokenDelta(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return '--';
@@ -66,7 +54,6 @@ function tooltipFormatter(params) {
       ? formatTokenRate(datum.value[1])
       : '--/min';
     const quality = QUALITY_LABELS[datum.quality] || '';
-    // deltaTokens 缺失时不拼 "+",避免 "本周期 +-- Token"
     const deltaText = formatTokenDelta(datum.deltaTokens);
     const deltaPart = deltaText === '--' ? '' : '<br/>本周期 +' + deltaText + ' Token';
     return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'
@@ -77,9 +64,8 @@ function tooltipFormatter(params) {
   return (header ? '<b>' + header + '</b><br/>' : '') + body;
 }
 
-function seriesFor(providerId, points, multiple) {
+function seriesFor(providerId, points, multiple, color) {
   const meta = PROVIDER_META[providerId];
-  const opacity = multiple ? 0.05 : 0.16;
   return {
     name: meta.label,
     type: 'line',
@@ -88,13 +74,10 @@ function seriesFor(providerId, points, multiple) {
     showSymbol: false,
     symbol: 'none',
     sampling: 'lttb',
-    lineStyle: {
-      color: meta.color,
-      width: multiple ? 1.8 : 2.2
-    },
-    itemStyle: { color: meta.color },
+    lineStyle: { color, width: multiple ? 1.8 : 2.2 },
+    itemStyle: { color },
     areaStyle: {
-      opacity,
+      opacity: 1,
       color: {
         type: 'linear',
         x: 0,
@@ -102,8 +85,8 @@ function seriesFor(providerId, points, multiple) {
         x2: 0,
         y2: 1,
         colorStops: [
-          { offset: 0, color: rgba(meta.color, multiple ? 0.42 : 0.62) },
-          { offset: 1, color: rgba(meta.color, 0) }
+          { offset: 0, color: colorWithAlpha(color, multiple ? 0.12 : 0.24) },
+          { offset: 1, color: colorWithAlpha(color, 0) }
         ]
       }
     },
@@ -126,43 +109,70 @@ function seriesFor(providerId, points, multiple) {
 export function buildTokenSpeedOption(snapshot = {}, options = {}) {
   const ids = visibleProviderIds(snapshot.providerFilter || 'all');
   const multiple = ids.length > 1;
-  const isDark = options.isDark === true;
+  const theme = options.theme || getSemanticChartTheme(options.isDark);
+  const compact = options.compact === true;
   return {
     animation: false,
     backgroundColor: 'transparent',
+    textStyle: { color: theme.textColor, fontSize: 10 },
     grid: {
-      left: options.compact ? 2 : 6,
-      right: options.compact ? 2 : 6,
-      top: 5,
-      bottom: 2,
+      left: compact ? 2 : 44,
+      right: compact ? 2 : 10,
+      top: 10,
+      bottom: compact ? 2 : 24,
       containLabel: false
     },
     tooltip: {
       trigger: 'axis',
       appendToBody: true,
       position: echartsWindowPosition(options.dom),
-      axisPointer: { type: 'line', lineStyle: { color: isDark ? '#6B7280' : '#9CA3AF' } },
-      backgroundColor: isDark ? 'rgba(30,32,38,0.96)' : 'rgba(255,255,255,0.97)',
-      borderColor: isDark ? '#3A3C45' : '#E5E7EB',
-      textStyle: { color: isDark ? '#E5E7EB' : '#1A1A2E', fontSize: 11 },
+      axisPointer: { type: 'line', lineStyle: { color: theme.cursorColor } },
+      backgroundColor: theme.tooltipBg,
+      borderColor: theme.tooltipBorder,
+      borderWidth: 1,
+      padding: [9, 11],
+      textStyle: { color: theme.tooltipText, fontSize: 11 },
+      extraCssText: 'border-radius:9px;box-shadow:var(--chart-tooltip-shadow);',
       formatter: tooltipFormatter
     },
     xAxis: {
       type: 'time',
-      show: false,
+      show: !compact,
       boundaryGap: false,
-      axisPointer: { show: true }
+      axisPointer: { show: true },
+      axisLine: { show: true, lineStyle: { color: theme.axisLineColor } },
+      axisTick: { show: false },
+      axisLabel: {
+        show: !compact,
+        color: theme.textColor,
+        fontSize: 9,
+        hideOverlap: true,
+        formatter: (time) => new Date(time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+      },
+      splitLine: { show: false }
     },
     yAxis: {
       type: 'value',
-      show: false,
+      show: !compact,
       min: 0,
-      scale: true
+      scale: true,
+      splitNumber: 3,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: {
+        show: !compact,
+        color: theme.textColor,
+        fontSize: 9,
+        hideOverlap: true,
+        formatter: (value) => formatTokenRate(value).replace('/min', '')
+      },
+      splitLine: { show: !compact, lineStyle: { color: theme.gridColor, type: 'dashed' } }
     },
     series: ids.map((providerId) => seriesFor(
       providerId,
       snapshot.series && snapshot.series[providerId],
-      multiple
+      multiple,
+      theme.providerColors[providerId]
     ))
   };
 }

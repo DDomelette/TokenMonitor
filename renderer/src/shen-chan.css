@@ -2,32 +2,17 @@
    实底不透明(奶油白),无亚克力/毛玻璃;女仆深蓝 + 水蓝 + 刺绣金。
    所有装饰元素(.shen-deco)只在本主题下显示,其余主题零影响。 */
 
-:root[data-theme='shen-chan'] {
-  color-scheme: light;
-  --bg-window: #faf6ee;
-  --bg-card: #fffdf8;
-  --text-primary: #2b3a6e;
-  --text-secondary: #43568f;
-  --text-inverse: #fffdf8;
-  --border: #d9deee;
-  --shadow-window: 0 12px 34px rgba(28, 42, 82, 0.20);
-  --shadow-card: 0 4px 14px rgba(28, 42, 82, 0.10);
-  --shen-navy: #1c2a52;
-  --shen-aqua: #4db3e6;
-  --shen-aqua-300: #8fd4f2;
-  --shen-aqua-100: #e3f3fc;
-  --shen-gold: #d9a441;
-}
+/* 小深酱的表面、文字与装饰色统一由共享注册表提供。 */
 
 /* 装饰元素默认隐藏,仅小深酱主题显示 */
 .shen-deco { display: none !important; }
 :root[data-theme='shen-chan'] .shen-deco { display: block !important; }
 
 :root[data-theme='shen-chan'] #app {
-  background-color: #faf6ee;
+  background-color: var(--bg-window);
   background-image:
-    radial-gradient(circle 2.5px at 10px 10px, rgba(77, 179, 230, 0.10) 2.5px, transparent 3px),
-    radial-gradient(circle 1.8px at 34px 30px, rgba(217, 164, 65, 0.10) 1.8px, transparent 2.2px);
+    radial-gradient(circle 2.5px at 10px 10px, var(--shen-dot-aqua) 2.5px, transparent 3px),
+    radial-gradient(circle 1.8px at 34px 30px, var(--shen-dot-gold) 1.8px, transparent 2.2px);
   background-size: 48px 48px, 64px 64px;
   box-shadow: var(--shadow-window);
 }
@@ -118,13 +103,17 @@
 }
 :root[data-theme='shen-chan'] .quota-bar-fill {
   border-radius: 999px;
-  background: repeating-linear-gradient(-55deg, var(--shen-aqua) 0 10px, #6cc4ee 10px 20px);
+  background: repeating-linear-gradient(-55deg, var(--shen-aqua) 0 10px, var(--shen-quota-safe-alt) 10px 20px);
 }
 :root[data-theme='shen-chan'] .quota-bar-fill.mid {
-  background: repeating-linear-gradient(-55deg, var(--shen-gold) 0 10px, #e8b95e 10px 20px);
+  background: repeating-linear-gradient(-55deg, var(--shen-gold) 0 10px, var(--shen-quota-warning-alt) 10px 20px);
 }
 :root[data-theme='shen-chan'] .quota-bar-fill.high {
-  background: repeating-linear-gradient(-55deg, #e57373 0 10px, #ef9a9a 10px 20px);
+  background: repeating-linear-gradient(-55deg, var(--status-danger) 0 10px, var(--shen-quota-danger-alt) 10px 20px);
+}
+/* 通用糖果底纹不能覆盖耗尽语义：即使剩余为 0，也必须保留红色警示斜纹。 */
+:root[data-theme='shen-chan'] .quota-bar-fill.empty {
+  background: repeating-linear-gradient(-45deg, var(--status-danger) 0 6px, var(--quota-empty-stripe) 6px 12px);
 }
 
 .shen-runner {
@@ -166,7 +155,7 @@
 /* 咬痕:窗口底色圆斑盖住卡片角(实底主题下与窗口底融为一体) */
 .shen-bite {
   position: absolute;
-  background: #faf6ee;
+  background: var(--shen-window);
   border-radius: 50%;
   z-index: 6;
   pointer-events: none;
@@ -176,7 +165,7 @@
 .shen-bite.b3 { width: 10px; height: 10px; right: -5px; bottom: 7px; }
 .shen-crumb {
   position: absolute;
-  background: #fffdf8;
+  background: var(--shen-paper);
   border: 1px solid var(--border);
   border-radius: 50%;
   z-index: 6;
@@ -232,7 +221,7 @@
 :root[data-theme='shen-chan'] .mini-view {
   position: relative;
   margin: 49px 8px 8px;         /* 顶部留白:小深酱呆毛在浮动最高点距窗口顶约 2px */
-  background: #fffdf8;
+  background: var(--shen-paper);
   border: 2px solid var(--shen-aqua-300);
   border-radius: 14px;
   box-shadow: none;             /* 去掉边框阴影 */
@@ -255,7 +244,7 @@
 :root[data-theme='shen-chan'] .mini-titlebar-text { color: var(--text-secondary); }
 :root[data-theme='shen-chan'] .mini-title-btn { color: var(--text-secondary); }
 :root[data-theme='shen-chan'] .mini-title-btn:hover {
-  background: var(--shen-aqua-100);
+  background: var(--mini-control-hover);
   color: var(--shen-navy);
 }
 /* 迷你窗高度有限,主题下圆环略缩小给趴趴小深酱让位 */
@@ -264,71 +253,55 @@
 :root[data-theme='shen-chan'] .mini-ring-label { font-size: 8px; }
 
 /* -------- 模块水印:每张卡片背景铺一张高透明度小深酱,隐约可见又不妨碍读数 --------
-   做法:奶油白半透明渐变盖在 PNG 之上,水印只剩淡淡轮廓;图表 canvas 透明底,水印可透出。
+   统一使用注册的奶油白遮罩,让 PNG 只剩淡淡轮廓;图表 canvas 透明底,水印可透出。
    路径使用 public 根路径，由 Vite 按 base 重写为适配 Electron file:// 的相对地址。 */
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='balance-card'] .component-surface {
   background:
-    linear-gradient(rgba(255, 253, 248, 0.90), rgba(255, 253, 248, 0.90)),
+    var(--shen-card-veil),
     url('/shen/deepseek_chan_09_heart.png') no-repeat right 2px bottom 0 / 64px,
     var(--bg-card);
 }
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='today-cost-card'] .component-surface {
   background:
-    linear-gradient(rgba(255, 253, 248, 0.92), rgba(255, 253, 248, 0.92)),
+    var(--shen-card-veil),
     url('/shen/deepseek_chan_02_salute.png') no-repeat center / 58px,
     var(--bg-card);
 }
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='cache-rate-card'] .component-surface {
   background:
-    linear-gradient(rgba(255, 253, 248, 0.90), rgba(255, 253, 248, 0.90)),
+    var(--shen-card-veil),
     url('/shen/deepseek_chan_10_coding.png') no-repeat right 2px bottom 0 / 64px,
     var(--bg-card);
 }
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='quota-codex'] .component-surface {
   background:
-    linear-gradient(rgba(255, 253, 248, 0.91), rgba(255, 253, 248, 0.91)),
+    var(--shen-card-veil),
     url('/shen/shen_walk_b.png') no-repeat right 8px center / 84px,
     var(--bg-card);
 }
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='quota-kimi'] .component-surface {
   background:
-    linear-gradient(rgba(255, 253, 248, 0.91), rgba(255, 253, 248, 0.91)),
+    var(--shen-card-veil),
     url('/shen/shen_run_c.png') no-repeat right 8px center / 84px,
     var(--bg-card);
 }
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='token-heatmap'] .component-surface {
   background:
-    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
+    var(--shen-card-veil),
     url('/shen/deepseek_chan_06_sleepy.png') no-repeat center / 110px,
     var(--bg-card);
 }
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='token-speed'] .component-surface {
   background:
-    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
+    var(--shen-card-veil),
     url('/shen/shen_run_b.png') no-repeat left 10px center / 96px,
     var(--bg-card);
 }
-:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='model-bar'] .component-surface {
-  background:
-    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
-    url('/shen/shen_walk_a.png') no-repeat center / 100px,
-    var(--bg-card);
-}
-:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='provider-bar'] .component-surface {
-  background:
-    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
-    url('/shen/shen_run_a.png') no-repeat center / 100px,
-    var(--bg-card);
-}
-:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='token-line'] .component-surface {
-  background:
-    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
-    url('/shen/deepseek_chan_01_hungry.png') no-repeat center / 100px,
-    var(--bg-card);
-}
+/* 四张统计图不铺角色水印：让柱线、坐标轴和 Tooltip 保持最高可读性。
+   角色装饰继续保留在费用卡、额度卡、热力图和状态栏。 */
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='model-bar'] .component-surface,
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='provider-bar'] .component-surface,
+:root[data-theme='shen-chan'] .grid-stack-item[data-component-id='token-line'] .component-surface,
 :root[data-theme='shen-chan'] .grid-stack-item[data-component-id='cost-line'] .component-surface {
-  background:
-    linear-gradient(rgba(255, 253, 248, 0.93), rgba(255, 253, 248, 0.93)),
-    url('/shen/deepseek_chan_02_salute.png') no-repeat center / 100px,
-    var(--bg-card);
+  background: var(--bg-card);
 }
