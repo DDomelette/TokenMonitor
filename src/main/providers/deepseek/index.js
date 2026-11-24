@@ -7,8 +7,11 @@ const fetcher = new UsageFetcher();
 
 // 平台用量只能按月查询,为让热力图/日聚合显示历史月份,每次轮询时向前回填这些月份。
 const BACKFILL_MONTHS = 6;
+// 近 90 天费用最多跨 4 个自然月；当月每次刷新，此前 3 个月按标记回填一次。
+const BACKFILL_COST_MONTHS = 3;
 // 已尝试抓取过的月份标记(含无数据月份,避免每轮轮询重复请求空月)。
 const FETCHED_MONTHS_KEY = 'providers.deepseek.fetchedMonths';
+const FETCHED_COST_MONTHS_KEY = 'providers.deepseek.fetchedCostMonths';
 
 function monthKey(y, m) {
   return y + '-' + String(m).padStart(2, '0');
@@ -30,7 +33,7 @@ function requestOptionsFor(ctx) {
 }
 
 // 把 amount.dailyData 按日持久化到 store 键 'usageDaily'('deepseek:<date>'),
-// 形状与 codex/kimi 本地日志聚合一致(total/cached),并附加 models 供热力图悬停明细。
+// 形状与 codex/kimi 本地日志聚合一致(total/cached),并附加 models 供热力图和模型图。
 function persistDaily(store, dailyData) {
   if (!Array.isArray(dailyData) || !dailyData.length) return;
   const usageDaily = store.get('usageDaily') || {};
@@ -50,6 +53,22 @@ function persistDaily(store, dailyData) {
     changed = true;
   });
   if (changed) store.set('usageDaily', usageDaily);
+}
+
+// 费用与 Token 使用相同的 provider:date 键，供 get:usage-charts 统一读取。
+function persistCostDaily(store, dailyData) {
+  if (!Array.isArray(dailyData) || !dailyData.length) return;
+  const usageDailyCost = store.get('usageDailyCost') || {};
+  let changed = false;
+  dailyData.forEach((d) => {
+    if (!d || !d.date) return;
+    if (!isRetainedDay(d.date, store.get('data.historyDays'))) return;
+    const total = Number(d.total);
+    if (!Number.isFinite(total) || total < 0) return;
+    usageDailyCost['deepseek:' + d.date] = total;
+    changed = true;
+  });
+  if (changed) store.set('usageDailyCost', usageDailyCost);
 }
 
 // 回填当前月之前的 BACKFILL_MONTHS 个月(只抓 amount,热力图不需要 cost)。
@@ -73,26 +92,34 @@ async function backfillMonths(store, token, month, year, requestOptions) {
   }
 }
 
-// 费用日数据只随返回月份覆盖单月;向前补抓一个月的费用,把日数据拼到 cost.dailyData 前面,
-// 让渲染层"近 30 天花费"在跨月时仍准确(aggregate 保持当月口径,不受影响)。
-// 补抓失败不阻断主流程,渲染层按可得数据求和即可。
-async function prependPreviousMonthCost(usage, token, requestOptions) {
+// 当月费用始终刷新；上月费用仍拼入返回值，保持“近 30 天花费”原有口径。
+// 更早月份只写入统一日聚合并记录抓取标记，不扩大旧 dashboard 的 dailyData。
+async function backfillCostHistory(store, usage, token, requestOptions) {
   const current = Array.isArray(usage.cost.dailyData) ? usage.cost.dailyData : [];
-  try {
-    const prev = new Date(usage.year, usage.month - 2, 1);
-    const prevCost = await fetcher.fetchUsageCost(
-      token,
-      prev.getMonth() + 1,
-      prev.getFullYear(),
-      requestOptions
-    );
-    const prevDays = prevCost && Array.isArray(prevCost.dailyData) ? prevCost.dailyData : [];
-    const existing = new Set(current.map((d) => d && d.date));
-    const extra = prevDays.filter((d) => d && d.date && !existing.has(d.date));
-    usage.cost.dailyData = extra.concat(current);
-  } catch (e) {
-    usage.cost.dailyData = current;
+  persistCostDaily(store, current);
+  const done = new Set(store.get(FETCHED_COST_MONTHS_KEY) || []);
+  let previousDays = [];
+  for (let i = 1; i <= BACKFILL_COST_MONTHS; i++) {
+    const date = new Date(usage.year, usage.month - 1 - i, 1);
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const key = monthKey(year, month);
+    // 上月为兼容旧 dashboard 每次取最新；更早月份静态回填一次即可。
+    if (i > 1 && done.has(key)) continue;
+    try {
+      const result = await fetcher.fetchUsageCost(token, month, year, requestOptions);
+      const days = result && Array.isArray(result.dailyData) ? result.dailyData : [];
+      persistCostDaily(store, days);
+      done.add(key);
+      store.set(FETCHED_COST_MONTHS_KEY, Array.from(done));
+      if (i === 1) previousDays = days;
+    } catch (e) {
+      break;
+    }
   }
+  const existing = new Set(current.map((d) => d && d.date));
+  const extra = previousDays.filter((d) => d && d.date && !existing.has(d.date));
+  usage.cost.dailyData = extra.concat(current);
 }
 
 module.exports = {
@@ -112,7 +139,7 @@ module.exports = {
   },
 
   // 可选:web 用量(保持 DeepSeek 现有返回形状 { cost, amount, month, year, fellBack })。
-  // 抓取成功后把日数据持久化进 store(热力图跨月显示),并回填历史月份。
+  // 抓取成功后把日数据持久化进 store(图表跨周期显示),并回填历史月份。
   fetchUsage(ctx, { month, year }) {
     const token = ctx.store.get('providers.deepseek.sessionToken');
     if (!token) return Promise.resolve(null);
@@ -123,7 +150,7 @@ module.exports = {
       year,
       requestOptions
     ).then(async (usage) => {
-      if (usage && usage.cost) await prependPreviousMonthCost(usage, token, requestOptions);
+      if (usage && usage.cost) await backfillCostHistory(ctx.store, usage, token, requestOptions);
       if (usage && usage.amount) persistDaily(ctx.store, usage.amount.dailyData);
       return backfillMonths(
         ctx.store,

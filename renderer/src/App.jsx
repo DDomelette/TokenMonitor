@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import TitleBar from './components/TitleBar.jsx';
 import StatusBar from './components/StatusBar.jsx';
 import Dashboard from './components/Dashboard.jsx';
+import { ChartRangeProvider } from './components/ChartRange.jsx';
 import MiniView from './components/MiniView.jsx';
 import { initProviders } from './store.js';
 import { getSettings, on, send } from './api.js';
@@ -100,7 +101,9 @@ export default function App() {
           ? <MiniView />
           : (
             <>
-              <Dashboard key={dashboardGeneration} editing={effectiveEditing} />
+              <ChartRangeProvider>
+                <Dashboard key={dashboardGeneration} editing={effectiveEditing} />
+              </ChartRangeProvider>
               <StatusBar />
             </>
           )}

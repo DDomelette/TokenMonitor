@@ -24,3 +24,7 @@ export function useDashboard(providerId) {
 export function useHeatmap({ provider = 'all', year }) {
   return useQuery(data.heatmaps, JSON.stringify([provider, year]));
 }
+
+export function useUsageCharts({ days = 30, today = '' }) {
+  return useQuery(data.usageCharts, JSON.stringify([days, today]));
+}

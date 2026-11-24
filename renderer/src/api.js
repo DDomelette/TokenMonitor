@@ -13,6 +13,10 @@ export function getHeatmap(arg) {
   return api.invoke('get:heatmap', arg);
 }
 
+export function getUsageCharts(arg) {
+  return api.invoke('get:usage-charts', arg);
+}
+
 export function getTokenSpeed() {
   return api.invoke('get:token-speed');
 }

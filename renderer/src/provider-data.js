@@ -1,6 +1,6 @@
 import { createQueryCache } from './lib/query-cache.js';
 
-// 数据订阅独立于 React,让主窗/小窗以及两个热力图消费者共享取数。
+// 数据订阅独立于 React,让主窗/小窗以及多个图表消费者共享取数。
 export function createProviderData(api) {
   let providers = [];
   let initialized = false;
@@ -10,6 +10,10 @@ export function createProviderData(api) {
   const heatmaps = createQueryCache((key) => {
     const [provider, year] = JSON.parse(key);
     return api.getHeatmap({ provider, year });
+  });
+  const usageCharts = createQueryCache((key) => {
+    const [days] = JSON.parse(key);
+    return api.getUsageCharts({ days });
   });
 
   function setProviders(snapshot) {
@@ -22,6 +26,7 @@ export function createProviderData(api) {
     if (!change || change.channel === 'all') {
       dashboards.invalidate();
       heatmaps.invalidate();
+      usageCharts.invalidate();
       return;
     }
     const { providerId, channel } = change;
@@ -34,6 +39,8 @@ export function createProviderData(api) {
         // all 的明细与合计都不包含 Harness。
         return provider === providerId || (provider === 'all' && providerId !== 'dsh');
       });
+      // 图表按周期缓存；任一用量来源变化都可能影响对应日期与总计。
+      usageCharts.invalidate();
     }
   }
 
@@ -47,6 +54,7 @@ export function createProviderData(api) {
   return {
     dashboards,
     heatmaps,
+    usageCharts,
     refreshProviders,
     getSnapshot: () => providers,
     subscribe(listener) {

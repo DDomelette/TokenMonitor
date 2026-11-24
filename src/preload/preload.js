@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld('api', {
       'get:providers',
       'get:token-speed',
       'get:heatmap',
+      'get:usage-charts',
       'get:bounds',
       'get:session-state',
       'window:commit',
