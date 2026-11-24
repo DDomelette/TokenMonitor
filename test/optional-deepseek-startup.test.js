@@ -124,3 +124,14 @@ test('login skip uses a dedicated allow-listed IPC path and delegates to the win
   assert.match(ipcSource, /require\('\.\/core\/startup-windows'\)/);
   assert.match(ipcSource, /ipcMain\.on\('login:skip',[\s\S]*skipDeepseekLogin/);
 });
+
+
+test('Token Monitor starts the multi-platform dashboard without a DeepSeek gate', () => {
+  const source = read('src/main/index.js');
+  const startup = source.slice(source.lastIndexOf('  createTray();'));
+  assert.match(startup, /createMainWindow\(\)/);
+  assert.doesNotMatch(startup, /createLoginWindow\(\)/, 'no-credential startup must not show the legacy login page');
+  assert.doesNotMatch(startup, /createSessionWindow\(\)/, 'missing DeepSeek session must not open a blocking platform login');
+  assert.match(startup, /if \(apiKey\) scheduler\.poll\('deepseek', 'balance'\)/);
+  assert.match(startup, /if \(getSessionSnapshot\(runtime\)\.loggedIn\)[\s\S]*scheduler\.poll\('deepseek', 'usage'\)/);
+});

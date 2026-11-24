@@ -1,5 +1,5 @@
 appId: com.deepseek.monitor
-productName: DeepSeek Monitor
+productName: Token Monitor
 directories:
   output: build
 files:

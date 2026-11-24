@@ -381,7 +381,7 @@ function createTray() {
   const trayIconPath = path.join(__dirname, '..', 'renderer', 'assets', 'tray-icon.png');
   try {
     tray = new Tray(trayIconPath);
-    tray.setToolTip('DeepSeek Monitor');
+    tray.setToolTip('Token Monitor');
   } catch (e) {
     console.error('Failed to create tray:', e.message);
     return;
@@ -1059,39 +1059,35 @@ app.whenReady().then(() => {
   createTray();
   app.setLoginItemSettings({ openAtLogin: store.get('window.autoLaunch') });
 
-  const apiKey = store.get('providers.deepseek.apiKey');
-  if (apiKey) {
-    createMainWindow();
-    mainWindow.webContents.on('did-finish-load', () => {
-      mainWindow.webContents.send('settings:loaded', store.sanitizeSettings(store.store));
-      // 迷你模式:Chromium 会在导航时恢复站点持久化的 zoom,加载完成后重新压回 1
-      if (miniMode && miniMode.isActive()) miniMode.applyMiniZoom(mainWindow);
-      // 同步当前停靠状态:渲染层加载晚于收起动画时,竖条视图也能正确出现
-      if (edgeDock) {
-        const dockMeta = edgeDock.getDockMeta();
-        mainWindow.webContents.send('edge-dock:state', {
-          state: edgeDock.getState(),
-          edge: dockMeta ? dockMeta.edge : null
-        });
-      }
-      scheduler.poll('deepseek', 'balance');
+  // Token Monitor 是多平台总览：DeepSeek 余额 Key 与平台会话都只是可选数据源，
+  // 首次启动、Codex / Kimi 用户以及未配置任何凭据的用户都直接进入主窗口。
+  createMainWindow();
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.webContents.send('settings:loaded', store.sanitizeSettings(store.store));
+    // 迷你模式:Chromium 会在导航时恢复站点持久化的 zoom,加载完成后重新压回 1
+    if (miniMode && miniMode.isActive()) miniMode.applyMiniZoom(mainWindow);
+    // 同步当前停靠状态:渲染层加载晚于收起动画时,竖条视图也能正确出现
+    if (edgeDock) {
+      const dockMeta = edgeDock.getDockMeta();
+      mainWindow.webContents.send('edge-dock:state', {
+        state: edgeDock.getState(),
+        edge: dockMeta ? dockMeta.edge : null
+      });
+    }
 
-      const storedSessionToken = store.get('providers.deepseek.sessionToken') || null;
-      restoreSession(runtime, storedSessionToken);
-      if (getSessionSnapshot(runtime).loggedIn) {
-        console.log('[session] startup with stored token, starting usage timer');
-        scheduler.poll('deepseek', 'usage');
-      } else {
-        console.log('[session] startup without token, opening platform login window');
-        clearSession(runtime, '请登录平台获取用量');
-        createSessionWindow();
-      }
-      broadcastSessionState();
-      updateTrayMenu();
-    });
-  } else {
-    createLoginWindow();
-  }
+    const apiKey = store.get('providers.deepseek.apiKey');
+    if (apiKey) scheduler.poll('deepseek', 'balance');
+    const storedSessionToken = store.get('providers.deepseek.sessionToken') || null;
+    restoreSession(runtime, storedSessionToken);
+    if (getSessionSnapshot(runtime).loggedIn) {
+      console.log('[session] startup with stored token, starting usage timer');
+      scheduler.poll('deepseek', 'usage');
+    } else {
+      clearSession(runtime, '可在设置中连接 DeepSeek 平台');
+    }
+    broadcastSessionState();
+    updateTrayMenu();
+  });
 });
 
 app.on('window-all-closed', () => {
