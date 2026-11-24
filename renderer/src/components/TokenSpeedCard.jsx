@@ -2,8 +2,10 @@ import React, { useRef } from 'react';
 import { SHEN } from '../shen-assets.js';
 import useECharts from '../hooks/useECharts.js';
 import useTokenSpeed from '../hooks/useTokenSpeed.js';
+import useSemanticChartTheme from '../hooks/useSemanticChartTheme.js';
 import { saveSetting } from '../api.js';
 import CustomSelect from './CustomSelect.jsx';
+import UsageChartFrame from './UsageChartFrame.jsx';
 import {
   FILTER_OPTIONS,
   INTERVAL_OPTIONS,
@@ -44,9 +46,20 @@ function metricByProvider(snapshot, providerId) {
   return (snapshot && snapshot.providers || []).find((metric) => metric.providerId === providerId) || null;
 }
 
+function formatCompactRate(value, tiny = false) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return '--';
+  const number = Number(value);
+  if (Math.abs(number) < 1000) return String(Math.round(number));
+  return (tiny ? Math.round(number / 1000) : (number / 1000).toFixed(1)) + 'K';
+}
+
+const COMPACT_FILTER_LABELS = { all: '全部', deepseek: 'DS', codex: 'Codex', kimi: 'Kimi', dsh: 'Harness' };
+const COMPACT_INTERVAL_LABELS = { 10: '10s', 20: '20s', 30: '30s', 60: '1m', 180: '3m', 300: '5m', 3600: '1h', 18000: '5h' };
+
 export default function TokenSpeedCard() {
   const chartRef = useRef(null);
   const snapshot = useTokenSpeed();
+  const theme = useSemanticChartTheme();
   const providerFilter = snapshot && snapshot.providerFilter || 'all';
   const intervalSeconds = snapshot && snapshot.intervalSeconds || 30;
   const providerIds = visibleProviderIds(providerFilter);
@@ -55,10 +68,10 @@ export default function TokenSpeedCard() {
     providerFilter,
     series: {}
   }, {
-    isDark: document.body.classList.contains('dark'),
+    theme,
     compact: !!chartRef.current && chartRef.current.clientWidth < 220,
     dom: chartRef.current
-  }), [snapshot]);
+  }), [snapshot, theme]);
 
   function updateFilter(value) {
     saveSetting('data.tokenSpeed.providerFilter', value).catch(() => {});
@@ -68,55 +81,73 @@ export default function TokenSpeedCard() {
     saveSetting('data.tokenSpeed.intervalSeconds', Number(value)).catch(() => {});
   }
 
+  const controls = (
+    <div className="token-speed-controls">
+      <CustomSelect
+        ariaLabel="展示平台"
+        value={providerFilter}
+        options={FILTER_OPTIONS}
+        onChange={updateFilter}
+        compactLabels={COMPACT_FILTER_LABELS}
+      />
+      <CustomSelect
+        ariaLabel="统计周期"
+        value={intervalSeconds}
+        options={INTERVAL_OPTIONS}
+        onChange={updateInterval}
+        compactLabels={COMPACT_INTERVAL_LABELS}
+      />
+    </div>
+  );
+
+  const legend = (
+    <div className="usage-chart-legend token-speed-legends" aria-label="平台实时速率">
+      {providerIds.map((providerId) => {
+        const meta = PROVIDER_META[providerId];
+        const metric = metricByProvider(snapshot, providerId);
+        const rate = metric && metric.tokensPerMinute !== null
+          ? formatTokenRate(metric.tokensPerMinute)
+          : '--/min';
+        const deltaValid = metric && metric.deltaTokens !== null
+          && Number.isFinite(Number(metric.deltaTokens));
+        const delta = deltaValid
+          ? Math.round(Number(metric.deltaTokens)).toLocaleString('zh-CN')
+          : null;
+        const status = metricStatus(metric, intervalSeconds);
+        return (
+          <div className="usage-chart-legend-item token-speed-legend" key={providerId}>
+            <span
+              className="usage-chart-legend-mark line token-speed-dot"
+              style={{ backgroundColor: theme.providerColors[providerId] }}
+              aria-hidden="true"
+            />
+            <span className="token-speed-provider" title={meta.label}>{meta.shortLabel || meta.label}</span>
+            <strong title={meta.label + '：' + rate} aria-label={meta.label + '：' + rate}>
+              <span className="token-speed-rate-full">{rate}</span>
+              <span className="token-speed-rate-compact" aria-hidden="true">{formatCompactRate(metric && metric.tokensPerMinute)}</span>
+              <span className="token-speed-rate-tiny" aria-hidden="true">{formatCompactRate(metric && metric.tokensPerMinute, true)}</span>
+            </strong>
+            {providerFilter !== 'all' && delta !== null && <span className="token-speed-delta">本周期 +{delta} Token</span>}
+            {status && <span className="token-speed-status">{status}</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
     <section className="token-speed-card" aria-label="Token 消耗速度">
       <img className="shen-deco shen-lying" src={SHEN.lying} alt="" aria-hidden="true" />
       <div className="shen-deco shen-caption">主人今天用了好多 Token 呀…</div>
-      <div className="token-speed-header">
-        <div className="token-speed-title"><SpeedIcon /><span>Token 消耗速度</span></div>
-        <div className="token-speed-controls">
-          <CustomSelect
-            ariaLabel="展示平台"
-            value={providerFilter}
-            options={FILTER_OPTIONS}
-            onChange={updateFilter}
-          />
-          <CustomSelect
-            ariaLabel="统计周期"
-            value={intervalSeconds}
-            options={INTERVAL_OPTIONS}
-            onChange={updateInterval}
-          />
-        </div>
-      </div>
-
-      <div className="token-speed-legends">
-        {providerIds.map((providerId) => {
-          const meta = PROVIDER_META[providerId];
-          const metric = metricByProvider(snapshot, providerId);
-          const rate = metric && metric.tokensPerMinute !== null
-            ? formatTokenRate(metric.tokensPerMinute)
-            : '--/min';
-          // deltaTokens 缺失时不渲染整行,避免拼出 "本周期 +-- Token"
-          const deltaValid = metric && metric.deltaTokens !== null
-            && Number.isFinite(Number(metric.deltaTokens));
-          const delta = deltaValid
-            ? Math.round(Number(metric.deltaTokens)).toLocaleString('zh-CN')
-            : null;
-          const status = metricStatus(metric, intervalSeconds);
-          return (
-            <div className="token-speed-legend" key={providerId}>
-              <span className="token-speed-dot" style={{ backgroundColor: meta.color }} />
-              <span className="token-speed-provider">{meta.label}</span>
-              <strong>{rate}</strong>
-              {providerFilter !== 'all' && delta !== null && <span className="token-speed-delta">本周期 +{delta} Token</span>}
-              {status && <span className="token-speed-status">{status}</span>}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="token-speed-chart" ref={chartRef} />
+      <UsageChartFrame
+        title={<span className="token-speed-title"><SpeedIcon /><span>Token 消耗速度</span></span>}
+        subtitle="实时速率 · 滑动时间窗"
+        actions={controls}
+        legend={legend}
+        loading={!snapshot}
+      >
+        <div className="chart-container token-speed-chart" ref={chartRef} />
+      </UsageChartFrame>
     </section>
   );
 }

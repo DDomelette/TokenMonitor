@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
 <title>设置</title>
+<link rel="stylesheet" href="../shared/palette.css">
 <link rel="stylesheet" href="css/main.css">
 <style>
   .settings-body {
@@ -94,10 +95,10 @@
     width: 16px;
     left: 3px;
     bottom: 3px;
-    background: white;
+    background: var(--control-knob);
     border-radius: 50%;
     transition: all 200ms ease-out;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--control-knob-shadow);
   }
   .toggle-switch input:checked + .toggle-slider { background: var(--primary); }
   .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
@@ -116,7 +117,7 @@
     border-radius: 50%;
     background: var(--primary);
     cursor: pointer;
-    box-shadow: 0 1px 4px rgba(116, 184, 252, 0.3);
+    box-shadow: 0 1px 4px var(--control-thumb-shadow);
   }
   .slider-value { font-size: 12px; color: var(--text-secondary); margin-left: 8px; min-width: 32px; text-align: right; }
   .select-input {
@@ -136,7 +137,7 @@
     border-color: var(--primary);
   }
   .select-input:focus {
-    box-shadow: 0 0 0 2px rgba(116, 184, 252, 0.15);
+    box-shadow: 0 0 0 2px var(--control-focus-ring);
   }
   .custom-select {
     position: relative;
@@ -163,7 +164,7 @@
     border-color: var(--primary);
   }
   .custom-select.open .custom-select-trigger {
-    box-shadow: 0 0 0 2px rgba(116, 184, 252, 0.15);
+    box-shadow: 0 0 0 2px var(--control-focus-ring);
   }
   .custom-select-trigger svg {
     flex-shrink: 0;
@@ -181,7 +182,7 @@
     background: var(--bg-menu, var(--bg-card));
     border: 1px solid var(--border);
     border-radius: var(--radius-input);
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.18);
+    box-shadow: var(--settings-menu-shadow);
     z-index: 100;
     overflow: hidden;
     opacity: 0;
@@ -210,7 +211,7 @@
     transition: background 120ms ease-out;
   }
   .custom-select-option:hover {
-    background: rgba(116, 184, 252, 0.12);
+    background: var(--control-hover);
   }
   .custom-select-option.selected {
     color: var(--primary);
@@ -244,7 +245,7 @@
     border-color: var(--primary);
   }
   .text-input:focus {
-    box-shadow: 0 0 0 2px rgba(116, 184, 252, 0.15);
+    box-shadow: 0 0 0 2px var(--control-focus-ring);
   }
   .settings-footer {
     display: flex;
@@ -258,7 +259,7 @@
     align-self: center;
     margin-right: auto;
     max-width: 190px;
-    color: #c43b3b;
+    color: var(--status-danger);
     font-size: 12px;
     line-height: 1.3;
   }

@@ -1,6 +1,5 @@
-// GitHub 风格 Token 活动热力图:每日(53×7)/每周·累计三模式共用同一网格。
-// 每周/累计只是在每日网格基础上改变被上色的格子(列内从底向上按量填色)。
-// 颜色用主题 primary(#74B8FC)的 5 档透明度;hover tooltip 显示日期与用量。
+// 每日(53×7)/每周·累计三模式共用同一网格。
+// 所有色阶由 palette.css 注册，主题切换无需重建网格或中断 Tooltip。
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useHeatmap } from '../store.js';
@@ -17,10 +16,8 @@ import {
 const CELL = 12;
 const GAP = 2;
 const EMPTY_HEATMAP = { days: {}, maxDaily: 0 };
-const LEVEL_ALPHA = [0.06, 0.18, 0.38, 0.62, 0.9];
-// 0 档(无消耗)与跨年格底色走 CSS 变量,暗色主题下提亮;1-4 档仍为固定透明度
 function levelColor(level) {
-  return level === 0 ? 'var(--heatmap-l0)' : 'rgba(116,184,252,' + LEVEL_ALPHA[level] + ')';
+  return 'var(--heatmap-l' + level + ')';
 }
 const PROVIDER_OPTS = [
   { id: 'all', label: '全部' },
@@ -289,7 +286,7 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
                   background: !cell.inYear
                     ? 'var(--heatmap-out)'
                     : filled
-                      ? 'rgba(116,184,252,0.55)'
+                      ? 'var(--heatmap-stacked)'
                       : 'var(--heatmap-l0)'
                 };
                 return (
@@ -365,13 +362,18 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
     <div className="heatmap-widget" ref={rootRef}>
       <img className="shen-deco shen-sleep" src={SHEN.sleepy} alt="" aria-hidden="true" />
       <span className="shen-deco shen-zzz">Z z z…</span>
-      <div className="heatmap-head">
-        <span className="heatmap-title">Token 活动</span>
-        <div className="heatmap-providers">
+      <div className="usage-chart-header heatmap-head">
+        <div className="usage-chart-heading heatmap-heading">
+          <h3 className="usage-chart-title heatmap-title">Token 活动</h3>
+          <p className="usage-chart-subtitle">{year} 年用量 · 每日记录</p>
+        </div>
+        <div className="chart-range-control heatmap-providers" role="group" aria-label="热力图平台">
           {PROVIDER_OPTS.map((p) => (
             <button
               key={p.id}
-              className={'heatmap-tab' + (selProvider === p.id ? ' active' : '')}
+              type="button"
+              className={'chart-range-option' + (selProvider === p.id ? ' active' : '')}
+              aria-pressed={selProvider === p.id}
               onClick={() => setSelProvider(p.id)}
             >
               {p.label}
@@ -380,11 +382,19 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
         </div>
       </div>
       <div className="heatmap-modes">
-        {['daily', 'weekly', 'cumulative'].map((m) => (
-          <button key={m} className={'heatmap-tab' + (mode === m ? ' active' : '')} onClick={() => setMode(m)}>
-            {{ daily: '每日', weekly: '每周', cumulative: '累计' }[m]}
-          </button>
-        ))}
+        <div className="chart-range-control heatmap-mode-control" role="group" aria-label="热力图统计方式">
+          {['daily', 'weekly', 'cumulative'].map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={'chart-range-option' + (mode === m ? ' active' : '')}
+              aria-pressed={mode === m}
+              onClick={() => setMode(m)}
+            >
+              {{ daily: '每日', weekly: '每周', cumulative: '累计' }[m]}
+            </button>
+          ))}
+        </div>
         {selProvider === 'dsh' ? <span className="heatmap-local-only">本地记录 · 不计入总览</span>
           : selProvider !== 'all' && selProvider !== 'deepseek' ? <span className="heatmap-local-only">仅本机</span> : null}
         <span className="heatmap-total" title="当前视图总消耗">共 {formatToken(headTotal)} Token</span>
@@ -405,7 +415,7 @@ export default function TokenHeatmap({ provider = 'all', year: requestedYear }) 
         // 且 backdrop-filter 使 fixed 以卡片为包含块,撑大 scrollHeight
         // 触发 Dashboard fitItems 自动撑高模块(下边框自行向下扩张)
         ? createPortal(
-            <div ref={tipRef} className={'heatmap-tooltip' + (tip.below ? ' below' : '') + (tip.fading ? ' fading' : '')} style={{ left: tip.x, top: tip.y }}>
+            <div ref={tipRef} role="tooltip" className={'heatmap-tooltip' + (tip.below ? ' below' : '') + (tip.fading ? ' fading' : '')} style={{ left: tip.x, top: tip.y }}>
               <div className="heatmap-tooltip-head">
                 <span className="heatmap-tooltip-date">{tip.headText || dateLabel(tip.date)}</span>
                 <span className="heatmap-tooltip-total">{formatToken(tipTotal(tip.date))} Token</span>

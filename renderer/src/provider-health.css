@@ -1,13 +1,15 @@
 :root {
-  --provider-health-warning: var(--warning, #f59e0b);
-  --provider-health-error: var(--error, #ef4444);
-  --provider-health-loading: var(--accent, #3b82f6);
-  --provider-health-missing: var(--text-muted, #94a3b8);
+  --provider-health-warning: var(--status-warning);
+  --provider-health-error: var(--status-danger);
+  --provider-health-loading: var(--primary);
+  --provider-health-missing: var(--chart-model-5);
+  --provider-health-loading-halo: color-mix(in srgb, var(--primary) 16%, transparent);
+  --provider-health-warning-halo: color-mix(in srgb, var(--status-warning) 18%, transparent);
 }
 
 .status-dot.loading {
   background: var(--provider-health-loading);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16);
+  box-shadow: 0 0 0 2px var(--provider-health-loading-halo);
 }
 
 .status-dot.missing {
@@ -17,7 +19,7 @@
 .status-dot.degraded,
 .status-dot.stale {
   background: var(--provider-health-warning);
-  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+  box-shadow: 0 0 0 2px var(--provider-health-warning-halo);
 }
 
 .status-dot.error {

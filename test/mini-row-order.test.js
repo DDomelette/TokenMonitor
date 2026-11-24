@@ -53,13 +53,16 @@ test('settings expose the mini row order editor bound to window.miniRowOrder', (
   assert.match(settingsWindow, /order\.join\(','\)/);
 });
 
-test('shared mini ring tracks stay visible in light and dark themes', () => {
-  const styles = fs.readFileSync(path.join(root, 'renderer/src/styles.css'), 'utf8');
-  const theme = fs.readFileSync(path.join(root, 'renderer/src/theme.css'), 'utf8');
+test('shared mini ring tracks use registered gray tracks in light and Shen themes', () => {
+  const palette = fs.readFileSync(path.join(root, 'src/shared/palette.css'), 'utf8');
   const quotaRing = fs.readFileSync(path.join(root, 'renderer/src/components/QuotaRing.jsx'), 'utf8');
 
   assert.match(quotaRing, /TRACK_COLOR = 'var\(--mini-ring-track, var\(--border\)\)'/);
-  assert.doesNotMatch(miniView, /innerColor|INNER_R|KIMI_INNER_COLOR/);
-  assert.match(styles, /--mini-ring-track:\s*#CBD5E1;/i);
-  assert.match(theme, /:root\[data-theme\$='dark'\]\s*\{[^}]*--mini-ring-track:\s*#4B5563;/i);
+  assert.doesNotMatch(miniView, /innerColor|INNER_R|KIMI_INNER_COLOR|PROVIDER_META\[pid\]\.color|meta\.color/);
+  assert.match(miniView, /providerColor\(pid\)/);
+  assert.match(palette, /--mini-ring-track:\s*#CBD5E1;/i);
+  assert.match(palette, /:root\[data-theme\$='dark'\]\s*\{[^}]*--mini-ring-track:\s*#4B5563;/i);
+  const shen = palette.match(/:root\[data-theme='shen-chan'\]\s*\{([^}]+)\}/);
+  assert.ok(shen);
+  assert.doesNotMatch(shen[1], /--mini-ring-track\s*:/, '小深酱继承浅色中性灰轨道，不使用水蓝色');
 });

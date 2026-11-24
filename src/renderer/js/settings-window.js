@@ -105,7 +105,7 @@
     var feedback = document.getElementById('deepseekApiKeyFeedback');
     if (!feedback) return;
     feedback.textContent = message || '';
-    feedback.style.color = isError ? '#c43b3b' : 'var(--text-secondary)';
+    feedback.style.color = isError ? 'var(--status-danger)' : 'var(--text-secondary)';
     feedback.hidden = !message;
   }
 
@@ -152,7 +152,7 @@
     var feedback = document.getElementById('proxyFeedback');
     if (!feedback) return;
     feedback.textContent = message || '';
-    feedback.style.color = isError ? '#c43b3b' : 'var(--text-secondary)';
+    feedback.style.color = isError ? 'var(--status-danger)' : 'var(--text-secondary)';
     feedback.hidden = !message;
   }
 
@@ -682,13 +682,19 @@
   function applyTheme() {
     var windowValues = (themeSettings && themeSettings.window) || {};
     var theme = ThemeModeLink.resolveTheme(windowValues, systemThemeMedia.matches);
-    document.body.classList.toggle('dark', theme === 'dark' || theme === 'acrylic-dark');
+    var isDark = theme === 'dark' || theme === 'acrylic-dark';
+    // 共享注册表挂在 :root；body 上保留原有标记，兼容设置窗既有结构。
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+    document.body.classList.toggle('dark', isDark);
     document.body.dataset.theme = theme;
   }
 
   // 失焦实心化(Accent 未生效时主进程才下发)
   window.api.on('window:focus-state', function (focused) {
-    document.body.dataset.windowActive = String(focused !== false);
+    var active = String(focused !== false);
+    document.documentElement.dataset.windowActive = active;
+    document.body.dataset.windowActive = active;
   });
 
   function applyInitialTheme(settings) {

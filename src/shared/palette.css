@@ -1,0 +1,238 @@
+/*
+ * Token Monitor 共享语义色注册表：主窗、设置窗、SVG 与图表都从这里取色。
+ * 新颜色先按用途在这里注册，再由 CSS 或 getSemanticChartTheme() 引用。
+ * 平台色是识别色，跨主题保持不变；主题负责主色、表面、状态、网格与浮层。
+ * Canvas/ECharts 使用实际色值；CSS/SVG 可以直接消费变量与 color-mix()。
+ */
+:root {
+  /* 主窗与设置窗共用的浅色表面和文字。 */
+  --bg-window: rgba(255, 255, 255, 0.92);
+  --bg-window-dark: rgba(30, 32, 38, 0.92);
+  --bg-card: #F8F9FC;
+  --bg-card-dark: #252730;
+  --bg-muted: #EEF1F5;
+  --bg-menu: var(--chart-tooltip-bg);
+  --text-primary: #1A1A2E;
+  --text-secondary: #6B7280;
+  --text-inverse: #FFFFFF;
+  --text-on-primary: #111827;
+  --border: #E5E7EB;
+  --border-dark: #3A3C45;
+  --shadow-window: 0 4px 24px rgba(0, 0, 0, 0.08);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.04);
+
+  --primary: #74B8FC;
+  --primary-light: #95CAFF;
+  --primary-dark: #5A9FE0;
+
+  /* 控件、焦点、开关与设置窗浮层。 */
+  --control-hover: rgba(116, 184, 252, 0.10);
+  --control-active: rgba(116, 184, 252, 0.16);
+  --control-active-text: #5A9FE0;
+  --control-disabled: #9CA3AF;
+  --control-focus-ring: color-mix(in srgb, var(--primary) 15%, transparent);
+  --control-thumb-shadow: color-mix(in srgb, var(--primary) 30%, transparent);
+  --control-knob: #FFFFFF;
+  --control-knob-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  --settings-menu-shadow: 0 8px 28px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.18);
+  --settings-drop-target-bg: color-mix(in srgb, var(--primary) 4%, transparent);
+  --settings-resize-bg: #FFFFFF;
+  --on-accent: #FFFFFF;
+  --window-close-hover-bg: #C42B1C;
+  --window-close-hover-text: #FFFFFF;
+
+  /* 费用卡、额度条、状态圆点和诊断徽章共用同一组状态语义。 */
+  --status-success: #22C55E;
+  --status-warning: #F59E0B;
+  --status-danger: #EF4444;
+  --status-success-text: #176B3A;
+  --status-success-bg: #D9F4E4;
+  --status-warning-text: #8A5700;
+  --status-warning-bg: #FFE8A3;
+  --status-danger-text: #A82424;
+  --status-danger-bg: #FBE0E0;
+  --fee-card-glow: linear-gradient(135deg, color-mix(in srgb, var(--primary) 4%, transparent), color-mix(in srgb, var(--primary-light) 2%, transparent));
+  --fee-card-glow-hover: linear-gradient(135deg, color-mix(in srgb, var(--primary) 8%, transparent), color-mix(in srgb, var(--primary-light) 4%, transparent));
+  --quota-track: color-mix(in srgb, var(--primary) 12%, transparent);
+  --quota-empty-stripe: color-mix(in srgb, var(--status-danger) 20%, transparent);
+  --quota-stale-bg: color-mix(in srgb, var(--status-warning) 14%, transparent);
+  --quota-stale-border: color-mix(in srgb, var(--status-warning) 35%, transparent);
+
+  /* 迷你卡片与贴边速度条。 */
+  --mini-ring-track: #CBD5E1;
+  --mini-control-hover: var(--control-active);
+  --mini-strip-track: rgba(0, 0, 0, 0.22);
+
+  --chart-cost: #22A06B;
+  --chart-grid: #F3F4F6;
+  --chart-cursor: #9CA3AF;
+  --chart-tooltip-bg: rgba(255, 255, 255, 0.97);
+  --chart-tooltip-border: #E5E7EB;
+  --chart-tooltip-text: #1A1A2E;
+  --chart-tooltip-accent: #5A9FE0;
+  --chart-tooltip-label: #6B7280;
+  --chart-tooltip-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+
+  --provider-deepseek: #6E94F5;
+  --provider-codex: #F2A05C;
+  --provider-kimi: #4ECB94;
+  --provider-dsh: #A78BFA;
+
+  --chart-model-1: #5B8DEF;
+  --chart-model-2: #14B8A6;
+  --chart-model-3: #F59E0B;
+  --chart-model-4: #8B5CF6;
+  --chart-model-5: #94A3B8;
+
+  --heatmap-l0: rgba(148, 163, 184, 0.10);
+  --heatmap-l1: color-mix(in srgb, var(--primary) 18%, transparent);
+  --heatmap-l2: color-mix(in srgb, var(--primary) 38%, transparent);
+  --heatmap-l3: color-mix(in srgb, var(--primary) 62%, transparent);
+  --heatmap-l4: color-mix(in srgb, var(--primary) 90%, transparent);
+  --heatmap-stacked: color-mix(in srgb, var(--primary) 55%, transparent);
+  --heatmap-out: rgba(148, 163, 184, 0.06);
+}
+
+:root[data-theme$='dark'] {
+  --bg-window: rgba(30, 32, 38, 0.94);
+  --bg-card: #252730;
+  --bg-muted: #343945;
+  --text-primary: #F3F4F6;
+  --text-secondary: #A8B0BD;
+  --text-inverse: #111827;
+  --border: #3A3C45;
+  --shadow-window: 0 12px 34px rgba(0, 0, 0, 0.34);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.28);
+  --settings-resize-bg: #1E2026;
+
+  --control-hover: rgba(255, 255, 255, 0.07);
+  --control-active: rgba(116, 184, 252, 0.20);
+  --control-active-text: #95CAFF;
+  --control-disabled: #6B7280;
+
+  --status-success-text: #86E3B4;
+  --status-success-bg: #173B2C;
+  --status-warning-text: #FCD34D;
+  --status-warning-bg: #4A3516;
+  --status-danger-text: #FCA5A5;
+  --status-danger-bg: #4A252D;
+
+  --fee-card-glow: linear-gradient(145deg, color-mix(in srgb, var(--primary) 9%, transparent), transparent 52%);
+  --mini-ring-track: #4B5563;
+  --mini-strip-track: rgba(255, 255, 255, 0.45);
+
+  --chart-grid: #2A2C35;
+  --chart-cursor: #6B7280;
+  --chart-tooltip-bg: rgba(30, 32, 38, 0.97);
+  --chart-tooltip-border: #3A3C45;
+  --chart-tooltip-text: #E5E7EB;
+  --chart-tooltip-accent: #95CAFF;
+  --chart-tooltip-label: #A8B0BD;
+  --chart-tooltip-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
+
+  --heatmap-l0: rgba(148, 163, 184, 0.16);
+  --heatmap-l1: color-mix(in srgb, var(--primary) 24%, transparent);
+  --heatmap-out: rgba(148, 163, 184, 0.09);
+}
+
+:root[data-theme='acrylic-light'] {
+  --bg-window: rgba(255, 255, 255, 0.14);
+  --bg-card: rgba(255, 255, 255, 0.36);
+  --text-secondary: #4B5563;
+  --border: rgba(0, 0, 0, 0.10);
+  --shadow-window: 0 12px 34px rgba(0, 0, 0, 0.18);
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.10), 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+:root[data-theme='acrylic-dark'] {
+  --bg-window: rgba(20, 22, 28, 0.15);
+  --bg-card: rgba(255, 255, 255, 0.05);
+  --text-primary: #F3F4F6;
+  --text-secondary: #A8B0BD;
+  --text-inverse: #111827;
+  --border: rgba(255, 255, 255, 0.14);
+  --shadow-window: 0 12px 34px rgba(0, 0, 0, 0.34);
+  --shadow-card: 0 6px 20px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.30);
+}
+
+/* Accent 不可用时的失焦实底由主进程通知，两个窗口共用同一组语义变量。 */
+:root[data-theme='acrylic-light'][data-window-active='false'] {
+  --bg-window: rgba(246, 247, 249, 0.93);
+  --text-secondary: #6B7280;
+}
+
+:root[data-theme='acrylic-dark'][data-window-active='false'] {
+  --bg-window: rgba(30, 32, 38, 0.94);
+}
+
+:root[data-theme='shen-chan'] {
+  color-scheme: light;
+
+  /* 小深酱的装饰色也在这里登记，组件样式只引用变量。 */
+  --shen-navy: #1C2A52;
+  --shen-window: #FAF6EE;
+  --shen-paper: #FFFDF8;
+  --shen-aqua: #4DB3E6;
+  --shen-aqua-300: #8FD4F2;
+  --shen-aqua-100: #E3F3FC;
+  --shen-gold: #D9A441;
+  --shen-dot-aqua: rgba(77, 179, 230, 0.10);
+  --shen-dot-gold: rgba(217, 164, 65, 0.10);
+  --shen-quota-safe-alt: #6CC4EE;
+  --shen-quota-warning-alt: #E8B95E;
+  --shen-quota-danger-alt: #EF9A9A;
+  --shen-card-veil: linear-gradient(color-mix(in srgb, var(--shen-paper) 92%, transparent), color-mix(in srgb, var(--shen-paper) 92%, transparent));
+
+  --bg-window: var(--shen-window);
+  --bg-card: var(--shen-paper);
+  --bg-muted: var(--shen-aqua-100);
+  --text-primary: #2B3A6E;
+  --text-secondary: #43568F;
+  --text-inverse: var(--shen-paper);
+  --border: #D9DEEE;
+  --shadow-window: 0 12px 34px rgba(28, 42, 82, 0.20);
+  --shadow-card: 0 4px 14px rgba(28, 42, 82, 0.10);
+
+  --primary: #4DB3E6;
+  --primary-light: #8FD4F2;
+  --primary-dark: #327FA8;
+  --control-hover: rgba(77, 179, 230, 0.09);
+  --control-active: #E3F3FC;
+  --control-active-text: #2B3A6E;
+  --control-disabled: #94A3B8;
+  --on-accent: var(--shen-paper);
+  --window-close-hover-bg: #9C3F4A;
+  --window-close-hover-text: #FFFFFF;
+
+  --status-success: #4E9878;
+  --status-warning: var(--shen-gold);
+  --status-danger: #E57373;
+  --status-success-text: #2F6B52;
+  --status-success-bg: #DDF0E7;
+  --status-warning-text: #765111;
+  --status-warning-bg: #F6E7BE;
+  --status-danger-text: #9C3F4A;
+  --status-danger-bg: #F8E0E1;
+  /* 小深酱沿用浅色的中性灰圆环轨道，只让平台进度色突出。 */
+  --mini-control-hover: var(--shen-aqua-100);
+  --mini-strip-track: color-mix(in srgb, var(--shen-navy) 16%, transparent);
+
+  --chart-cost: #4E9878;
+  --chart-grid: rgba(67, 86, 143, 0.12);
+  --chart-cursor: #80B9D2;
+  --chart-tooltip-bg: rgba(255, 253, 248, 0.98);
+  --chart-tooltip-border: #D9DEEE;
+  --chart-tooltip-text: #2B3A6E;
+  --chart-tooltip-accent: #327FA8;
+  --chart-tooltip-label: #43568F;
+  --chart-tooltip-shadow: 0 8px 24px rgba(28, 42, 82, 0.16);
+
+  --chart-model-1: #6E94F5;
+  --chart-model-2: #67AEA0;
+  --chart-model-3: #D9A441;
+  --chart-model-4: #9A8BB9;
+  --chart-model-5: #94A3B8;
+
+  --heatmap-l0: color-mix(in srgb, var(--shen-aqua-100) 72%, transparent);
+  --heatmap-out: rgba(67, 86, 143, 0.06);
+}

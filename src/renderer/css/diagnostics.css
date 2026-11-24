@@ -1,14 +1,10 @@
+/* 所有颜色来自 ../shared/palette.css；这里只保留诊断窗结构与材质。 */
 :root {
   color-scheme: light;
-  --bg-window: #f4f6f9;
-  --bg-surface: #ffffff;
-  --bg-muted: #eef1f5;
-  --text-primary: #1a1f2b;
-  --text-secondary: #687083;
-  --border: #dfe3ea;
-  --primary: #4169e1;
-  --primary-hover: #3156c7;
-  --shadow: 0 12px 32px rgba(24, 32, 48, 0.12);
+}
+
+:root[data-theme$='dark'] {
+  color-scheme: dark;
 }
 
 * {
@@ -24,44 +20,6 @@ body {
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
   color: var(--text-primary);
   background: transparent;
-}
-
-body.dark,
-body[data-theme='acrylic-dark'] {
-  color-scheme: dark;
-  --bg-window: #1f222a;
-  --bg-surface: #292d37;
-  --bg-muted: #343945;
-  --text-primary: #f1f3f7;
-  --text-secondary: #aab1c0;
-  --border: #3d4350;
-  --primary: #7593f2;
-  --primary-hover: #8ba4f5;
-  --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
-}
-
-body[data-theme='acrylic-light'] {
-  --bg-window: rgba(255, 255, 255, 0.22);
-  --bg-surface: rgba(255, 255, 255, 0.58);
-  --text-primary: #182033;
-  --text-secondary: #4f596c;
-  --border: rgba(255, 255, 255, 0.5);
-}
-
-body[data-theme='acrylic-dark'] {
-  --bg-window: rgba(20, 22, 28, 0.22);
-  --bg-surface: rgba(255, 255, 255, 0.07);
-  --border: rgba(255, 255, 255, 0.12);
-}
-
-body[data-theme='acrylic-light'][data-window-active='false'] {
-  --bg-window: rgba(246, 247, 249, 0.96);
-  --bg-surface: rgba(255, 255, 255, 0.92);
-}
-
-body[data-theme='acrylic-dark'][data-window-active='false'] {
-  --bg-window: rgba(30, 32, 38, 0.96);
-  --bg-surface: rgba(42, 45, 54, 0.94);
 }
 
 #app {
@@ -107,8 +65,8 @@ body[data-theme='acrylic-dark'][data-window-active='false'] {
 }
 
 .titlebar-btn:hover {
-  color: #ffffff;
-  background: #c42b1c;
+  color: var(--window-close-hover-text);
+  background: var(--window-close-hover-bg);
 }
 
 .diagnostics-summary {
@@ -139,10 +97,10 @@ body[data-theme='acrylic-dark'][data-window-active='false'] {
 
 .diagnostics-group-list {
   overflow: hidden;
-  background: var(--bg-surface);
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-card);
 }
 
 .diagnostic-row {
@@ -175,13 +133,13 @@ body[data-theme='acrylic-dark'][data-window-active='false'] {
 
 .status-pending .diagnostic-status,
 .status-skipped .diagnostic-status {
-  color: #646c7c;
+  color: var(--text-secondary);
   background: var(--bg-muted);
 }
 
 .status-running .diagnostic-status {
-  color: #8a5700;
-  background: #ffe8a3;
+  color: var(--status-warning-text);
+  background: var(--status-warning-bg);
 }
 
 .status-running .diagnostic-spinner {
@@ -207,13 +165,13 @@ body[data-theme='acrylic-dark'][data-window-active='false'] {
 }
 
 .status-pass .diagnostic-status {
-  color: #176b3a;
-  background: #d9f4e4;
+  color: var(--status-success-text);
+  background: var(--status-success-bg);
 }
 
 .status-fail .diagnostic-status {
-  color: #a82424;
-  background: #fbe0e0;
+  color: var(--status-danger-text);
+  background: var(--status-danger-bg);
 }
 
 .diagnostic-detail {
@@ -247,7 +205,7 @@ body[data-theme='acrylic-dark'][data-window-active='false'] {
 }
 
 .guide-feedback {
-  color: #b42323;
+  color: var(--status-danger-text);
   font-size: 12px;
 }
 
@@ -258,7 +216,7 @@ body[data-theme='acrylic-dark'][data-window-active='false'] {
   gap: 10px;
   padding: 12px 20px;
   border-top: 1px solid var(--border);
-  background: var(--bg-surface);
+  background: var(--bg-card);
 }
 
 #diagnosticsActionStatus {
@@ -284,13 +242,13 @@ body[data-theme='acrylic-dark'][data-window-active='false'] {
 }
 
 .btn-primary {
-  color: #ffffff;
+  color: var(--text-on-primary);
   background: var(--primary);
   border-color: var(--primary);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--primary-hover);
+  background: var(--primary-light);
 }
 
 .btn:disabled {

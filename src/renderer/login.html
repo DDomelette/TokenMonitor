@@ -3,8 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DeepSeek Monitor - 登录</title>
+<title>Token Monitor - 登录</title>
+<link rel="stylesheet" href="../shared/palette.css">
 <style>
+  /* 颜色与主窗、设置窗统一由共享注册表提供，这里只保留登录布局。 */
   html {
     background: transparent;
     overflow: hidden;
@@ -24,9 +26,9 @@
   .container {
     width: 100%;
     height: 100%;
-    background: rgba(255, 255, 255, 0.93);
+    background: var(--bg-window);
     border-radius: 0;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-window);
     display: flex;
     flex-direction: column;
     padding: 0 28px 32px;
@@ -40,20 +42,20 @@
   .login-titlebar-text {
     font-size: 11px;
     font-weight: 600;
-    color: #6B7280;
+    color: var(--text-secondary);
     letter-spacing: 0.5px;
     text-transform: uppercase;
   }
   .logo {
     font-size: 20px;
     font-weight: 700;
-    color: #4D6BFE;
+    color: var(--primary-dark);
     margin-bottom: 4px;
     text-align: center;
   }
   .subtitle {
     font-size: 12px;
-    color: #6B7280;
+    color: var(--text-secondary);
     text-align: center;
     margin-bottom: 24px;
   }
@@ -61,34 +63,34 @@
   .form-label {
     font-size: 12px;
     font-weight: 600;
-    color: #1A1A2E;
+    color: var(--text-primary);
     margin-bottom: 6px;
     display: block;
   }
   .form-input {
     width: 100%;
     padding: 10px 12px;
-    border: 1px solid #E5E7EB;
+    border: 1px solid var(--border);
     border-radius: 8px;
     font-size: 13px;
-    color: #1A1A2E;
-    background: #F8F9FC;
+    color: var(--text-primary);
+    background: var(--bg-card);
     outline: none;
     font-family: monospace;
     transition: all 200ms ease-out;
   }
   .form-input:focus {
-    border-color: #74B8FC;
-    box-shadow: 0 0 0 2px rgba(116, 184, 252, 0.15);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px var(--control-focus-ring);
   }
   .form-hint {
     font-size: 11px;
-    color: #9CA3AF;
+    color: var(--text-secondary);
     margin-top: 4px;
   }
   .error-msg {
     font-size: 11px;
-    color: #EF4444;
+    color: var(--status-danger-text);
     margin-top: 4px;
     min-height: 16px;
   }
@@ -109,58 +111,26 @@
     transition: all 200ms ease-out;
   }
   .btn-primary {
-    background: #4D6BFE;
-    color: #FFFFFF;
+    background: var(--primary);
+    color: var(--text-on-primary);
   }
-  .btn-primary:hover { background: #7B92FF; }
-  .btn-primary:disabled { background: #9CA3AF; cursor: not-allowed; }
+  .btn-primary:hover { background: var(--primary-light); }
+  .btn-primary:disabled { background: var(--control-disabled); cursor: not-allowed; }
   .btn-secondary {
     background: transparent;
-    color: #6B7280;
-    border: 1px solid #E5E7EB;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
   }
-  .btn-secondary:hover { background: rgba(0, 0, 0, 0.03); }
-  /* 暗色:与主窗口 theme.css 同一套配色 */
-  body.dark .container {
-    background: rgba(30, 32, 38, 0.94);
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.34);
-  }
-  body.dark .login-titlebar-text,
-  body.dark .subtitle { color: #A8B0BD; }
-  body.dark .form-label { color: #F3F4F6; }
-  body.dark .form-input {
-    background: #252730;
-    border-color: #3A3C45;
-    color: #F3F4F6;
-  }
-  body.dark .btn-secondary {
-    color: #A8B0BD;
-    border-color: #3A3C45;
-  }
-  body.dark .btn-secondary:hover { background: rgba(255, 255, 255, 0.06); }
-  /* 亚克力主题:容器高透,透出 DWM 磨砂 */
-  body[data-theme='acrylic-light'] .container {
-    background: rgba(255, 255, 255, 0.08);
-  }
-  body[data-theme='acrylic-dark'] .container {
-    background: rgba(20, 22, 28, 0.15);
-  }
-  /* 失焦实心化:退回实底 */
-  body[data-theme='acrylic-light'][data-window-active='false'] .container {
-    background: rgba(255, 255, 255, 0.93);
-  }
-  body[data-theme='acrylic-dark'][data-window-active='false'] .container {
-    background: rgba(30, 32, 38, 0.94);
-  }
+  .btn-secondary:hover { background: var(--control-hover); }
 </style>
 </head>
 <body>
 <div class="container">
   <div class="login-titlebar">
-    <span class="login-titlebar-text">DeepSeek Monitor</span>
+    <span class="login-titlebar-text">Token Monitor</span>
   </div>
-  <div class="logo"> DeepSeek Monitor</div>
-  <div class="subtitle">连接到您的 DeepSeek 账户以开始监控</div>
+  <div class="logo"> Token Monitor</div>
+  <div class="subtitle">可选：连接 DeepSeek 账户以补充余额与用量</div>
 
   <div class="form-group">
     <label class="form-label">API Key</label>

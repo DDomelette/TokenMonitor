@@ -225,6 +225,8 @@ class FakeDocument {
   constructor(ids = []) {
     this.ids = new Map();
     this.listeners = {};
+    // 设置窗主题变量挂在根节点；测试 DOM 与真实文档保持一致。
+    this.documentElement = new FakeElement('html', this);
     this.body = new FakeElement('body', this);
     ids.forEach((id) => {
       const element = this.createElement(id.endsWith('Btn') ? 'button' : 'div');
@@ -569,6 +571,8 @@ test('diagnostics renderer uses only the narrow bridge and never requests or rec
   assert.deepEqual(harness.genericApiAccesses, []);
   assert.equal(harness.invoked.some((call) => call.channel === 'get:settings'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(harness.listeners, 'settings:loaded'), false);
+  assert.equal(harness.document.documentElement.dataset.theme, 'acrylic-dark');
+  assert.equal(harness.document.documentElement.style.colorScheme, 'dark');
   assert.equal(harness.document.body.dataset.theme, 'acrylic-dark');
   assert.doesNotMatch(JSON.stringify(harness.invoked), /Alice|rollout|mcp-private/);
 });
@@ -589,10 +593,15 @@ test('diagnostics controls use only the active run, declared channels, and stabl
   });
   await flushPromises();
 
+  assert.equal(harness.document.documentElement.dataset.theme, 'acrylic-dark');
   assert.equal(harness.document.body.dataset.theme, 'acrylic-dark');
   assert.equal(harness.document.body.classList.contains('dark'), true);
   harness.listeners['window:focus-state'](false);
+  assert.equal(harness.document.documentElement.dataset.windowActive, 'false');
   assert.equal(harness.document.body.dataset.windowActive, 'false');
+  harness.listeners['window:focus-state'](true);
+  assert.equal(harness.document.documentElement.dataset.windowActive, 'true');
+  assert.equal(harness.document.body.dataset.windowActive, 'true');
 
   harness.document.getElementById('copyDiagnosticsBtn').click();
   await flushPromises();

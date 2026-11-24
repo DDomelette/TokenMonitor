@@ -61,7 +61,7 @@ test('acrylic-dark also activates the shared dark hooks (body.dark) for charts a
 });
 
 test('acrylic themes ship semi-transparent window and card surfaces', () => {
-  const css = fs.readFileSync(path.join(root, 'renderer/src/theme.css'), 'utf8');
+  const css = fs.readFileSync(path.join(root, 'src/shared/palette.css'), 'utf8');
 
   assert.match(css, /:root\[data-theme='acrylic-light'\]/);
   assert.match(css, /:root\[data-theme='acrylic-dark'\]/);
@@ -90,11 +90,12 @@ test('settings and login windows treat acrylic-dark as dark', () => {
 
 test('acrylic cards float above the window with a layered drop shadow', () => {
   const css = fs.readFileSync(path.join(root, 'renderer/src/theme.css'), 'utf8');
+  const palette = fs.readFileSync(path.join(root, 'src/shared/palette.css'), 'utf8');
 
   // 亮调:卡片在磨砂底上投出柔和阴影,避免与窗口底"割裂"
-  assert.match(css, /\[data-theme='acrylic-light'\][\s\S]*?--shadow-card: 0 4px 16px rgba\(0, 0, 0, 0\.10\), 0 1px 3px rgba\(0, 0, 0, 0\.08\)/);
+  assert.match(palette, /\[data-theme='acrylic-light'\][\s\S]*?--shadow-card: 0 4px 16px rgba\(0, 0, 0, 0\.10\), 0 1px 3px rgba\(0, 0, 0, 0\.08\)/);
   // 暗调:阴影更深,拉开卡片与深色磨砂底的层次
-  assert.match(css, /\[data-theme='acrylic-dark'\][\s\S]*?--shadow-card: 0 6px 20px rgba\(0, 0, 0, 0\.45\), 0 1px 3px rgba\(0, 0, 0, 0\.30\)/);
+  assert.match(palette, /\[data-theme='acrylic-dark'\][\s\S]*?--shadow-card: 0 6px 20px rgba\(0, 0, 0, 0\.45\), 0 1px 3px rgba\(0, 0, 0, 0\.30\)/);
   // 亮调卡片基础样式无阴影,亚克力亮调需显式消费 --shadow-card,并加玻璃内高光与背景模糊
   assert.match(css, /:root\[data-theme='acrylic-light'\] \.component-surface \{[^}]*box-shadow: var\(--shadow-card\), inset 0 1px 0 rgba\(255, 255, 255, 0\.35\)/);
   assert.match(css, /:root\[data-theme='acrylic-light'\] \.component-surface \{[^}]*backdrop-filter: blur\(16px\) saturate\(140%\)/);
@@ -104,40 +105,48 @@ test('acrylic cards float above the window with a layered drop shadow', () => {
 test('settings window follows the acrylic theme like the main window', () => {
   const js = fs.readFileSync(path.join(root, 'src/renderer/js/settings-window.js'), 'utf8');
   const css = fs.readFileSync(path.join(root, 'src/renderer/css/main.css'), 'utf8');
+  const palette = fs.readFileSync(path.join(root, 'src/shared/palette.css'), 'utf8');
 
+  assert.match(js, /document\.documentElement\.dataset\.theme = theme;/);
   assert.match(js, /document\.body\.dataset\.theme = theme;/);
-  assert.match(css, /body\[data-theme='acrylic-light'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.28\)/);
-  assert.match(css, /body\[data-theme='acrylic-light'\] #app \{\s*background: rgba\(255, 255, 255, 0\.08\)/);
-  assert.match(css, /body\[data-theme='acrylic-dark'\][\s\S]*?--bg-window-dark: rgba\(20, 22, 28, 0\.15\)/);
-  assert.match(css, /body\[data-theme='acrylic-dark'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.05\)/);
-  assert.match(css, /body\[data-theme='acrylic-dark'\][\s\S]*?--text-primary: #F3F4F6/);
-  assert.match(css, /body\[data-theme='acrylic-dark'\][\s\S]*?--text-secondary: #C7CDD6/);
+  assert.match(palette, /:root\[data-theme='acrylic-light'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.36\)/);
+  assert.match(css, /#app \{[^}]*background: var\(--bg-window\)/);
+  assert.match(palette, /:root\[data-theme='acrylic-dark'\][\s\S]*?--bg-window: rgba\(20, 22, 28, 0\.15\)/);
+  assert.match(palette, /:root\[data-theme='acrylic-dark'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.05\)/);
+  assert.match(palette, /:root\[data-theme='acrylic-dark'\][\s\S]*?--text-primary: #F3F4F6/);
+  assert.match(palette, /:root\[data-theme='acrylic-dark'\][\s\S]*?--text-secondary: #A8B0BD/);
 });
 
 test('login window follows the acrylic theme like the main window', () => {
   const js = fs.readFileSync(path.join(root, 'src/renderer/js/login.js'), 'utf8');
   const html = fs.readFileSync(path.join(root, 'src/renderer/login.html'), 'utf8');
+  const palette = fs.readFileSync(path.join(root, 'src/shared/palette.css'), 'utf8');
 
+  assert.match(js, /document\.documentElement\.dataset\.theme = theme;/);
   assert.match(js, /document\.body\.dataset\.theme = theme;/);
-  assert.match(html, /body\[data-theme='acrylic-light'\] \.container \{\s*background: rgba\(255, 255, 255, 0\.08\)/);
-  assert.match(html, /body\[data-theme='acrylic-dark'\] \.container \{\s*background: rgba\(20, 22, 28, 0\.15\)/);
+  assert.match(palette, /:root\[data-theme='acrylic-light'\]\s*\{[^}]*--bg-window: rgba\(255, 255, 255, 0\.14\)/);
+  assert.match(palette, /:root\[data-theme='acrylic-dark'\]\s*\{[^}]*--bg-window: rgba\(20, 22, 28, 0\.15\)/);
+  assert.match(html, /\.container\s*\{[^}]*background:\s*var\(--bg-window\)/);
+  assert.doesNotMatch(html, /body\[data-theme='acrylic-(?:light|dark)'\] \.container/);
 });
 
 test('acrylic-light keeps text and titlebar icons readable on the light backdrop', () => {
   const css = fs.readFileSync(path.join(root, 'renderer/src/theme.css'), 'utf8');
+  const palette = fs.readFileSync(path.join(root, 'src/shared/palette.css'), 'utf8');
 
   // 浅色磨砂上的标题栏、状态栏和窗口按钮统一使用深色系
   assert.match(css, /:root\[data-theme='acrylic-light'\] \.titlebar-text \{\s*color: #1F2937/);
   assert.match(css, /:root\[data-theme='acrylic-light'\] \.statusbar \{[^}]*color: #4B5563/);
   assert.match(css, /:root\[data-theme='acrylic-light'\] \.titlebar-btn \{\s*color: rgba\(31, 41, 55, 0\.82\)/);
   // 卡片保留轻度白色衬底,兼顾深色次级文本可读性与磨砂纹理可见性
-  assert.match(css, /\[data-theme='acrylic-light'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.36\)/);
-  assert.match(css, /\[data-theme='acrylic-light'\][\s\S]*?--text-secondary: #4B5563/);
+  assert.match(palette, /\[data-theme='acrylic-light'\][\s\S]*?--bg-card: rgba\(255, 255, 255, 0\.36\)/);
+  assert.match(palette, /\[data-theme='acrylic-light'\][\s\S]*?--text-secondary: #4B5563/);
 
-  // 设置窗口同样使用深色文字,不能在浅色磨砂上显示白字
+  // 设置窗口继承同一组深色文字变量，结构样式不再私藏固定色
   const mainCss = fs.readFileSync(path.join(root, 'src/renderer/css/main.css'), 'utf8');
-  assert.match(mainCss, /body\[data-theme='acrylic-light'\][\s\S]*?--text-primary: #1A1A2E/);
-  assert.match(mainCss, /body\[data-theme='acrylic-light'\][\s\S]*?--text-secondary: #4B5563/);
+  assert.match(mainCss, /\.titlebar-text \{[^}]*color: var\(--text-primary\)/);
+  assert.match(palette, /:root\s*\{[\s\S]*?--text-primary: #1A1A2E/);
+  assert.match(palette, /:root\[data-theme='acrylic-light'\]\s*\{[^}]*--text-secondary: #4B5563/);
 });
 
 test('mini window has an explicit glass surface in both acrylic themes', () => {
@@ -172,29 +181,41 @@ test('theme-sync tracks window focus state for the inactive fallback', async () 
 
 test('acrylic themes ship a deliberate inactive solid fallback', () => {
   const css = fs.readFileSync(path.join(root, 'renderer/src/theme.css'), 'utf8');
+  const palette = fs.readFileSync(path.join(root, 'src/shared/palette.css'), 'utf8');
 
   // Accent 不可用时失焦会退化为纯色:主动切成接近常规主题的实底,而不是被动显示 DWM fallback
-  assert.match(css, /\[data-theme='acrylic-light'\]\[data-window-active='false'\][\s\S]*?--bg-window: rgba\(246, 247, 249, 0\.93\)/);
-  assert.match(css, /\[data-theme='acrylic-dark'\]\[data-window-active='false'\][\s\S]*?--bg-window: rgba\(30, 32, 38, 0\.94\)/);
+  assert.match(palette, /\[data-theme='acrylic-light'\]\[data-window-active='false'\][\s\S]*?--bg-window: rgba\(246, 247, 249, 0\.93\)/);
+  assert.match(palette, /\[data-theme='acrylic-dark'\]\[data-window-active='false'\][\s\S]*?--bg-window: rgba\(30, 32, 38, 0\.94\)/);
   // 亮色实底下铬层文字图标回到深灰
   assert.match(css, /\[data-theme='acrylic-light'\]\[data-window-active='false'\][\s\S]*?\.titlebar-btn \{[^}]*color: #5B6372/i);
 });
 
-test('settings and login windows ship the same inactive fallback', () => {
+test('settings, login and diagnostics windows ship the same inactive fallback', () => {
   const mainCss = fs.readFileSync(path.join(root, 'src/renderer/css/main.css'), 'utf8');
+  const palette = fs.readFileSync(path.join(root, 'src/shared/palette.css'), 'utf8');
   const loginHtml = fs.readFileSync(path.join(root, 'src/renderer/login.html'), 'utf8');
+  const diagnosticsCss = fs.readFileSync(path.join(root, 'src/renderer/css/diagnostics.css'), 'utf8');
   const settings = fs.readFileSync(path.join(root, 'src/renderer/js/settings-window.js'), 'utf8');
   const login = fs.readFileSync(path.join(root, 'src/renderer/js/login.js'), 'utf8');
+  const diagnostics = fs.readFileSync(path.join(root, 'src/renderer/js/diagnostics-window.js'), 'utf8');
 
-  // 设置窗口:失焦实底 + 文字回到深色系
-  assert.match(mainCss, /body\[data-theme='acrylic-light'\]\[data-window-active='false'\][\s\S]*?--text-primary: #1A1A2E/);
-  assert.match(mainCss, /body\[data-theme='acrylic-light'\]\[data-window-active='false'\] #app \{\s*background: rgba\(255, 255, 255, 0\.93\)/);
-  // 登录窗口:失焦实底
-  assert.match(loginHtml, /body\[data-theme='acrylic-light'\]\[data-window-active='false'\] \.container \{\s*background: rgba\(255, 255, 255, 0\.93\)/);
-  assert.match(loginHtml, /body\[data-theme='acrylic-dark'\]\[data-window-active='false'\] \.container \{\s*background: rgba\(30, 32, 38, 0\.94\)/);
-  // 两个窗口都监听焦点通道
-  assert.match(settings, /window:focus-state/);
-  assert.match(settings, /dataset\.windowActive/);
-  assert.match(login, /window:focus-state/);
-  assert.match(login, /dataset\.windowActive/);
+  // 三个窗口共用注册表中的失焦实底，结构样式只消费窗口表面变量。
+  assert.match(palette, /:root\[data-theme='acrylic-light'\]\[data-window-active='false'\]\s*\{[^}]*--bg-window: rgba\(246, 247, 249, 0\.93\)/);
+  assert.match(palette, /:root\s*\{[\s\S]*?--text-primary: #1A1A2E/);
+  assert.match(mainCss, /#app \{[^}]*background: var\(--bg-window\)/);
+  assert.match(loginHtml, /\.container\s*\{[^}]*background:\s*var\(--bg-window\)/);
+  assert.match(diagnosticsCss, /#app\s*\{[^}]*background:\s*var\(--bg-window\)/);
+  assert.doesNotMatch(loginHtml, /body\[data-theme='acrylic-(?:light|dark)'\]\[data-window-active='false'\]/);
+
+  for (const source of [settings, login]) assert.match(source, /window:focus-state/);
+  // 诊断窗通过窄桥接收同一焦点通道，不直接暴露通用 ipcRenderer。
+  assert.match(diagnostics, /diagnosticsApi\.onFocusState/);
+  assert.match(
+    fs.readFileSync(path.join(root, 'src/preload/diagnostics-preload.js'), 'utf8'),
+    /onFocusState: \(callback\) => subscribe\('window:focus-state', callback\)/
+  );
+  for (const source of [settings, login, diagnostics]) {
+    assert.match(source, /document\.documentElement\.dataset\.windowActive = active;/);
+    assert.match(source, /document\.body\.dataset\.windowActive = active;/);
+  }
 });
