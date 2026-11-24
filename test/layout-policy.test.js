@@ -90,11 +90,11 @@ test('migration rebuilds default compact layout with stat cards in a row', () =>
 
 test('resize direction advances to the next chart preset instead of snapping back', () => {
   assert.equal(
-    policy.presetAfterResize('model-bar', 'wide', { w: 12, h: 6 }, { w: 11, h: 6 }).name,
+    policy.presetAfterResize('model-bar', 'wide', { w: 12, h: 8 }, { w: 11, h: 8 }).name,
     'half'
   );
   assert.equal(
-    policy.presetAfterResize('model-bar', 'wide', { w: 6, h: 6 }, { w: 5, h: 5 }).name,
+    policy.presetAfterResize('model-bar', 'wide', { w: 6, h: 8 }, { w: 5, h: 8 }).name,
     'card'
   );
 });
@@ -110,7 +110,7 @@ test('migration preserves compact component order', () => {
   );
   assert.deepEqual(
     migrated.compact.items.map((item) => item.y),
-    [0, 7, 14, 20, 27, 33, 33, 33, 37, 43, 49]
+    [0, 7, 14, 22, 30, 38, 38, 38, 42, 50, 58]
   );
   assert.deepEqual(
     migrated.compact.items.map((item) => item.x),

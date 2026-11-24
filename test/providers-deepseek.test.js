@@ -142,9 +142,13 @@ test('deepseek adapter fetchUsage skips months already marked fetched', async ()
   };
   try {
     await deepseekAdapter.fetchUsage(ctx, { month: 8, year: 2026 });
-    // 全部历史月份已标记 → 当月 cost+amount + 上月 cost(近30天花费跨月补抓)三个请求,无回填请求
-    assert.equal(mock.paths().length, 3);
+    // Token 历史已标记；费用仍补抓上月及更前两月，为近 90 天图表建立本地日聚合。
+    assert.equal(mock.paths().length, 5);
     assert.ok(mock.paths().some((p) => p.includes('/api/v0/usage/cost?month=7&year=2026')));
+    assert.ok(mock.paths().some((p) => p.includes('/api/v0/usage/cost?month=6&year=2026')));
+    assert.ok(mock.paths().some((p) => p.includes('/api/v0/usage/cost?month=5&year=2026')));
+    assert.deepEqual(data['providers.deepseek.fetchedCostMonths'].sort(), ['2026-05', '2026-06', '2026-07']);
+    assert.ok(data['usageDailyCost']['deepseek:' + TODAY] > 0);
   } finally {
     mock.restore();
   }

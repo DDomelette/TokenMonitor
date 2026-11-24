@@ -17,26 +17,25 @@ test('ECharts defers data updates while hovered and applies the latest option af
   assert.match(source, /dom\.removeEventListener\('pointerleave', onPointerLeave\)/);
 });
 
-test('periodically refreshed bar charts do not replay entrance animations', () => {
-  for (const file of ['components/ChartWidget.jsx', 'components/ProviderBar.jsx']) {
-    const source = readRenderer(file);
-    assert.match(source, /animation: false/, file + ' must disable repeated chart animation');
-    assert.doesNotMatch(source, /animation: true/, file + ' must not restart entrance animation');
-  }
+test('charts skip entrance animation and keep updates brief and motion-aware', () => {
+  const source = readRenderer('components/ChartWidget.jsx');
+  assert.match(source, /prefers-reduced-motion: reduce/);
+  assert.match(source, /reduced \? \{ animation: false \}/);
+  assert.match(source, /animationDuration: 0/, 'must not replay entrance animation on refresh');
+  assert.match(source, /animationDurationUpdate: 240/, 'updates should remain brief');
 });
 
-test('date-driven charts advance at Beijing midnight even when query data is unchanged', () => {
+test('date-driven charts share the usage query and advance at Beijing midnight', () => {
   const clock = readRenderer('hooks/useBeijingDayKey.js');
   assert.match(clock, /createLocalCalendarClock\(/);
   assert.match(clock, /onChange: \(_, nextKey\) => setDayKey\(nextKey\)/);
 
-  const providerBar = readRenderer('components/ProviderBar.jsx');
-  assert.match(providerBar, /const today = useBeijingDayKey\(\)/);
-  assert.match(providerBar, /lastDays\(DAYS, today\)/);
-  assert.match(providerBar, /\[details, today\]/);
-
-  const chartWidget = readRenderer('components/ChartWidget.jsx');
-  assert.match(chartWidget, /const today = useBeijingDayKey\(\)/);
-  assert.match(chartWidget, /buildDailyOption\(domRef\.current, dailyData, today\)/);
-  assert.match(chartWidget, /\[id, dailyData, curvePoints, today\]/);
+  for (const file of ['components/ChartWidget.jsx', 'components/ProviderBar.jsx']) {
+    const source = readRenderer(file);
+    assert.match(source, /const today = useBeijingDayKey\(\)/, file);
+    assert.match(source, /useUsageCharts\(\{ days, today \}\)/, file);
+    const dependencies = source.match(/\[([^\]]*today[^\]]*)\]\)/);
+    assert.ok(dependencies, file + ' must refresh chart data after the Beijing day changes');
+    assert.match(dependencies[1], /\btheme\b/, file + ' must also refresh chart colors after a theme change');
+  }
 });

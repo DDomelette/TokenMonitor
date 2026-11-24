@@ -2,6 +2,8 @@
 // 依赖由 index.js 注入(deps),窗口创建/生命周期仍留在 index.js。
 const { ipcMain, BrowserWindow } = require('electron');
 const { buildHeatmap } = require('./core/heatmap');
+const { buildUsageCharts } = require('./core/usage-charts');
+const { beijingDayKey } = require('./core/beijing-calendar');
 const { sanitizeSettings, isWritableSettingKey, resolveWritableSettingKey } = require('./core/settings-security');
 const { resetSettingsStore } = require('./core/settings-reset');
 const { saveSetting } = require('./core/settings-write');
@@ -133,6 +135,24 @@ module.exports = function setupIPC(deps) {
     return deps.tokenSpeedRuntime
       ? deps.tokenSpeedRuntime.getSnapshot()
       : { enabled: false, providers: [], series: {} };
+  });
+
+  /* ======== Usage Charts: 四张统计图共享同一组按日数据 ======== */
+
+  ipcMain.handle('get:usage-charts', (event, arg) => {
+    const state = deps.scheduler.getState('deepseek') || {};
+    const usage = state.usage || null;
+    const deepseekStats = usage ? {
+      tokenDaily: usage.amount && usage.amount.dailyData,
+      costDaily: usage.cost && usage.cost.dailyData
+    } : null;
+    return buildUsageCharts({
+      days: arg && arg.days,
+      today: beijingDayKey(),
+      usageDaily: effectiveUsageDaily(deps.store),
+      usageDailyCost: deps.store.get('usageDailyCost') || {},
+      deepseekStats
+    });
   });
 
   /* ======== Heatmap ======== */

@@ -15,16 +15,11 @@
       { name: 'wide', w: 6, h: 4 }
     ],
     chart: [
+      // 小卡保留 sparkline 模式；带完整标题、图例与双轴的卡至少 8 格高。
       { name: 'card', w: 4, h: 4 },
-      { name: 'half', w: 6, h: 6 },
-      { name: 'full', w: 12, h: 6 },
-      { name: 'tall', w: 12, h: 8 }
-    ],
-    speed: [
-      { name: 'card', w: 4, h: 4 },
-      { name: 'half', w: 6, h: 6 },
-      { name: 'full', w: 12, h: 7 },
-      { name: 'tall', w: 12, h: 9 }
+      { name: 'half', w: 6, h: 8 },
+      { name: 'full', w: 12, h: 8 },
+      { name: 'tall', w: 12, h: 10 }
     ],
     heatmap: [
       { name: 'full', w: 12, h: 10 },
@@ -76,14 +71,14 @@
       label: 'DeepSeek 每日 Token 消耗',
       settingsKey: 'components.modelBar',
       kind: 'chart',
-      placement: { x: 0, y: 18, w: 12, h: 6, preset: 'full' }
+      placement: { x: 0, y: 18, w: 12, h: 8, preset: 'full' }
     },
     {
       id: 'provider-bar',
       label: '每日 Token 消耗',
       settingsKey: 'components.providerBar',
       kind: 'chart',
-      placement: { x: 0, y: 24, w: 12, h: 6, preset: 'full' }
+      placement: { x: 0, y: 26, w: 12, h: 8, preset: 'full' }
     },
     {
       id: 'token-speed',
@@ -91,29 +86,29 @@
       settingsLabel: 'Token 消耗速度（会增加内存占用）',
       settingsKey: 'components.tokenSpeed',
       defaultVisible: false,
-      kind: 'speed',
-      placement: { x: 0, y: 30, w: 12, h: 7, preset: 'full' }
+      kind: 'chart',
+      placement: { x: 0, y: 34, w: 12, h: 8, preset: 'full' }
     },
     {
       id: 'token-line',
       label: 'DeepSeek Token 消耗趋势',
       settingsKey: 'components.tokenLine',
       kind: 'chart',
-      placement: { x: 0, y: 37, w: 12, h: 6, preset: 'full' }
+      placement: { x: 0, y: 41, w: 12, h: 8, preset: 'full' }
     },
     {
       id: 'cost-line',
       label: 'DeepSeek 费用增长趋势',
       settingsKey: 'components.costLine',
       kind: 'chart',
-      placement: { x: 0, y: 43, w: 12, h: 6, preset: 'full' }
+      placement: { x: 0, y: 49, w: 12, h: 8, preset: 'full' }
     },
     {
       id: 'token-heatmap',
       label: 'Token 活动',
       settingsKey: 'components.tokenHeatmap',
       kind: 'heatmap',
-      placement: { x: 0, y: 49, w: 12, h: 10, preset: 'full' }
+      placement: { x: 0, y: 57, w: 12, h: 10, preset: 'full' }
     }
   ].map(function (definition) {
     var { kind, placement, ...metadata } = definition;
