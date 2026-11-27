@@ -31,6 +31,11 @@ test('dark theme never paints the grid-item wrapper or nested component roots', 
   assert.doesNotMatch(themeCss, /\[data-theme[$]?='dark'\][^{]*\.token-heatmap(?![\w-])/);
 });
 
-test('chart-widget class marks the outer grid-stack-item section, not a paintable card', () => {
-  assert.match(dashboard, /grid-stack-item ' \+ \(FEE_IDS\.includes\(item\.id\) \? 'fee-card-widget' : 'chart-widget'\)/);
+test('registered itemClass marks the outer section, not a paintable card', () => {
+  assert.match(dashboard, /grid-stack-item ' \+ component\.itemClass/);
+  const registry = require('../src/renderer/js/layout/component-registry.js');
+  registry.list().filter((component) => component.kind !== 'card').forEach((component) => {
+    assert.equal(component.itemClass, 'chart-widget', component.id);
+    assert.match(component.surfaceClass, /surface/, component.id);
+  });
 });

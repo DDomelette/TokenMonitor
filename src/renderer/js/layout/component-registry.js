@@ -3,36 +3,79 @@
   root.ComponentRegistry = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
-  // 同类组件共用尺寸模板;两种断点输出保持原来的独立可编辑结构。
-  var presetGroups = {
-    quota: [
-      { name: 'full', w: 12, h: 7 },
-      { name: 'half', w: 6, h: 7 },
-      { name: 'tall', w: 12, h: 9 }
-    ],
-    card: [
-      { name: 'card', w: 4, h: 4 },
-      { name: 'wide', w: 6, h: 4 }
-    ],
-    chart: [
-      // 小卡保留 sparkline 模式；带完整标题、图例与双轴的卡至少 8 格高。
-      { name: 'card', w: 4, h: 4 },
-      { name: 'half', w: 6, h: 8 },
-      { name: 'full', w: 12, h: 8 },
-      { name: 'tall', w: 12, h: 10 }
-    ],
-    heatmap: [
-      { name: 'full', w: 12, h: 10 },
-      { name: 'half', w: 6, h: 11 },
-      { name: 'tall', w: 12, h: 12 }
-    ]
+  // 同类组件只在这里定义一次结构。新组件注册 id、设置键和默认位置，
+  // 自动继承渲染器、标题、表面样式、测高与缩放约束；个别差异用显式覆写表达。
+  var kindDefinitions = {
+    quota: {
+      renderer: 'quota',
+      itemClass: 'chart-widget',
+      surfaceClass: 'embed-surface',
+      showTitle: false,
+      autoFit: true,
+      requiresProvider: true,
+      usesChartRange: false,
+      minSize: { w: 6, h: 5 },
+      presets: [
+        { name: 'full', w: 12, h: 7 },
+        { name: 'half', w: 6, h: 7 },
+        { name: 'tall', w: 12, h: 9 }
+      ]
+    },
+    card: {
+      renderer: 'fee',
+      itemClass: 'fee-card-widget',
+      surfaceClass: 'fee-card-surface',
+      showTitle: true,
+      autoFit: true,
+      requiresProvider: false,
+      usesChartRange: false,
+      minSize: { w: 4, h: 3 },
+      presets: [
+        { name: 'card', w: 4, h: 4 },
+        { name: 'wide', w: 6, h: 4 }
+      ]
+    },
+    chart: {
+      renderer: 'usage-chart',
+      itemClass: 'chart-widget',
+      surfaceClass: 'chart-surface',
+      showTitle: false,
+      autoFit: false,
+      requiresProvider: false,
+      usesChartRange: true,
+      minSize: { w: 4, h: 4 },
+      presets: [
+        // 小卡保留 sparkline 模式；带完整标题、图例与双轴的卡至少 8 格高。
+        { name: 'card', w: 4, h: 4 },
+        { name: 'half', w: 6, h: 8 },
+        { name: 'full', w: 12, h: 8 },
+        { name: 'tall', w: 12, h: 10 }
+      ]
+    },
+    heatmap: {
+      renderer: 'heatmap',
+      itemClass: 'chart-widget',
+      surfaceClass: 'chart-surface embed-surface',
+      showTitle: false,
+      autoFit: true,
+      requiresProvider: false,
+      usesChartRange: false,
+      minSize: { w: 6, h: 10 },
+      presets: [
+        { name: 'full', w: 12, h: 10 },
+        { name: 'half', w: 6, h: 11 },
+        { name: 'tall', w: 12, h: 12 }
+      ]
+    }
   };
+
   var components = [
     {
       id: 'quota-codex',
       label: 'Codex 额度',
       settingsKey: 'components.quotaCodex',
       kind: 'quota',
+      providerId: 'codex',
       placement: { x: 0, y: 0, w: 12, h: 7, preset: 'full' }
     },
     {
@@ -40,6 +83,7 @@
       label: 'Kimi 额度',
       settingsKey: 'components.quotaKimi',
       kind: 'quota',
+      providerId: 'kimi',
       placement: { x: 0, y: 7, w: 12, h: 7, preset: 'full' }
     },
     {
@@ -78,6 +122,7 @@
       label: '每日 Token 消耗',
       settingsKey: 'components.providerBar',
       kind: 'chart',
+      renderer: 'provider-bar',
       placement: { x: 0, y: 26, w: 12, h: 8, preset: 'full' }
     },
     {
@@ -87,6 +132,9 @@
       settingsKey: 'components.tokenSpeed',
       defaultVisible: false,
       kind: 'chart',
+      renderer: 'token-speed',
+      surfaceClass: 'chart-surface embed-surface',
+      usesChartRange: false,
       placement: { x: 0, y: 34, w: 12, h: 8, preset: 'full' }
     },
     {
@@ -111,9 +159,16 @@
       placement: { x: 0, y: 57, w: 12, h: 10, preset: 'full' }
     }
   ].map(function (definition) {
-    var { kind, placement, ...metadata } = definition;
-    return Object.assign({ defaultVisible: true }, metadata, {
-      presets: { compact: presetGroups[kind], wide: presetGroups[kind] },
+    var kind = definition.kind;
+    var placement = definition.placement;
+    var metadata = Object.assign({}, definition);
+    delete metadata.kind;
+    delete metadata.placement;
+    var defaults = kindDefinitions[kind];
+    if (!defaults) throw new Error('Unknown component kind: ' + kind);
+    return Object.assign({ defaultVisible: true, resizable: true }, defaults, metadata, {
+      kind: kind,
+      presets: { compact: defaults.presets, wide: defaults.presets },
       defaultPlacement: { compact: placement, wide: placement }
     });
   });
