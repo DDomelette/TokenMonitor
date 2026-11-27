@@ -75,39 +75,44 @@ export function presetAfterResize(id, breakpoint, start, current) {
   const presets = getPresets(id, breakpoint);
   if (!presets.length) return null;
 
-  const from = nearestPreset(id, breakpoint, start && start.w, start && start.h);
+  // 自动撑高只改变运行期实际高度，不能把持久化预设的身份一起带走。
+  const from = namedPreset(id, breakpoint, start && start.preset)
+    || nearestPreset(id, breakpoint, start && start.w, start && start.h);
   if (!from) return null;
 
+  let startW = Number(start && start.w);
+  let startH = Number(start && start.h);
+  if (!Number.isFinite(startW)) startW = from.w;
+  if (!Number.isFinite(startH)) startH = from.h;
   let currentW = Number(current && current.w);
   let currentH = Number(current && current.h);
-  if (!Number.isFinite(currentW)) currentW = from.w;
-  if (!Number.isFinite(currentH)) currentH = from.h;
+  if (!Number.isFinite(currentW)) currentW = startW;
+  if (!Number.isFinite(currentH)) currentH = startH;
 
-  const grewW = currentW > from.w;
-  const grewH = currentH > from.h;
-  const shrankW = currentW < from.w;
-  const shrankH = currentH < from.h;
+  // 方向来自真实手势，而不是来自自动撑高后的尺寸与预设之间的差值。
+  const grewW = currentW > startW;
+  const grewH = currentH > startH;
+  const shrankW = currentW < startW;
+  const shrankH = currentH < startH;
+  const changedW = grewW || shrankW;
+  const changedH = grewH || shrankH;
+  if (!changedW && !changedH) return from;
 
-  let candidates = [];
-  if ((grewW || grewH) && !(shrankW || shrankH)) {
-    candidates = presets.filter(function (preset) {
-      return (!grewW || preset.w > from.w)
-        && (!grewH || preset.h > from.h)
-        && (!grewW || preset.h >= from.h)
-        && (!grewH || preset.w >= from.w);
-    });
-  } else if ((shrankW || shrankH) && !(grewW || grewH)) {
-    candidates = presets.filter(function (preset) {
-      return (!shrankW || preset.w < from.w)
-        && (!shrankH || preset.h < from.h)
-        && (!shrankW || preset.h <= from.h)
-        && (!shrankH || preset.w <= from.w);
-    });
-  }
+  // 只约束用户实际拖动的轴；更窄但更高、更宽但更矮都是合法预设路径。
+  const candidates = presets.filter(function (preset) {
+    return (!grewW || preset.w > from.w)
+      && (!shrankW || preset.w < from.w)
+      && (!grewH || preset.h > from.h)
+      && (!shrankH || preset.h < from.h);
+  });
+  if (!candidates.length) return nearestPreset(id, breakpoint, currentW, currentH);
 
-  return candidates.length
-    ? closestPreset(candidates, currentW, currentH)
-    : nearestPreset(id, breakpoint, currentW, currentH);
+  // 未拖动的轴以预设基准计距离，避免内容撑高把只拖宽误判成 tall。
+  return closestPreset(
+    candidates,
+    changedW ? currentW : from.w,
+    changedH ? currentH : from.h
+  );
 }
 
 function namedPreset(id, breakpoint, name) {

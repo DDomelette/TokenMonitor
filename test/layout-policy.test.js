@@ -99,6 +99,111 @@ test('resize direction advances to the next chart preset instead of snapping bac
   );
 });
 
+test('every registered preset is reachable by diagonal resize in both breakpoints', () => {
+  const registry = require('../src/renderer/js/layout/component-registry.js');
+  for (const component of registry.list()) {
+    for (const breakpoint of ['compact', 'wide']) {
+      const presets = component.presets[breakpoint];
+      for (const from of presets) {
+        for (const target of presets) {
+          const result = policy.presetAfterResize(
+            component.id,
+            breakpoint,
+            { w: from.w, h: from.h, preset: from.name },
+            { w: target.w, h: target.h }
+          );
+          assert.deepEqual(
+            { name: result.name, w: result.w, h: result.h },
+            { name: target.name, w: target.w, h: target.h },
+            `${component.id} ${breakpoint} ${from.name} -> ${target.name}`
+          );
+        }
+      }
+    }
+  }
+});
+
+test('single-axis gestures never lock or reverse the dragged axis for any component', () => {
+  const registry = require('../src/renderer/js/layout/component-registry.js');
+  for (const component of registry.list()) {
+    for (const breakpoint of ['compact', 'wide']) {
+      const presets = component.presets[breakpoint];
+      for (const from of presets) {
+        for (const target of presets) {
+          for (const axis of ['w', 'h']) {
+            if (from[axis] === target[axis]) continue;
+            const current = { w: from.w, h: from.h, [axis]: target[axis] };
+            const result = policy.presetAfterResize(
+              component.id,
+              breakpoint,
+              { w: from.w, h: from.h, preset: from.name },
+              current
+            );
+            const expectedDirection = Math.sign(target[axis] - from[axis]);
+            assert.equal(
+              Math.sign(result[axis] - from[axis]),
+              expectedDirection,
+              `${component.id} ${breakpoint} ${from.name} ${axis} -> ${target[axis]} returned ${result.name}`
+            );
+          }
+        }
+      }
+    }
+  }
+});
+
+test('heatmap can shrink and regrow between presets whose heights differ', () => {
+  const shrunk = policy.presetAfterResize(
+    'token-heatmap',
+    'wide',
+    { w: 12, h: 10, preset: 'full' },
+    { w: 6, h: 10 }
+  );
+  assert.deepEqual(shrunk, { name: 'half', w: 6, h: 11 });
+
+  const regrown = policy.presetAfterResize(
+    'token-heatmap',
+    'wide',
+    { w: 6, h: 11, preset: 'half' },
+    { w: 12, h: 11 }
+  );
+  assert.deepEqual(regrown, { name: 'full', w: 12, h: 10 });
+
+  const shortened = policy.presetAfterResize(
+    'token-heatmap',
+    'wide',
+    { w: 6, h: 11, preset: 'half' },
+    { w: 6, h: 10 }
+  );
+  assert.deepEqual(shortened, { name: 'full', w: 12, h: 10 });
+});
+
+test('auto-fit height does not distort width-only resize direction or preset identity', () => {
+  const fromHalf = policy.presetAfterResize(
+    'quota-kimi',
+    'wide',
+    { w: 6, h: 16, preset: 'half' },
+    { w: 12, h: 16 }
+  );
+  assert.deepEqual(fromHalf, { name: 'full', w: 12, h: 7 });
+
+  const inferredHalf = policy.presetAfterResize(
+    'quota-kimi',
+    'wide',
+    { w: 6, h: 8 },
+    { w: 12, h: 8 }
+  );
+  assert.deepEqual(inferredHalf, { name: 'full', w: 12, h: 7 });
+
+  const noOp = policy.presetAfterResize(
+    'quota-kimi',
+    'wide',
+    { w: 6, h: 16, preset: 'half' },
+    { w: 6, h: 16 }
+  );
+  assert.deepEqual(noOp, { name: 'half', w: 6, h: 7 });
+});
+
 test('migration preserves compact component order', () => {
   const migrated = policy.migrate({
     componentOrder: ['cost-line', 'balance-card', 'today-cost-card', 'cache-rate-card', 'model-bar', 'token-line']
