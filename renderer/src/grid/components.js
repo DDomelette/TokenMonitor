@@ -8,5 +8,7 @@ if (!registry) {
 
 const list = registry.list;
 const get = registry.get;
+const registerRuntime = registry.registerRuntime;
+const getRuntime = registry.getRuntime;
 
-export { list, get };
+export { list, get, registerRuntime, getRuntime };

@@ -1,11 +1,14 @@
-// 仪表盘容器:gridstack 布局 + 组件渲染 + 编辑模式 + 布局持久化。
-// 数据流:组件内部 useDashboard(store) 订阅,grid 结构由 useMemo 冻结,避免与 gridstack DOM 冲突。
+// 仪表盘容器:gridstack 布局 + 注册组件渲染 + 编辑模式 + 布局持久化。
+// grid 结构由 useMemo 冻结,避免与 gridstack DOM 冲突；组件差异由注册表声明。
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { GridStack } from 'gridstack';
 import { applyGridItemHeights, fitGridItemHeight } from '../grid/fit-height.js';
+import { createResizeIsolatedEngine, isResizeBeyondLimits } from '../grid/resize-engine.js';
+import { list as listComponents, get as getComponent } from '../grid/components.js';
+import RegisteredWidgetBody from '../grid/widget-runtime.jsx';
 import 'gridstack/dist/gridstack.min.css';
 import { getSettings, on, send } from '../api.js';
-import { useDashboard, useProviders } from '../store.js';
+import { useProviders } from '../store.js';
 import {
   validateState,
   validateLayout,
@@ -15,88 +18,12 @@ import {
   nearestFreePosition
 } from '../grid/policy.js';
 import { mergeLayoutItems, visibleComponentIds } from '../grid/visibility.js';
-import FeeCard from './FeeCard.jsx';
-import ChartWidget from './ChartWidget.jsx';
-import QuotaCard from './QuotaCard.jsx';
-import TokenHeatmap from './TokenHeatmap.jsx';
-import ProviderBar from './ProviderBar.jsx';
-import TokenSpeedCard from './TokenSpeedCard.jsx';
 import { ChartRangeToolbar } from './ChartRange.jsx';
 
-const LABELS = {
-  'balance-card': '余额',
-  'today-cost-card': '今日消耗',
-  'cache-rate-card': '缓存命中率',
-  'model-bar': 'DeepSeek 每日 Token 消耗',
-  'provider-bar': '每日 Token 消耗',
-  'token-line': 'DeepSeek Token 消耗',
-  'cost-line': 'DeepSeek 费用增长趋势'
-};
-
-const FEE_IDS = ['balance-card', 'today-cost-card', 'cache-rate-card'];
-// 嵌入式板块:quota 卡与热力图也作为 grid item(自带标题,不再渲染 component-title)
-const QUOTA_IDS = ['quota-codex', 'quota-kimi'];
-const EMBED_IDS = QUOTA_IDS.concat(['token-heatmap', 'token-speed']);
-// 图表(echarts flex 填满可用高度,永不溢出)不参与自动撑高
-const CHART_IDS = ['model-bar', 'provider-bar', 'token-speed', 'token-line', 'cost-line'];
-const USAGE_CHART_IDS = ['model-bar', 'provider-bar', 'token-line', 'cost-line'];
-// 各模块最小尺寸(grid 单位),防止编辑模式下压到不可用时手柄再也抓不到
-const MIN_SIZES = {
-  'quota-codex': { w: 6, h: 5 },
-  'quota-kimi': { w: 6, h: 5 },
-  'balance-card': { w: 4, h: 3 },
-  'today-cost-card': { w: 4, h: 3 },
-  'cache-rate-card': { w: 4, h: 3 },
-  'model-bar': { w: 4, h: 4 },
-  'provider-bar': { w: 4, h: 4 },
-  'token-speed': { w: 4, h: 4 },
-  'token-line': { w: 4, h: 4 },
-  'cost-line': { w: 4, h: 4 },
-  'token-heatmap': { w: 6, h: 10 }
-};
-
-function UsageWidget({ id, onContentChange }) {
-  const dashboard = useDashboard('deepseek');
-  useEffect(() => { if (onContentChange) onContentChange(); }, [dashboard, onContentChange]);
-  if (FEE_IDS.includes(id)) {
-    return <FeeCard id={id} balance={dashboard ? dashboard.balance : null} stats={dashboard ? dashboard.stats : null} />;
-  }
-  // Token 与费用曲线统一使用 DeepSeek 官网数据，Harness 不能再次累加。
-  return <ChartWidget id={id} dashboard={dashboard} />;
-}
-
-function QuotaWidget({ id, onContentChange }) {
-  const providers = useProviders();
-  useEffect(() => { if (onContentChange) onContentChange(); }, [providers, onContentChange]);
-  const pid = id.slice('quota-'.length);
-  const provider = providers.find((p) => p.id === pid);
-  if (!provider) return <div className="embed-empty">未检测到 {pid} 数据源</div>;
-  return (
-    <QuotaCard
-      provider={provider}
-      quotaState={provider.quota}
-      authStatus={provider.authStatus}
-      quotaFetchedAt={provider.quotaFetchedAt}
-      onRetry={() => send('refresh:dashboard')}
-    />
-  );
-}
-
-function WidgetBody({ id, onContentChange }) {
-  if (QUOTA_IDS.includes(id)) {
-    return <QuotaWidget id={id} onContentChange={onContentChange} />;
-  }
-  if (id === 'token-heatmap') {
-    return <TokenHeatmap />;
-  }
-  if (id === 'token-speed') {
-    return <TokenSpeedCard />;
-  }
-  if (id === 'provider-bar') {
-    return <ProviderBar />;
-  }
-  return <UsageWidget id={id} onContentChange={onContentChange} />;
-}
+const DashboardGridEngine = createResizeIsolatedEngine(GridStack);
+const COMPONENTS = listComponents();
+const USAGE_CHART_IDS = COMPONENTS.filter((component) => component.usesChartRange)
+  .map((component) => component.id);
 
 export default function Dashboard({ editing }) {
   const hostRef = useRef(null);
@@ -178,11 +105,18 @@ export default function Dashboard({ editing }) {
       float: false,
       animate: true,
       staticGrid: !editing,
+      engineClass: DashboardGridEngine,
       // 移动只认顶部拖拽柄:整个模块不再都是拖动区,抓边框缩放不会误触发移动
       draggable: { handle: '.module-drag-handle' },
       resizable: { handles: 'e, se, s, sw, w, nw, n, ne' }
     }, host);
     gridRef.current = grid;
+    // GridStack 不读取自定义 preset 属性；显式挂到节点上，避免拖动中的临时尺寸
+    // 被当成新预设，也让自动撑高后的下一次手势仍能认出原预设。
+    host.querySelectorAll('.grid-stack-item').forEach((itemEl) => {
+      const node = itemEl.gridstackNode;
+      if (node) node.preset = itemEl.dataset.layoutPreset;
+    });
 
     /* ---- 内容溢出时自动撑高模块,替代内部滚动条 ----
        测量 .grid-stack-item-content 的 scrollHeight,按格高调整到合身。
@@ -199,7 +133,8 @@ export default function Dashboard({ editing }) {
       const updates = [];
       host.querySelectorAll('.grid-stack-item').forEach((itemEl) => {
         const id = itemEl.getAttribute('gs-id');
-        if (CHART_IDS.includes(id)) return;
+        const component = getComponent(id);
+        if (!component || !component.autoFit) return;
         const content = itemEl.querySelector('.grid-stack-item-content');
         if (!content) return;
         const node = itemEl.gridstackNode;
@@ -208,7 +143,7 @@ export default function Dashboard({ editing }) {
         const baseItem = baseItems.find((it) => it.id === id);
         const base = Math.max(
           baseItem && baseItem.h ? baseItem.h : 1,
-          MIN_SIZES[id] ? MIN_SIZES[id].h : 1
+          component.minSize.h
         );
         const target = fitGridItemHeight({
           base,
@@ -279,24 +214,49 @@ export default function Dashboard({ editing }) {
     grid.on('change', onChange);
 
     /* ---- 缩放手势:合法尺寸吸附 + 其他模块位置锁定 ----
-       缩小时 gridstack 重力会让下方模块上浮换位,且自由尺寸会落在坐标轴被压扁的
-       "bug 尺寸"。这里在手势期间切 float 禁止连带推动,松手时把被缩放模块吸附到
-       最近的合法预设(presetAfterResize 按拖动方向进一档,避免小幅拖动弹回),
-       其余模块一律还原到手势前的最近空位——相对位置永不因缩放而改变。 */
+       ResizeIsolatedEngine 在手势期间只更新当前节点,不把碰撞组件临时推开。
+       松手时把被缩放模块吸附到最近合法预设(presetAfterResize 按拖动方向进一档),
+       其余模块回到手势前的最近空位,统一结算重叠后再持久化。 */
     let resizeSnapshot = null;
-    grid.on('resizestart', () => {
+    const setResizeLimitFeedback = (el, exceeded) => {
+      if (!el) return;
+      el.classList.toggle('is-resize-invalid', exceeded);
+      let feedback = el.querySelector(':scope > .resize-limit-feedback');
+      if (exceeded && !feedback) {
+        feedback = document.createElement('div');
+        feedback.className = 'resize-limit-feedback';
+        feedback.setAttribute('role', 'status');
+        feedback.setAttribute('aria-label', '已超过最大尺寸，松手后将自动调整为可用尺寸');
+        feedback.title = '松手后将自动调整为最接近的可用尺寸';
+        feedback.textContent = '超过最大尺寸';
+        el.appendChild(feedback);
+      } else if (!exceeded && feedback) {
+        feedback.remove();
+      }
+    };
+    grid.on('resizestart', (event, el) => {
+      setResizeLimitFeedback(el, false);
       resizeSnapshot = {};
       host.querySelectorAll('.grid-stack-item').forEach((it) => {
         const n = it.gridstackNode;
-        if (n) resizeSnapshot[n.id] = { x: n.x, y: n.y, w: n.w, h: n.h };
+        if (n) resizeSnapshot[n.id] = { x: n.x, y: n.y, w: n.w, h: n.h, preset: n.preset };
       });
-      grid.float(true);
+    });
+    grid.on('resize', (event, el) => {
+      const node = el.gridstackNode;
+      const component = node && getComponent(node.id);
+      const start = node && resizeSnapshot && resizeSnapshot[node.id];
+      const exceeded = component
+        ? isResizeBeyondLimits(component, bp, start, { w: node.w, h: node.h })
+        : false;
+      setResizeLimitFeedback(el, exceeded);
     });
     grid.on('resizestop', (event, el) => {
+      setResizeLimitFeedback(el, false);
       const snapshot = resizeSnapshot;
       resizeSnapshot = null;
       const node = el.gridstackNode;
-      if (!node) { grid.float(false); return; }
+      if (!node) return;
       const start = snapshot && snapshot[node.id];
       const snap = presetAfterResize(node.id, bp, start, { w: node.w, h: node.h })
         || nearestPreset(node.id, bp, node.w, node.h);
@@ -304,6 +264,10 @@ export default function Dashboard({ editing }) {
         ? { x: Math.min(node.x, layout.columns - snap.w), y: node.y, w: snap.w, h: snap.h }
         : { x: node.x, y: node.y, w: node.w, h: node.h };
       grid.batchUpdate();
+      if (snap) {
+        node.preset = snap.name;
+        el.dataset.layoutPreset = snap.name;
+      }
       grid.update(el, box);
       const placed = [Object.assign({ id: node.id }, box)];
       const others = [];
@@ -329,7 +293,6 @@ export default function Dashboard({ editing }) {
         placed.push(pos);
       });
       grid.batchUpdate(false);
-      grid.float(false);
     });
 
     return () => {
@@ -363,28 +326,35 @@ export default function Dashboard({ editing }) {
     const layout = layoutRef.current[bpRef.current];
     return layout.items
       .filter((item) => visibleIds.has(item.id))
-      .filter((item) => !QUOTA_IDS.includes(item.id) || providers.some((p) => 'quota-' + p.id === item.id))
-      .map((item) => (
-        <section
-          key={item.id}
-          className={'component-wrapper grid-stack-item ' + (FEE_IDS.includes(item.id) ? 'fee-card-widget' : 'chart-widget')}
-          data-component-id={item.id}
-          data-layout-preset={item.preset}
-          gs-id={item.id}
-          gs-x={item.x}
-          gs-y={item.y}
-          gs-w={item.w}
-          gs-h={item.h}
-          gs-min-w={MIN_SIZES[item.id] ? MIN_SIZES[item.id].w : undefined}
-          gs-min-h={MIN_SIZES[item.id] ? MIN_SIZES[item.id].h : undefined}
-        >
-          <div className="module-drag-handle" aria-hidden="true" />
-          <div className={'grid-stack-item-content component-surface' + (FEE_IDS.includes(item.id) ? ' fee-card-surface' : '') + (EMBED_IDS.includes(item.id) ? ' embed-surface' : '')}>
-            {EMBED_IDS.includes(item.id) || USAGE_CHART_IDS.includes(item.id) ? null : <div className="component-title">{LABELS[item.id] || item.id}</div>}
-            <WidgetBody id={item.id} onContentChange={() => { if (fitRef.current) fitRef.current(); }} />
-          </div>
-        </section>
-      ));
+      .filter((item) => {
+        const component = getComponent(item.id);
+        return !component.requiresProvider
+          || providers.some((provider) => provider.id === component.providerId);
+      })
+      .map((item) => {
+        const component = getComponent(item.id);
+        return (
+          <section
+            key={item.id}
+            className={'component-wrapper grid-stack-item ' + component.itemClass}
+            data-component-id={item.id}
+            data-layout-preset={item.preset}
+            gs-id={item.id}
+            gs-x={item.x}
+            gs-y={item.y}
+            gs-w={item.w}
+            gs-h={item.h}
+            gs-min-w={component.minSize.w}
+            gs-min-h={component.minSize.h}
+          >
+            <div className="module-drag-handle" aria-hidden="true" />
+            <div className={'grid-stack-item-content component-surface ' + component.surfaceClass}>
+              {component.showTitle ? <div className="component-title">{component.label}</div> : null}
+              <RegisteredWidgetBody id={item.id} onContentChange={() => { if (fitRef.current) fitRef.current(); }} />
+            </div>
+          </section>
+        );
+      });
   }, [ready, rebuildKey]);
 
   if (!ready) {

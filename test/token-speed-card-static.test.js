@@ -24,13 +24,14 @@ test('hook loads and subscribes to the dedicated speed snapshot', () => {
   assert.match(api, /token-speed:changed/);
 });
 
-test('Dashboard routes token-speed as an embedded chart widget', () => {
-  const dashboard = fs.readFileSync(path.join(root, 'renderer/src/components/Dashboard.jsx'), 'utf8');
+test('registry routes token-speed as an embedded chart widget', () => {
+  const runtime = fs.readFileSync(path.join(root, 'renderer/src/grid/widget-runtime.jsx'), 'utf8');
   const styles = fs.readFileSync(path.join(root, 'renderer/src/styles.css'), 'utf8');
-  assert.match(dashboard, /import TokenSpeedCard/);
-  assert.match(dashboard, /id === 'token-speed'/);
-  assert.match(dashboard, /CHART_IDS[\s\S]*?'token-speed'/);
-  assert.match(dashboard, /EMBED_IDS[\s\S]*?'token-speed'/);
+  const definition = require('../src/renderer/js/layout/component-registry.js').get('token-speed');
+  assert.match(runtime, /'token-speed': TokenSpeedCard/);
+  assert.equal(definition.autoFit, false);
+  assert.equal(definition.usesChartRange, false);
+  assert.equal(definition.surfaceClass, 'chart-surface embed-surface');
   assert.match(styles, /\.token-speed-card/);
   assert.match(styles, /\.token-speed-controls/);
   assert.match(styles, /\.token-speed-legend/);
